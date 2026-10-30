@@ -213,10 +213,10 @@ export async function generateTeamsMessage(
   team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   const team1List = team1
-    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: !publish }))
+    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: true }))
     .join('\n')
   const team2List = team2
-    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: !publish }))
+    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: true }))
     .join('\n')
   const assignedIds = new Set([
     ...team1.map(t => getPlayerIdentifier(t)).filter(Boolean),
