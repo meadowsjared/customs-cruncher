@@ -1,6 +1,7 @@
 import { Player } from '../types/player'
 
 export enum MakeTeamsMode {
+  OPTIMAL = 'optimal',
   STANDARD = 'standard',
   MIXED_A = 'mixed_a',
   MIXED_B = 'mixed_b',
@@ -21,6 +22,7 @@ export interface MakeTeamsChoice {
 }
 
 export const makeTeamsModeChoices: MakeTeamsChoice[] = [
+  { name: 'Optimal (MMR & Role Balanced)', value: MakeTeamsMode.OPTIMAL },
   { name: 'Standard (Default)', value: MakeTeamsMode.STANDARD },
   { name: 'Mixed A (Balanced)', value: MakeTeamsMode.MIXED_A },
   { name: 'Mixed B (Balanced)', value: MakeTeamsMode.MIXED_B },
@@ -35,7 +37,7 @@ export const makeTeamsModeChoices: MakeTeamsChoice[] = [
  * Prefab player rank assignments (1-indexed lobby MMR rank).
  * Works seamlessly for 6, 8, 10, or 10+ player lobbies.
  */
-export const TEAM_PREFABS: Record<MakeTeamsMode, { team1: number[]; team2: number[] }> = {
+export const TEAM_PREFABS: Partial<Record<MakeTeamsMode, { team1: number[]; team2: number[] }>> = {
   [MakeTeamsMode.STANDARD]: {
     team1: [1, 4, 5, 8, 9], // 27
     team2: [2, 3, 6, 7, 10], // 28
@@ -282,14 +284,103 @@ export function balanceTeamsByRole(
 }
 
 /**
- * Creates teams using the prefab rank arrays, with automatic role balancing.
+ * Generates all unique combinations of choosing k elements from an array.
+ */
+export function getCombinations<T>(array: T[], k: number): T[][] {
+  if (k === 0) return [[]]
+  if (array.length < k) return []
+  const [first, ...rest] = array
+  const withFirst = getCombinations(rest, k - 1).map(comb => [first, ...comb])
+  const withoutFirst = getCombinations(rest, k)
+  return [...withFirst, ...withoutFirst]
+}
+
+/**
+ * Creates globally optimal teams by evaluating all possible 5v5 combinations.
+ * First filters/penalizes by role coverage (Tanks, Healers, Flex),
+ * then minimizes the total team MMR difference.
+ */
+export function createOptimalTeams(
+  sortedPlayers: Player[],
+  maxPlayersPerTeam: number = 5
+): TeamDraftResult {
+  const totalSlots = maxPlayersPerTeam * 2
+  const activePool = sortedPlayers.slice(0, totalSlots)
+  const spectators = sortedPlayers.slice(totalSlots)
+
+  spectators.forEach(p => {
+    p.draftOrder = NaN
+    p.lobbyRank = NaN
+    p.team = 0
+  })
+
+  // If pool cannot be evenly split or is trivial
+  if (activePool.length < 2) {
+    return { team1: activePool, team2: [], spectators }
+  }
+
+  const teamSize = Math.floor(activePool.length / 2)
+  // Pin first player to Team 1 to avoid evaluating symmetric duplicates (Team 1 vs 2 == Team 2 vs 1)
+  const firstPlayer = activePool[0]
+  const remainingPlayers = activePool.slice(1)
+  const candidateCombs = getCombinations(remainingPlayers, teamSize - 1)
+
+  let bestSplit: { team1: Player[]; team2: Player[]; roleImbalance: number; mmrDiff: number } | null = null
+
+  for (const comb of candidateCombs) {
+    const t1 = [firstPlayer, ...comb]
+    const t1Set = new Set(t1)
+    const t2 = activePool.filter(p => !t1Set.has(p))
+
+    const roleImbalance = calculateRoleImbalance(t1, t2)
+    const mmrDiff = getTeamMmrDiff(t1, t2)
+
+    if (
+      !bestSplit ||
+      roleImbalance < bestSplit.roleImbalance ||
+      (roleImbalance === bestSplit.roleImbalance && mmrDiff < bestSplit.mmrDiff)
+    ) {
+      bestSplit = { team1: t1, team2: t2, roleImbalance, mmrDiff }
+    }
+  }
+
+  const team1 = bestSplit?.team1 ?? activePool.slice(0, teamSize)
+  const team2 = bestSplit?.team2 ?? activePool.slice(teamSize)
+
+  // Assign player metadata and order
+  team1.forEach((p, idx) => {
+    p.team = 1
+    const overallRank = sortedPlayers.indexOf(p)
+    p.lobbyRank = overallRank >= 0 ? overallRank : idx
+    p.draftOrder = p.lobbyRank + 1
+  })
+
+  team2.forEach((p, idx) => {
+    p.team = 2
+    const overallRank = sortedPlayers.indexOf(p)
+    p.lobbyRank = overallRank >= 0 ? overallRank : idx
+    p.draftOrder = p.lobbyRank + 1
+  })
+
+  return { team1, team2, spectators }
+}
+
+/**
+ * Creates teams using the prefab rank arrays or dynamic combinatorial optimization.
  */
 export function createTeams(
   sortedPlayers: Player[],
   mode: MakeTeamsMode = MakeTeamsMode.STANDARD,
   maxPlayersPerTeam: number = 5
 ): TeamDraftResult {
+  if (mode === MakeTeamsMode.OPTIMAL) {
+    return createOptimalTeams(sortedPlayers, maxPlayersPerTeam)
+  }
+
   const prefab = TEAM_PREFABS[mode] ?? TEAM_PREFABS[MakeTeamsMode.STANDARD]
+  if (!prefab) {
+    return createOptimalTeams(sortedPlayers, maxPlayersPerTeam)
+  }
   const team1Set = new Set(prefab.team1)
   const team2Set = new Set(prefab.team2)
 

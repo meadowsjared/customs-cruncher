@@ -264,6 +264,67 @@ describe('teamMaker.createTeams', () => {
     expect(team1.filter(p => p.role?.includes('F')).length).toBe(1)
     expect(team2.filter(p => p.role?.includes('F')).length).toBe(1)
   })
+
+  it('creates globally optimal teams that beat standard prefab MMR difference', () => {
+    // Rank 1 is an outlier GM (+550 MMR over Rank 2)
+    const players = [
+      makeMockPlayer(1, 3300, 'T'),
+      makeMockPlayer(2, 2750, 'A'),
+      makeMockPlayer(3, 2700, 'T'),
+      makeMockPlayer(4, 2650, 'A'),
+      makeMockPlayer(5, 2600, 'H'),
+      makeMockPlayer(6, 2550, 'A'),
+      makeMockPlayer(7, 2500, 'H'),
+      makeMockPlayer(8, 2450, 'A'),
+      makeMockPlayer(9, 2400, 'A'),
+      makeMockPlayer(10, 2350, 'A'),
+    ]
+
+    const optimal = createTeams(players, MakeTeamsMode.OPTIMAL, 5)
+    const standard = createTeams(players, MakeTeamsMode.STANDARD, 5)
+
+    const optT1Sum = optimal.team1.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
+    const optT2Sum = optimal.team2.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
+    const optDiff = Math.abs(optT1Sum - optT2Sum)
+
+    const stdT1Sum = standard.team1.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
+    const stdT2Sum = standard.team2.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
+    const stdDiff = Math.abs(stdT1Sum - stdT2Sum)
+
+    // Optimal should achieve much closer MMR parity than standard
+    expect(optDiff).toBeLessThan(stdDiff)
+    // Optimal delta should be <= 50 MMR
+    expect(optDiff).toBeLessThanOrEqual(50)
+
+    // And both teams in optimal should have a Tank and a Healer
+    expect(optimal.team1.some(p => p.role === 'T')).toBe(true)
+    expect(optimal.team2.some(p => p.role === 'T')).toBe(true)
+    expect(optimal.team1.some(p => p.role === 'H')).toBe(true)
+    expect(optimal.team2.some(p => p.role === 'H')).toBe(true)
+  })
+
+  it('benchmarks optimal team creation under 5ms for 10 players', () => {
+    const players = [
+      makeMockPlayer(1, 3300, 'T'),
+      makeMockPlayer(2, 2750, 'A'),
+      makeMockPlayer(3, 2700, 'T'),
+      makeMockPlayer(4, 2650, 'A'),
+      makeMockPlayer(5, 2600, 'H'),
+      makeMockPlayer(6, 2550, 'A'),
+      makeMockPlayer(7, 2500, 'H'),
+      makeMockPlayer(8, 2450, 'A'),
+      makeMockPlayer(9, 2400, 'A'),
+      makeMockPlayer(10, 2350, 'A'),
+    ]
+
+    const start = performance.now()
+    for (let i = 0; i < 50; i++) {
+      createTeams(players, MakeTeamsMode.OPTIMAL, 5)
+    }
+    const avgMs = (performance.now() - start) / 50
+
+    expect(avgMs).toBeLessThan(5)
+  })
 })
 
 describe('teamMaker.calculateMatchupPrediction', () => {
@@ -311,6 +372,7 @@ describe('teamMaker.calculateMatchupPrediction', () => {
 
 describe('teamMaker.isMakeTeamsMode', () => {
   it('returns true for valid MakeTeamsMode values', () => {
+    expect(isMakeTeamsMode('optimal')).toBe(true)
     expect(isMakeTeamsMode('standard')).toBe(true)
     expect(isMakeTeamsMode('mixed_a')).toBe(true)
     expect(isMakeTeamsMode('mixed_b')).toBe(true)
