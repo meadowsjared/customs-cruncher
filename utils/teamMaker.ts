@@ -322,3 +322,96 @@ export function createTeams(
 
   return { team1, team2, spectators, roleSwapsApplied }
 }
+
+export interface MatchupPrediction {
+  team1AvgMMR: number
+  team2AvgMMR: number
+  mmrDiff: number
+  team1WinPct: number
+  team2WinPct: number
+  probabilityBar: string
+  outlookText: string
+  roleStatusText: string
+}
+
+/**
+ * Calculates win prediction probabilities and competitive outlook for the match.
+ * Uses an Elo logistic curve based on the average MMR difference between the teams.
+ */
+export function calculateMatchupPrediction(team1: Player[], team2: Player[]): MatchupPrediction {
+  const t1Scores = team1.map(getPlayerScore)
+  const t2Scores = team2.map(getPlayerScore)
+
+  const t1Total = t1Scores.reduce((sum, s) => sum + s, 0)
+  const t2Total = t2Scores.reduce((sum, s) => sum + s, 0)
+
+  const team1AvgMMR = Math.round(t1Total / Math.max(team1.length, 1))
+  const team2AvgMMR = Math.round(t2Total / Math.max(team2.length, 1))
+  const mmrDiff = team1AvgMMR - team2AvgMMR
+
+  // Standard Elo logistic win probability based on average team MMR difference
+  // Scale factor of 400: a 100-MMR lead ~ 64% win chance, 200-MMR lead ~ 76% win chance
+  const exponent = -mmrDiff / 400
+  const t1Prob = 1 / (1 + Math.pow(10, exponent))
+  const team1WinPct = Math.max(1, Math.min(99, Math.round(t1Prob * 100)))
+  const team2WinPct = 100 - team1WinPct
+
+  // 20-character visual bar
+  const t1Blocks = Math.round((team1WinPct / 100) * 20)
+  const t2Blocks = Math.max(0, 20 - t1Blocks)
+  const probabilityBar = '█'.repeat(t1Blocks) + '░'.repeat(t2Blocks)
+
+  // Categorized outlook
+  const absDiff = Math.abs(mmrDiff)
+  let outlookText = ''
+  if (absDiff <= 30) {
+    outlookText = `⚖️ **Outlook**: Even Matchup (Δ ${absDiff} avg MMR)`
+  } else if (absDiff <= 80) {
+    const favored = mmrDiff > 0 ? 'Team 1' : 'Team 2'
+    outlookText = `📈 **Outlook**: Slight Advantage: **${favored}** (Δ ${absDiff} avg MMR)`
+  } else if (absDiff <= 150) {
+    const favored = mmrDiff > 0 ? 'Team 1' : 'Team 2'
+    outlookText = `🔥 **Outlook**: Clear Advantage: **${favored}** (Δ ${absDiff} avg MMR)`
+  } else {
+    const favored = mmrDiff > 0 ? 'Team 1' : 'Team 2'
+    outlookText = `⚠️ **Outlook**: Heavy Mismatch: **${favored}** heavily favored (Δ ${absDiff} avg MMR)`
+  }
+
+  // Role status breakdown
+  const t1HasRealTank = team1.some(canPlayTank)
+  const t2HasRealTank = team2.some(canPlayTank)
+  const t1HasRealHealer = team1.some(canPlayHealer)
+  const t2HasRealHealer = team2.some(canPlayHealer)
+  const t1HasFlex = team1.some(isFlex)
+  const t2HasFlex = team2.some(isFlex)
+
+  const t1TankOk = t1HasRealTank || t1HasFlex
+  const t2TankOk = t2HasRealTank || t2HasFlex
+  const t1HealOk = t1HasRealHealer || t1HasFlex
+  const t2HealOk = t2HasRealHealer || t2HasFlex
+
+  let roleStatusText = ''
+  if (t1HasRealTank && t2HasRealTank && t1HasRealHealer && t2HasRealHealer) {
+    roleStatusText = '🛡️ **Roles**: Both teams have a dedicated Tank & Healer'
+  } else if (t1TankOk && t2TankOk && t1HealOk && t2HealOk) {
+    roleStatusText = '🛡️ **Roles**: Core roles covered (using Flex filler)'
+  } else {
+    const issues: string[] = []
+    if (!t1TankOk) issues.push('T1 lacks Tank')
+    if (!t2TankOk) issues.push('T2 lacks Tank')
+    if (!t1HealOk) issues.push('T1 lacks Healer')
+    if (!t2HealOk) issues.push('T2 lacks Healer')
+    roleStatusText = `⚠️ **Roles**: Missing coverage: ${issues.join(', ')}`
+  }
+
+  return {
+    team1AvgMMR,
+    team2AvgMMR,
+    mmrDiff,
+    team1WinPct,
+    team2WinPct,
+    probabilityBar,
+    outlookText,
+    roleStatusText,
+  }
+}

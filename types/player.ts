@@ -594,6 +594,7 @@ export type HotSAccountMatch = {
 export type FormatPlayerDisplayOptions = {
   includeBattleTag?: boolean
   includeRole?: boolean
+  includeMMR?: boolean
 }
 
 export type ResolvedHotsAccount = {

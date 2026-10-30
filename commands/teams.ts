@@ -29,7 +29,7 @@ import { Player } from '../types/player'
 import { safePing } from '../utils/announce'
 import { requireGuildId, safeReply } from '../utils/interaction'
 import { scanLobbyScreenshot } from '../utils/lobbyScanner'
-import { createTeams, isMakeTeamsMode, MakeTeamsMode } from '../utils/teamMaker'
+import { calculateMatchupPrediction, createTeams, isMakeTeamsMode, MakeTeamsMode } from '../utils/teamMaker'
 import { matchesScanList } from './scanLobby'
 
 /**
@@ -213,10 +213,10 @@ export async function generateTeamsMessage(
   team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
   const team1List = team1
-    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true }))
+    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: !publish }))
     .join('\n')
   const team2List = team2
-    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true }))
+    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: !publish }))
     .join('\n')
   const assignedIds = new Set([
     ...team1.map(t => getPlayerIdentifier(t)).filter(Boolean),
@@ -226,7 +226,9 @@ export async function generateTeamsMessage(
     const id = getPlayerIdentifier(p)
     return id ? !assignedIds.has(id) : true
   })
-  const spectatorList = spectators.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true })).join('\n')
+  const spectatorList = spectators
+    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeMMR: !publish }))
+    .join('\n')
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`
   const team2lengthMessage = team2.length === 5 ? '' : ` (${team2.length} players)`
@@ -242,7 +244,23 @@ export async function generateTeamsMessage(
     spectators.length > 0
       ? [new EmbedBuilder().setTitle('Spectators').setDescription(spectatorList).setColor(`#909000`)]
       : []
-  const embeds = [team1embed, team2embed, ...spectatorEmbedAr]
+
+  const outlookEmbedAr: EmbedBuilder[] = []
+  if (!publish && team1.length > 0 && team2.length > 0) {
+    const prediction = calculateMatchupPrediction(team1, team2)
+    const outlookEmbed = new EmbedBuilder()
+      .setTitle('📊 Matchup Outlook & Win Prediction')
+      .setColor('#5865F2')
+      .setDescription(
+        `**Team 1** (${prediction.team1AvgMMR} avg) vs **Team 2** (${prediction.team2AvgMMR} avg)\n` +
+        `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
+        `${prediction.outlookText}\n` +
+        `${prediction.roleStatusText}\n\n`
+      )
+    outlookEmbedAr.push(outlookEmbed)
+  }
+
+  const embeds = [...outlookEmbedAr, team1embed, team2embed, ...spectatorEmbedAr]
   let messages = await getLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS])
   if (publish || isDraft) {
     // clear the previous message from the database, so it doesn't get updated until it's published again
@@ -384,11 +402,9 @@ export async function handleSwapTeamsCommand(
     !playerB
   ) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${
-        playerBNumber + 1
-      }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${
-        activePlayers.length
-      } players.`,
+      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
+        }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
+        } players.`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -744,9 +760,8 @@ export async function handleMoveToTeamsCommand(
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
-        .join(', ')}\nWARNING: **${
-        teams.team1.length + teams.team2.length - numberMoved
-      } players could not be moved.**`,
+        .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
+        } players could not be moved.**`,
     })
   } else {
     await interaction.editReply({

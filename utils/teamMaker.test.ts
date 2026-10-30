@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { createTeams, isMakeTeamsMode, MakeTeamsMode } from './teamMaker'
+import { calculateMatchupPrediction, createTeams, isMakeTeamsMode, MakeTeamsMode } from './teamMaker'
 import { Player } from '../types/player'
 
 function makeMockPlayer(index: number, mmr: number, role?: string): Player {
@@ -263,6 +263,49 @@ describe('teamMaker.createTeams', () => {
     expect(roleSwapsApplied).toBe(true)
     expect(team1.filter(p => p.role?.includes('F')).length).toBe(1)
     expect(team2.filter(p => p.role?.includes('F')).length).toBe(1)
+  })
+})
+
+describe('teamMaker.calculateMatchupPrediction', () => {
+  it('predicts 50/50 win probabilities for teams with equal average MMR', () => {
+    const team1 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 1, 2800, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
+    const team2 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 6, 2800, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
+
+    const pred = calculateMatchupPrediction(team1, team2)
+
+    expect(pred.team1AvgMMR).toBe(2800)
+    expect(pred.team2AvgMMR).toBe(2800)
+    expect(pred.mmrDiff).toBe(0)
+    expect(pred.team1WinPct).toBe(50)
+    expect(pred.team2WinPct).toBe(50)
+    expect(pred.outlookText).toContain('Even Matchup')
+    expect(pred.roleStatusText).toContain('Both teams have a dedicated Tank & Healer')
+  })
+
+  it('calculates proper Elo win percentage advantage for higher MMR team', () => {
+    // 100 MMR lead should yield ~64% win probability
+    const team1 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 1, 2850, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
+    const team2 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 6, 2750, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
+
+    const pred = calculateMatchupPrediction(team1, team2)
+
+    expect(pred.team1AvgMMR).toBe(2850)
+    expect(pred.team2AvgMMR).toBe(2750)
+    expect(pred.mmrDiff).toBe(100)
+    expect(pred.team1WinPct).toBe(64)
+    expect(pred.team2WinPct).toBe(36)
+    expect(pred.outlookText).toContain('Team 1')
+  })
+
+  it('detects when core roles are missing', () => {
+    const team1 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 1, 2800, 'A'))
+    const team2 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 6, 2800, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
+
+    const pred = calculateMatchupPrediction(team1, team2)
+
+    expect(pred.roleStatusText).toContain('Missing coverage')
+    expect(pred.roleStatusText).toContain('T1 lacks Tank')
+    expect(pred.roleStatusText).toContain('T1 lacks Healer')
   })
 })
 

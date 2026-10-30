@@ -1364,11 +1364,20 @@ export function formatPlayerDisplay(
   guildId: string,
   options: FormatPlayerDisplayOptions = {}
 ): string {
+  const includeMMR = options.includeMMR ?? true
   const mmr = player.mmr ?? getPlayerMMR(player)
-  const rank =
-    player.lobbyRank !== undefined && !Number.isNaN(player.lobbyRank) ? `${player.lobbyRank + 1}: ${mmr}` : `${mmr}`
+  const hasRank = player.lobbyRank !== undefined && !Number.isNaN(player.lobbyRank)
 
-  let result = `\`${rank}\` <@${player.discordId}>`
+  let rankStr = ''
+  if (hasRank && includeMMR) {
+    rankStr = `${player.lobbyRank + 1}: ${mmr}`
+  } else if (hasRank) {
+    rankStr = `${player.lobbyRank + 1}`
+  } else if (includeMMR) {
+    rankStr = `${mmr}`
+  }
+
+  let result = rankStr ? `\`${rankStr}\` <@${player.discordId}>` : `<@${player.discordId}>`
 
   if (options.includeBattleTag) {
     const subAccount = player.usernames.accounts?.find(account => account.ownerDiscordId)

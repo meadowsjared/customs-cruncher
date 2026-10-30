@@ -247,4 +247,15 @@ describe('store.player.formatPlayerDisplay', () => {
     const output = formatPlayerDisplay(player, 'guild_1', { includeRole: true })
     expect(output).toBe('`5: 2300` <@111222333> `💉 Healer`')
   })
+
+  it('omits MMR when includeMMR is false for public broadcasts', () => {
+    const player = createTestPlayer({
+      discordId: '111222333',
+      lobbyRank: 4,
+      mmr: 2300,
+      role: 'T',
+    })
+    const output = formatPlayerDisplay(player, 'guild_1', { includeRole: true, includeMMR: false })
+    expect(output).toBe('`5` <@111222333> `🛡️ Tank`')
+  })
 })
