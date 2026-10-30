@@ -678,4 +678,95 @@ export const PLAYERS_TABLES_SCHEMA_SQL = `
     ON account_substitutions (guild_id, LOWER(hots_battle_tag), is_active);
 `
 
+/**
+ * PostgreSQL function DDL for calculating effective MMR.
+ * Formula: EffectiveMMR = BaseMMR + (WinRate - 50%) * Confidence(Games) * ScalingFactor + Adjustment
+ */
+export const PLAYER_MMR_FUNCTION_SQL = `
+  CREATE OR REPLACE FUNCTION calculate_effective_mmr(
+    base_mmr INTEGER,
+    custom_games INTEGER,
+    custom_win_rate NUMERIC,
+    adjustment INTEGER DEFAULT 0
+  )
+  RETURNS INTEGER
+  LANGUAGE sql
+  IMMUTABLE
+  PARALLEL SAFE
+  AS $$
+    SELECT ROUND(
+      COALESCE(base_mmr, 0)::numeric
+      + CASE 
+          WHEN COALESCE(custom_games, 0) > 0 THEN 
+            (COALESCE(custom_win_rate, 50.0) - 50.0) * (custom_games::numeric / (custom_games + 15)::numeric) * 15.0
+          ELSE 0 
+        END
+      + COALESCE(adjustment, 0)::numeric
+    )::integer;
+  $$;
+
+  CREATE OR REPLACE FUNCTION calculate_effective_mmr(
+    base_mmr INTEGER,
+    custom_games INTEGER,
+    custom_win_rate DOUBLE PRECISION,
+    adjustment INTEGER DEFAULT 0
+  )
+  RETURNS INTEGER
+  LANGUAGE sql
+  IMMUTABLE
+  PARALLEL SAFE
+  AS $$
+    SELECT calculate_effective_mmr(base_mmr, custom_games, custom_win_rate::numeric, adjustment);
+  $$;
+`
+
+/**
+ * PostgreSQL View DDL for player MMR leaderboard and statistics.
+ */
+export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
+  CREATE OR REPLACE VIEW v_player_mmr AS
+  WITH custom_stats AS (
+    SELECT
+      LOWER(ha.hots_battle_tag) AS hots_battle_tag,
+      COUNT(*)::int AS games,
+      ROUND(100.0 * AVG(CASE WHEN s.win THEN 1.0 ELSE 0.0 END)::numeric, 1)::float AS win_rate
+    FROM mv_replay_player_stats s
+    JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+    GROUP BY LOWER(ha.hots_battle_tag)
+  ),
+  account_summary AS (
+    SELECT
+      ha.discord_id,
+      ha.hots_battle_tag,
+      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr) AS account_mmr,
+      COALESCE(cs.games, 0) AS games,
+      COALESCE(cs.win_rate, 50.0) AS win_rate
+    FROM hots_accounts ha
+    LEFT JOIN custom_stats cs ON cs.hots_battle_tag = LOWER(ha.hots_battle_tag)
+  ),
+  player_best AS (
+    SELECT
+      discord_id,
+      MAX(account_mmr) AS base_mmr,
+      MAX(games) AS custom_games,
+      (ARRAY_AGG(win_rate ORDER BY games DESC))[1] AS custom_win_rate
+    FROM account_summary
+    WHERE discord_id IS NOT NULL
+    GROUP BY discord_id
+  )
+  SELECT
+    p.discord_id,
+    p.discord_display_name AS player,
+    p.role,
+    pb.base_mmr,
+    COALESCE(p.adjustment, 0) AS adjustment,
+    pb.custom_games,
+    pb.custom_win_rate,
+    calculate_effective_mmr(pb.base_mmr, pb.custom_games, pb.custom_win_rate, p.adjustment) AS effective_mmr
+  FROM players p
+  JOIN player_best pb ON pb.discord_id = p.discord_id
+  WHERE pb.base_mmr IS NOT NULL;
+`
+
+
 

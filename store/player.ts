@@ -20,6 +20,8 @@ import {
   HotsAccountRow,
   Player,
   PlayerIdPrefix,
+  PLAYER_MMR_FUNCTION_SQL,
+  PLAYER_MMR_VIEW_SCHEMA_SQL,
   PLAYERS_TABLES_SCHEMA_SQL,
   RegisteredPlayerAccount,
   ResolvedHotsAccount,
@@ -117,10 +119,25 @@ export {
 }
 
 /**
+ * Initializes the MMR calculation function and `v_player_mmr` view in PostgreSQL.
+ */
+export async function initPlayerMmrView(): Promise<void> {
+  await sql.unsafe(PLAYER_MMR_FUNCTION_SQL)
+
+  const mvExists = await sql<Array<{ oid: number }>>`
+    SELECT oid FROM pg_class WHERE relname = 'mv_replay_player_stats' AND relkind = 'm'
+  `
+  if (mvExists.length > 0) {
+    await sql.unsafe(PLAYER_MMR_VIEW_SCHEMA_SQL)
+  }
+}
+
+/**
  * Initializes the Discord player, HotS account, lobby, and account substitution tables in PostgreSQL.
  */
 export async function initPlayersTables(): Promise<void> {
   await sql.unsafe(PLAYERS_TABLES_SCHEMA_SQL)
+  await initPlayerMmrView()
 }
 
 initPlayersTables().catch(err => {

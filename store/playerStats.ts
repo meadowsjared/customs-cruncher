@@ -1,4 +1,5 @@
 import {
+  PLAYER_MMR_VIEW_SCHEMA_SQL,
   PLAYER_STATS_VIEW_SCHEMA_SQL,
   PlayerAggregatedStats,
   PlayerStatsFilter,
@@ -28,6 +29,7 @@ export async function initPlayerStatsView(): Promise<void> {
     }
   }
   await sql.unsafe(PLAYER_STATS_VIEW_SCHEMA_SQL)
+  await sql.unsafe(PLAYER_MMR_VIEW_SCHEMA_SQL)
 }
 
 /**
