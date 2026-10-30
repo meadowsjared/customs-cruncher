@@ -531,6 +531,8 @@ export type Player = {
   draftOrder: number
   adjustment: number | null
   mmr: number | null
+  customGames?: number
+  customWinRate?: number
   lastActive: Date
 }
 

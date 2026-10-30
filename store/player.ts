@@ -169,7 +169,11 @@ export async function savePlayer(
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
 }
 
-function getPlayerFromRow(flatPlayer: FlatPlayer, hotsAccountsRow: HotsAccountRow[]): Player {
+function getPlayerFromRow(
+  flatPlayer: FlatPlayer,
+  hotsAccountsRow: HotsAccountRow[],
+  customStatsMap?: Map<string, { games: number; winRate: number }>
+): Player {
   cachePlayerDisplayName(
     flatPlayer.discord_id,
     flatPlayer.discord_display_name,
@@ -191,6 +195,34 @@ function getPlayerFromRow(flatPlayer: FlatPlayer, hotsAccountsRow: HotsAccountRo
 
   const isActive = typeof flatPlayer.active === 'boolean' ? flatPlayer.active : flatPlayer.active === 1
 
+  // Resolve best custom stats across their accounts
+  let customGames = 0
+  let customWinRate = 50
+  if (customStatsMap) {
+    let mostGames = 0
+    for (const acc of accountsNew) {
+      const stats = customStatsMap.get(acc.hotsBattleTag.toLowerCase())
+      if (stats && stats.games > mostGames) {
+        mostGames = stats.games
+        customGames = stats.games
+        customWinRate = stats.winRate
+      }
+    }
+  }
+
+  const baseMmr =
+    accountsNew.reduce(
+      (max: number | null, account) =>
+        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
+      0
+    ) ?? 0
+
+  const calculatedMmr = calculateEffectiveMMR(
+    baseMmr,
+    customGames > 0 ? { games: customGames, winRate: customWinRate } : undefined,
+    flatPlayer.adjustment
+  )
+
   return {
     discordId: flatPlayer.discord_id,
     usernames: {
@@ -205,12 +237,9 @@ function getPlayerFromRow(flatPlayer: FlatPlayer, hotsAccountsRow: HotsAccountRo
     lobbyRank: flatPlayer.lobby_rank ?? NaN,
     draftOrder: flatPlayer.draft_order ?? NaN,
     adjustment: flatPlayer.adjustment,
-    mmr:
-      (accountsNew.reduce(
-        (max: number | null, account) =>
-          Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
-        0
-      ) ?? 0) + (flatPlayer.adjustment ?? 0),
+    mmr: calculatedMmr,
+    customGames: customGames > 0 ? customGames : undefined,
+    customWinRate: customGames > 0 ? customWinRate : undefined,
     lastActive: flatPlayer.last_active instanceof Date ? flatPlayer.last_active : new Date(flatPlayer.last_active),
   }
 }
@@ -295,6 +324,24 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
   }
 
   const validAccounts = await filterActiveSubstitutedAccounts(allAccounts, guildId)
+
+  // Fetch aggregated custom stats for players in the lobby (fast single indexed scan)
+  const customStatsRows = await sql<
+    Array<{ hots_battle_tag: string; games: number; win_rate: number }>
+  >`
+    SELECT
+      LOWER(ha.hots_battle_tag) AS hots_battle_tag,
+      COUNT(*)::int AS games,
+      ROUND(100.0 * AVG(CASE WHEN s.win THEN 1.0 ELSE 0.0 END)::numeric, 1)::float AS win_rate
+    FROM mv_replay_player_stats s
+    JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+    GROUP BY LOWER(ha.hots_battle_tag)
+  `
+  const customStatsMap = new Map<string, { games: number; winRate: number }>()
+  for (const cs of customStatsRows) {
+    customStatsMap.set(cs.hots_battle_tag, { games: cs.games, winRate: cs.win_rate })
+  }
+
   const seenPlayerKeys = new Set<string>()
   const uniquePlayers: Player[] = []
   for (const row of rows) {
@@ -305,7 +352,7 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
       continue
     }
     seenPlayerKeys.add(key)
-    uniquePlayers.push(getPlayerFromRow(row, validAccounts))
+    uniquePlayers.push(getPlayerFromRow(row, validAccounts, customStatsMap))
   }
   return uniquePlayers
 }
@@ -1332,15 +1379,46 @@ export async function setPlayerAdjustment(
 }
 
 /**
- * Calculates the MMR for a player (including any adjustments).
+ * Calculates effective MMR using the confidence-weighted custom win rate formula,
+ * with any manual admin adjustment always added on top.
+ *
+ * Formula:
+ * EffectiveMMR = BaseMMR + (WinRate - 50%) * Confidence(Games) * ScalingFactor + AdminAdjustment
+ */
+export function calculateEffectiveMMR(
+  baseMmr: number,
+  customStats?: { games: number; winRate: number },
+  adjustment?: number | null
+): number {
+  let customOffset = 0
+  if (customStats && customStats.games > 0) {
+    // Confidence factor: K = 15 means 15 games gives 50% confidence; scales smoothly up to ~95%
+    const confidence = customStats.games / (customStats.games + 15)
+    // Deviation from 50% win rate (e.g. 58% WR -> +8)
+    const winRateDelta = customStats.winRate - 50.0
+    // Scaling factor of 15 (e.g. +10% WR at 90% confidence gives ~ +135 MMR)
+    customOffset = Math.round(winRateDelta * confidence * 15)
+  }
+
+  return baseMmr + customOffset + (adjustment ?? 0)
+}
+
+/**
+ * Calculates the MMR for a player (including custom stats and admin adjustments).
  */
 export function getPlayerMMR(player: Player): number {
-  return (
-    (player.usernames.accounts?.reduce(
+  const baseMmr =
+    player.usernames.accounts?.reduce(
       (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
       0
-    ) ?? 0) + (player.adjustment ?? 0)
-  )
+    ) ?? 0
+
+  const customStats =
+    player.customGames && player.customGames > 0
+      ? { games: player.customGames, winRate: player.customWinRate ?? 50 }
+      : undefined
+
+  return calculateEffectiveMMR(baseMmr, customStats, player.adjustment)
 }
 
 /**
