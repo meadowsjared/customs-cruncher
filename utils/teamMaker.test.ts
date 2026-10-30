@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { createTeams, isMakeTeamsMode, MakeTeamsMode } from './teamMaker'
 import { Player } from '../types/player'
 
-function makeMockPlayer(index: number, mmr: number): Player {
+function makeMockPlayer(index: number, mmr: number, role?: string): Player {
   return {
     discordId: `user_${index}`,
     usernames: {
@@ -12,6 +12,7 @@ function makeMockPlayer(index: number, mmr: number): Player {
     },
     active: true,
     mmr,
+    role,
     lastActive: new Date(),
     team: null,
     lobbyRank: NaN,
@@ -96,6 +97,172 @@ describe('teamMaker.createTeams', () => {
     const durationMs = performance.now() - start
 
     expect(durationMs).toBeLessThan(50)
+  })
+
+  it('splits two tank mains between Team 1 and Team 2 when prefab puts both on Team 1', () => {
+    // Standard prefab puts ranks 1, 4, 5, 8, 9 on Team 1 and 2, 3, 6, 7, 10 on Team 2
+    // If ranks 1 and 4 are both Tanks, Team 1 would get 2 tanks and Team 2 gets 0
+    const players = [
+      makeMockPlayer(1, 3000, 'T'),
+      makeMockPlayer(2, 2900, 'A'),
+      makeMockPlayer(3, 2800, 'A'),
+      makeMockPlayer(4, 2700, 'T'),
+      makeMockPlayer(5, 2600, 'A'),
+      makeMockPlayer(6, 2500, 'A'),
+      makeMockPlayer(7, 2400, 'H'),
+      makeMockPlayer(8, 2300, 'H'),
+      makeMockPlayer(9, 2200, 'A'),
+      makeMockPlayer(10, 2100, 'A'),
+    ]
+
+    const { team1, team2, roleSwapsApplied } = createTeams(players, MakeTeamsMode.STANDARD, 5)
+
+    expect(roleSwapsApplied).toBe(true)
+
+    const team1Tanks = team1.filter(p => p.role?.startsWith('T'))
+    const team2Tanks = team2.filter(p => p.role?.startsWith('T'))
+    const team1Healers = team1.filter(p => p.role?.startsWith('H'))
+    const team2Healers = team2.filter(p => p.role?.startsWith('H'))
+
+    expect(team1Tanks.length).toBe(1)
+    expect(team2Tanks.length).toBe(1)
+    expect(team1Healers.length).toBe(1)
+    expect(team2Healers.length).toBe(1)
+  })
+
+  it('splits two healer mains between Team 1 and Team 2 when prefab puts both on Team 2', () => {
+    // Ranks 2 and 3 are on Team 2 in Standard mode
+    const players = [
+      makeMockPlayer(1, 3000, 'T'),
+      makeMockPlayer(2, 2900, 'H'),
+      makeMockPlayer(3, 2800, 'H'),
+      makeMockPlayer(4, 2700, 'T'),
+      makeMockPlayer(5, 2600, 'A'),
+      makeMockPlayer(6, 2500, 'A'),
+      makeMockPlayer(7, 2400, 'A'),
+      makeMockPlayer(8, 2300, 'A'),
+      makeMockPlayer(9, 2200, 'A'),
+      makeMockPlayer(10, 2100, 'A'),
+    ]
+
+    const { team1, team2, roleSwapsApplied } = createTeams(players, MakeTeamsMode.STANDARD, 5)
+
+    expect(roleSwapsApplied).toBe(true)
+
+    const team1Healers = team1.filter(p => p.role?.startsWith('H'))
+    const team2Healers = team2.filter(p => p.role?.startsWith('H'))
+
+    expect(team1Healers.length).toBe(1)
+    expect(team2Healers.length).toBe(1)
+  })
+
+  it('balances both tanks and healers when both are clumped on separate teams', () => {
+    // Team 1 would get ranks 1 & 4 (both Tanks)
+    // Team 2 would get ranks 2 & 3 (both Healers)
+    const players = [
+      makeMockPlayer(1, 3000, 'T'),
+      makeMockPlayer(2, 2900, 'H'),
+      makeMockPlayer(3, 2800, 'H'),
+      makeMockPlayer(4, 2700, 'T'),
+      makeMockPlayer(5, 2600, 'A'),
+      makeMockPlayer(6, 2500, 'A'),
+      makeMockPlayer(7, 2400, 'A'),
+      makeMockPlayer(8, 2300, 'A'),
+      makeMockPlayer(9, 2200, 'A'),
+      makeMockPlayer(10, 2100, 'A'),
+    ]
+
+    const { team1, team2, roleSwapsApplied } = createTeams(players, MakeTeamsMode.STANDARD, 5)
+
+    expect(roleSwapsApplied).toBe(true)
+
+    const team1Tanks = team1.filter(p => p.role?.startsWith('T'))
+    const team2Tanks = team2.filter(p => p.role?.startsWith('T'))
+    const team1Healers = team1.filter(p => p.role?.startsWith('H'))
+    const team2Healers = team2.filter(p => p.role?.startsWith('H'))
+
+    expect(team1Tanks.length).toBe(1)
+    expect(team2Tanks.length).toBe(1)
+    expect(team1Healers.length).toBe(1)
+    expect(team2Healers.length).toBe(1)
+  })
+
+  it('does not separate ranks 1 and 2 in Double Trouble mode during role balancing', () => {
+    // In Double Trouble, Team 1 gets ranks 1, 2, 6, 8, 10
+    // Ranks 1 and 2 are together on Team 1
+    // Suppose rank 6 (Tank) and rank 8 (Tank) are both on Team 1, and Team 2 has 0 tanks (rank 4 is A)
+    const players = [
+      makeMockPlayer(1, 3000, 'A'),
+      makeMockPlayer(2, 2900, 'A'),
+      makeMockPlayer(3, 2800, 'A'),
+      makeMockPlayer(4, 2700, 'A'),
+      makeMockPlayer(5, 2600, 'A'),
+      makeMockPlayer(6, 2500, 'T'),
+      makeMockPlayer(7, 2400, 'A'),
+      makeMockPlayer(8, 2300, 'T'),
+      makeMockPlayer(9, 2200, 'A'),
+      makeMockPlayer(10, 2100, 'A'),
+    ]
+
+    const { team1, team2 } = createTeams(players, MakeTeamsMode.DOUBLE_TROUBLE, 5)
+
+    // Ranks 1 and 2 must stay on Team 1
+    expect(team1.some(p => p.discordId === 'user_1')).toBe(true)
+    expect(team1.some(p => p.discordId === 'user_2')).toBe(true)
+
+    // And tanks should be split 1 on each team
+    expect(team1.filter(p => p.role?.startsWith('T')).length).toBe(1)
+    expect(team2.filter(p => p.role?.startsWith('T')).length).toBe(1)
+  })
+
+  it('splits Flex player to opposite team when lobby has only 1 Tank player', () => {
+    // Ranks 1 (Tank) and 4 (Flex) are both on Team 1 initially in Standard
+    // Team 2 has 0 tanks and 0 flex
+    const players = [
+      makeMockPlayer(1, 3000, 'T'),
+      makeMockPlayer(2, 2900, 'A'),
+      makeMockPlayer(3, 2800, 'A'),
+      makeMockPlayer(4, 2700, 'F'),
+      makeMockPlayer(5, 2600, 'A'),
+      makeMockPlayer(6, 2500, 'A'),
+      makeMockPlayer(7, 2400, 'H'),
+      makeMockPlayer(8, 2300, 'H'),
+      makeMockPlayer(9, 2200, 'A'),
+      makeMockPlayer(10, 2100, 'A'),
+    ]
+
+    const { team1, team2, roleSwapsApplied } = createTeams(players, MakeTeamsMode.STANDARD, 5)
+
+    expect(roleSwapsApplied).toBe(true)
+
+    // One team has the Tank, the other team has the Flex
+    const t1TankOrFlex = team1.some(p => p.role?.includes('T') || p.role?.includes('F'))
+    const t2TankOrFlex = team2.some(p => p.role?.includes('T') || p.role?.includes('F'))
+
+    expect(t1TankOrFlex).toBe(true)
+    expect(t2TankOrFlex).toBe(true)
+  })
+
+  it('splits 2 Flex players when lobby has 0 Tank players', () => {
+    // 0 tanks, but ranks 1 and 4 are both Flex ('F')
+    const players = [
+      makeMockPlayer(1, 3000, 'F'),
+      makeMockPlayer(2, 2900, 'A'),
+      makeMockPlayer(3, 2800, 'A'),
+      makeMockPlayer(4, 2700, 'F'),
+      makeMockPlayer(5, 2600, 'A'),
+      makeMockPlayer(6, 2500, 'A'),
+      makeMockPlayer(7, 2400, 'H'),
+      makeMockPlayer(8, 2300, 'H'),
+      makeMockPlayer(9, 2200, 'A'),
+      makeMockPlayer(10, 2100, 'A'),
+    ]
+
+    const { team1, team2, roleSwapsApplied } = createTeams(players, MakeTeamsMode.STANDARD, 5)
+
+    expect(roleSwapsApplied).toBe(true)
+    expect(team1.filter(p => p.role?.includes('F')).length).toBe(1)
+    expect(team2.filter(p => p.role?.includes('F')).length).toBe(1)
   })
 })
 
