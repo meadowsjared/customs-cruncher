@@ -82,23 +82,18 @@ export async function handleSetTeamsCommand(
     })
     return
   }
-  // go through and subtract one from each number, so we're using 0-based indexes
-  for (let i = 0; i < (team1Input.length ?? 0); i++) {
-    team1Input[i] = team1Input[i] - 1
-  }
-  for (let i = 0; i < (team2Input?.length ?? 0); i++) {
-    team2Input[i] = team2Input[i] - 1
-  }
 
   // populate team 2
   const team2InputEffective =
     team2Input ??
     sortedPlayers.reduce((acc: number[], _, index: number) => {
-      if (!team1Input.includes(index) && acc.length < 5) {
-        acc.push(index)
+      const rank = index + 1
+      if (!team1Input.includes(rank) && acc.length < 5) {
+        acc.push(rank)
       }
       return acc
     }, [])
+
   // now we have the two teams, we need to set them in the database
   // go through sortedPlayers, and assign lobbyRank
   const newTeam1: Player[] = sortedPlayers.filter(p => team1Input.includes(p.lobbyRank))
@@ -382,26 +377,15 @@ export async function handleSwapTeamsCommand(
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  /** this is a 1-based index */
-  const playerANumber = interaction.options.getInteger('player-a', true) - 1
-  /** this is a 1-based index */
-  const playerBNumber = interaction.options.getInteger('player-b', true) - 1
+  const playerARank = interaction.options.getInteger('player-a', true)
+  const playerBRank = interaction.options.getInteger('player-b', true)
   const activePlayers = await getSortedActivePlayers(guildId)
-  const playerA = activePlayers[playerANumber]
-  const playerB = activePlayers[playerBNumber]
+  const playerA = activePlayers.find(p => p.lobbyRank === playerARank) ?? activePlayers[playerARank - 1]
+  const playerB = activePlayers.find(p => p.lobbyRank === playerBRank) ?? activePlayers[playerBRank - 1]
   // now we have the teams, and we know who to swap
-  if (
-    playerANumber < 0 ||
-    playerANumber >= activePlayers.length ||
-    playerBNumber < 0 ||
-    playerBNumber >= activePlayers.length ||
-    !playerA ||
-    !playerB
-  ) {
+  if (!playerA || !playerB) {
     await safeReply(interaction, {
-      content: `Invalid player numbers (playerANumber: ${playerANumber + 1}, playerBNumber: ${playerBNumber + 1
-        }, playerA: ${playerA?.discordId}, playerB: ${playerB?.discordId}) There are only ${activePlayers.length
-        } players.`,
+      content: `Invalid player numbers (player A: ${playerARank}, player B: ${playerBRank}). There are only ${activePlayers.length} players.`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -409,8 +393,8 @@ export async function handleSwapTeamsCommand(
   if (playerA.team === playerB.team) {
     await safeReply(interaction, {
       content: `Both players are on the same team. Cannot swap.
-Player A: \`team: ${playerA.team}\` \`${playerANumber + 1}: ${playerA.mmr}\` <@${playerA.discordId}>
-Player B: \`team: ${playerB.team}\` \`${playerBNumber + 1}: ${playerB.mmr}\` <@${playerB.discordId}>`,
+Player A: \`team: ${playerA.team}\` \`${playerA.lobbyRank || playerARank}: ${playerA.mmr}\` <@${playerA.discordId}>
+Player B: \`team: ${playerB.team}\` \`${playerB.lobbyRank || playerBRank}: ${playerB.mmr}\` <@${playerB.discordId}>`,
       flags: MessageFlags.Ephemeral,
     })
     return
