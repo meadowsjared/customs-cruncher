@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { calculateMatchupPrediction, createTeams, isMakeTeamsMode, MakeTeamsMode } from './teamMaker'
+import {
+  calculateMatchupPrediction,
+  createTeams,
+  findSuggestedFairSwaps,
+  isMakeTeamsMode,
+  MakeTeamsMode,
+} from './teamMaker'
 import { Player } from '../types/player'
 
 function makeMockPlayer(index: number, mmr: number, role?: string): Player {
@@ -367,6 +373,91 @@ describe('teamMaker.calculateMatchupPrediction', () => {
     expect(pred.roleStatusText).toContain('Missing coverage')
     expect(pred.roleStatusText).toContain('T1 lacks Tank')
     expect(pred.roleStatusText).toContain('T1 lacks Healer')
+  })
+})
+
+describe('teamMaker.createTeams defaults', () => {
+  it('defaults to Optimal mode when mode parameter is omitted', () => {
+    // 10 players where Optimal gives a better MMR split than rigid Standard prefab
+    const players = [
+      makeMockPlayer(1, 3500),
+      makeMockPlayer(2, 3100),
+      makeMockPlayer(3, 3050),
+      makeMockPlayer(4, 3000),
+      makeMockPlayer(5, 2950),
+      makeMockPlayer(6, 2900),
+      makeMockPlayer(7, 2850),
+      makeMockPlayer(8, 2800),
+      makeMockPlayer(9, 2750),
+      makeMockPlayer(10, 2000),
+    ]
+
+    const resultDefault = createTeams(players)
+    const resultOptimal = createTeams(players, MakeTeamsMode.OPTIMAL)
+
+    const defaultT1Ids = resultDefault.team1.map(p => p.discordId).sort()
+    const optimalT1Ids = resultOptimal.team1.map(p => p.discordId).sort()
+
+    expect(defaultT1Ids).toEqual(optimalT1Ids)
+  })
+})
+
+describe('teamMaker.findSuggestedFairSwaps', () => {
+  it('suggests a swap to fix a missing tank on Team 1', () => {
+    // Team 1: Assassin, Assassin, Assassin, Healer, Bruiser (no Tank or Flex)
+    const team1 = [
+      makeMockPlayer(1, 3100, 'A'),
+      makeMockPlayer(2, 3050, 'A'),
+      makeMockPlayer(3, 3000, 'A'),
+      makeMockPlayer(4, 2950, 'H'),
+      makeMockPlayer(5, 2900, 'B'),
+    ]
+    // Team 2: Tank, Tank, Assassin, Healer, Bruiser (excess Tank)
+    const team2 = [
+      makeMockPlayer(6, 3100, 'T'),
+      makeMockPlayer(7, 3050, 'T'),
+      makeMockPlayer(8, 3000, 'A'),
+      makeMockPlayer(9, 2950, 'H'),
+      makeMockPlayer(10, 2900, 'B'),
+    ]
+    team1.forEach((p, i) => { p.lobbyRank = i + 1; p.team = 1 })
+    team2.forEach((p, i) => { p.lobbyRank = i + 6; p.team = 2 })
+
+    const suggestions = findSuggestedFairSwaps(team1, team2)
+
+    expect(suggestions.length).toBeGreaterThan(0)
+    // The top suggestion should swap a non-tank from Team 1 for a Tank from Team 2
+    const top = suggestions[0]
+    expect(top.reason).toContain('Fixes T1 Tank')
+    expect(['T', 'F'].includes(top.player2.role ?? '')).toBe(true)
+  })
+
+  it('suggests a swap to bring an uneven MMR matchup closer to 50/50', () => {
+    // Both teams have roles covered (Tank + Healer each), but Team 1 is much higher MMR
+    const team1 = [
+      makeMockPlayer(1, 3500, 'T'),
+      makeMockPlayer(2, 3400, 'H'),
+      makeMockPlayer(3, 3300, 'A'),
+      makeMockPlayer(4, 3200, 'A'),
+      makeMockPlayer(5, 3100, 'B'),
+    ]
+    const team2 = [
+      makeMockPlayer(6, 2800, 'T'),
+      makeMockPlayer(7, 2700, 'H'),
+      makeMockPlayer(8, 2600, 'A'),
+      makeMockPlayer(9, 2500, 'A'),
+      makeMockPlayer(10, 2400, 'B'),
+    ]
+    team1.forEach((p, i) => { p.lobbyRank = i + 1; p.team = 1 })
+    team2.forEach((p, i) => { p.lobbyRank = i + 6; p.team = 2 })
+
+    const suggestions = findSuggestedFairSwaps(team1, team2)
+
+    expect(suggestions.length).toBeGreaterThan(0)
+    // All suggestions should strictly reduce MMR diff and keep role coverage intact
+    suggestions.forEach(s => {
+      expect(s.newMmrDiff).toBeLessThan(700)
+    })
   })
 })
 

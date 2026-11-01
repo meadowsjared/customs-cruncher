@@ -88,6 +88,7 @@ import {
 } from './shared'
 import {
   handleCheckTeamsCommand,
+  handleFairSwapButton,
   handleMakeTeamsCommand,
   handleMoveCommand,
   handleMoveToLobbyCommand,
@@ -364,6 +365,14 @@ async function handlePatternCommand(
   if (interaction.isButton() && interaction.customId.startsWith('draft_pick:')) {
     const pickedPlayerId = interaction.customId.split(':')[1]
     await handleDraftPickButton(interaction, pickedPlayerId)
+    return
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith('fair_swap:')) {
+    const parts = interaction.customId.split(':')
+    const rankA = parseInt(parts[1], 10)
+    const rankB = parseInt(parts[2], 10)
+    await handleFairSwapButton(interaction, rankA, rankB)
     return
   }
 

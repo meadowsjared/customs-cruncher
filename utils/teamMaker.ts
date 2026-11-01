@@ -22,8 +22,8 @@ export interface MakeTeamsChoice {
 }
 
 export const makeTeamsModeChoices: MakeTeamsChoice[] = [
-  { name: 'Optimal (MMR & Role Balanced)', value: MakeTeamsMode.OPTIMAL },
-  { name: 'Standard (Default)', value: MakeTeamsMode.STANDARD },
+  { name: 'Optimal (MMR & Role Balanced) (Default)', value: MakeTeamsMode.OPTIMAL },
+  { name: 'Standard (Prefab Ranks)', value: MakeTeamsMode.STANDARD },
   { name: 'Mixed A (Balanced)', value: MakeTeamsMode.MIXED_A },
   { name: 'Mixed B (Balanced)', value: MakeTeamsMode.MIXED_B },
   {
@@ -334,6 +334,13 @@ export function createOptimalTeams(
   const team1 = bestSplit?.team1 ?? activePool.slice(0, teamSize)
   const team2 = bestSplit?.team2 ?? activePool.slice(teamSize)
 
+  team1.forEach(p => {
+    p.team = 1
+  })
+  team2.forEach(p => {
+    p.team = 2
+  })
+
   return { team1, team2, spectators }
 }
 
@@ -342,7 +349,7 @@ export function createOptimalTeams(
  */
 export function createTeams(
   sortedPlayers: Player[],
-  mode: MakeTeamsMode = MakeTeamsMode.STANDARD,
+  mode: MakeTeamsMode = MakeTeamsMode.OPTIMAL,
   maxPlayersPerTeam: number = 5
 ): TeamDraftResult {
   if (mode === MakeTeamsMode.OPTIMAL) {
@@ -471,4 +478,110 @@ export function calculateMatchupPrediction(team1: Player[], team2: Player[]): Ma
     outlookText,
     roleStatusText,
   }
+}
+
+export interface SuggestedFairSwap {
+  player1: Player
+  player2: Player
+  newTeam1WinPct: number
+  newTeam2WinPct: number
+  newMmrDiff: number
+  newImbalance: number
+  reason: string
+  score: number
+}
+
+/**
+ * Evaluates all possible 1-for-1 swaps between Team 1 and Team 2,
+ * returning the top recommended swaps that fix role deficits or improve MMR balance.
+ */
+export function findSuggestedFairSwaps(
+  team1: Player[],
+  team2: Player[],
+  maxSuggestions = 3
+): SuggestedFairSwap[] {
+  if (team1.length === 0 || team2.length === 0) return []
+
+  const currentPrediction = calculateMatchupPrediction(team1, team2)
+  const currentImbalance = calculateRoleImbalance(team1, team2)
+  const currentDiff = Math.abs(currentPrediction.team1AvgMMR - currentPrediction.team2AvgMMR)
+  const currentWinDeviation = Math.abs(currentPrediction.team1WinPct - 50)
+
+  const candidates: SuggestedFairSwap[] = []
+
+  for (let i = 0; i < team1.length; i++) {
+    const p1 = team1[i]
+    for (let j = 0; j < team2.length; j++) {
+      const p2 = team2[j]
+
+      // Candidate teams after 1-for-1 swap
+      const cand1 = team1.map((p, idx) => (idx === i ? p2 : p))
+      const cand2 = team2.map((p, idx) => (idx === j ? p1 : p))
+
+      const newImbalance = calculateRoleImbalance(cand1, cand2)
+      // Never suggest swaps that degrade role balance
+      if (newImbalance > currentImbalance) {
+        continue
+      }
+
+      const newPrediction = calculateMatchupPrediction(cand1, cand2)
+      const newDiff = Math.abs(newPrediction.team1AvgMMR - newPrediction.team2AvgMMR)
+      const newWinDeviation = Math.abs(newPrediction.team1WinPct - 50)
+
+      const fixesRole = currentImbalance > 0 && newImbalance < currentImbalance
+      const improvesMmr = newDiff < currentDiff && newWinDeviation <= currentWinDeviation
+      const maintainsFairness = newImbalance === 0 && newWinDeviation <= 4
+
+      // Must be an improvement in roles, MMR, or bring an already close matchup to near 50/50
+      if (!fixesRole && !improvesMmr && !maintainsFairness) {
+        continue
+      }
+
+      // Only accept swaps that improve win deviation or keep it within a fair range (<= 15% from 50)
+      if (newWinDeviation >= currentWinDeviation && newWinDeviation > 15 && !fixesRole) {
+        continue
+      }
+
+      let reason = ''
+      if (fixesRole) {
+        const t1NeedsTank = !team1.some(canPlayTank) && !team1.some(isFlex)
+        const t2NeedsTank = !team2.some(canPlayTank) && !team2.some(isFlex)
+        const t1NeedsHealer = !team1.some(canPlayHealer) && !team1.some(isFlex)
+        const t2NeedsHealer = !team2.some(canPlayHealer) && !team2.some(isFlex)
+
+        if (t1NeedsTank && canPlayTank(p2)) {
+          reason = `Fixes T1 Tank (${newPrediction.team1WinPct}% vs ${newPrediction.team2WinPct}%, Δ ${newDiff})`
+        } else if (t2NeedsTank && canPlayTank(p1)) {
+          reason = `Fixes T2 Tank (${newPrediction.team1WinPct}% vs ${newPrediction.team2WinPct}%, Δ ${newDiff})`
+        } else if (t1NeedsHealer && canPlayHealer(p2)) {
+          reason = `Fixes T1 Healer (${newPrediction.team1WinPct}% vs ${newPrediction.team2WinPct}%, Δ ${newDiff})`
+        } else if (t2NeedsHealer && canPlayHealer(p1)) {
+          reason = `Fixes T2 Healer (${newPrediction.team1WinPct}% vs ${newPrediction.team2WinPct}%, Δ ${newDiff})`
+        } else {
+          reason = `Balances roles (${newPrediction.team1WinPct}% vs ${newPrediction.team2WinPct}%, Δ ${newDiff})`
+        }
+      } else {
+        reason = `Brings matchup to ${newPrediction.team1WinPct}% vs ${newPrediction.team2WinPct}% (Δ ${newDiff} avg MMR)`
+      }
+
+      const roleBonus = (currentImbalance - newImbalance) * 1000
+      const mmrBonus = Math.max(0, 200 - newDiff)
+      const winBonus = Math.max(0, 50 - newWinDeviation) * 10
+      const score = roleBonus + mmrBonus + winBonus
+
+      candidates.push({
+        player1: p1,
+        player2: p2,
+        newTeam1WinPct: newPrediction.team1WinPct,
+        newTeam2WinPct: newPrediction.team2WinPct,
+        newMmrDiff: newDiff,
+        newImbalance,
+        reason,
+        score,
+      })
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score)
+  return candidates.slice(0, maxSuggestions)
 }

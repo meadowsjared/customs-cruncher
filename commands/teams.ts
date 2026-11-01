@@ -26,9 +26,15 @@ import {
 } from '../store/player'
 import { Player } from '../types/player'
 import { safePing } from '../utils/announce'
-import { requireGuildId, safeReply } from '../utils/interaction'
+import { requireGuildId, safeDeferUpdate, safeReply } from '../utils/interaction'
 import { scanLobbyScreenshot } from '../utils/lobbyScanner'
-import { calculateMatchupPrediction, createTeams, isMakeTeamsMode, MakeTeamsMode } from '../utils/teamMaker'
+import {
+  calculateMatchupPrediction,
+  createTeams,
+  findSuggestedFairSwaps,
+  isMakeTeamsMode,
+  MakeTeamsMode,
+} from '../utils/teamMaker'
 import { matchesScanList } from './scanLobby'
 
 /**
@@ -127,7 +133,7 @@ export async function handleMakeTeamsCommand(
 
   const publish = interaction.options.getBoolean('publish', false) ?? false
   const modeInput = interaction.options.getString('mode', false)
-  const mode: MakeTeamsMode = isMakeTeamsMode(modeInput) ? modeInput : MakeTeamsMode.STANDARD
+  const mode: MakeTeamsMode = isMakeTeamsMode(modeInput) ? modeInput : MakeTeamsMode.OPTIMAL
 
   const sortedPlayers = await getSortedActivePlayers(guildId)
   if (sortedPlayers.length < 1) {
@@ -178,13 +184,6 @@ export async function generateTeamsMessage(
    */
   isDraft = false
 ): Promise<void> {
-  if (interaction.isButton()) {
-    await safeReply(interaction, {
-      content: 'Interaction is not a command or button interaction',
-      flags: MessageFlags.Ephemeral,
-    })
-    return
-  }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   const activePlayers = await getSortedActivePlayers(guildId)
@@ -238,8 +237,34 @@ export async function generateTeamsMessage(
       : []
 
   const outlookEmbedAr: EmbedBuilder[] = []
+  const components: ActionRowBuilder<ButtonBuilder>[] = []
+
   if (!publish && team1.length > 0 && team2.length > 0) {
     const prediction = calculateMatchupPrediction(team1, team2)
+    const suggestedSwaps = findSuggestedFairSwaps(team1, team2, 3)
+
+    let swapsText = ''
+    if (suggestedSwaps.length > 0) {
+      swapsText = '\n💡 **Suggested Fair Swaps:**\n'
+      suggestedSwaps.forEach((s, idx) => {
+        const name1 = s.player1.usernames?.discordDisplayName ?? `Player ${s.player1.lobbyRank}`
+        const name2 = s.player2.usernames?.discordDisplayName ?? `Player ${s.player2.lobbyRank}`
+        swapsText += `**${idx + 1}.** Swap **#${s.player1.lobbyRank} ${name1}** ↔ **#${s.player2.lobbyRank} ${name2}**\n   └ *${s.reason}*\n`
+      })
+
+      const row = new ActionRowBuilder<ButtonBuilder>()
+      suggestedSwaps.forEach(s => {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`fair_swap:${s.player1.lobbyRank}:${s.player2.lobbyRank}`)
+            .setLabel(`Swap #${s.player1.lobbyRank} ↔ #${s.player2.lobbyRank}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('🔄')
+        )
+      })
+      components.push(row)
+    }
+
     const outlookEmbed = new EmbedBuilder()
       .setTitle('📊 Matchup Outlook & Win Prediction')
       .setColor('#5865F2')
@@ -247,12 +272,35 @@ export async function generateTeamsMessage(
         `**Team 1** (${prediction.team1AvgMMR} avg) vs **Team 2** (${prediction.team2AvgMMR} avg)\n` +
         `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
         `${prediction.outlookText}\n` +
-        `${prediction.roleStatusText}\n\n`
+        `${prediction.roleStatusText}\n` +
+        swapsText
       )
     outlookEmbedAr.push(outlookEmbed)
   }
 
   const embeds = [...outlookEmbedAr, team1embed, team2embed, ...spectatorEmbedAr]
+
+  if (interaction.isButton()) {
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: `<@${norDiscordId}>`,
+          embeds,
+          components,
+        })
+      } else {
+        await interaction.update({
+          content: `<@${norDiscordId}>`,
+          embeds,
+          components,
+        })
+      }
+      return
+    } catch (e) {
+      console.error('Failed to update teams message via button interaction:', e)
+    }
+  }
+
   let messages = await getLobbyMessages(guildId, [CommandIds.TEAMS_EPHEMERAL, CommandIds.TEAMS])
   if (publish || isDraft) {
     // clear the previous message from the database, so it doesn't get updated until it's published again
@@ -290,6 +338,7 @@ export async function generateTeamsMessage(
     const message = await safeReply(interaction, {
       content: `<@${norDiscordId}>`,
       embeds,
+      components,
       flags: safePing(MessageFlags.Ephemeral),
     })
     if (message) {
@@ -320,11 +369,13 @@ export async function generateTeamsMessage(
               await prevInteraction.webhook.editMessage(msg.messageId, {
                 content: `<@${norDiscordId}>`,
                 embeds,
+                components,
               })
             } else {
               await prevInteraction.editReply({
                 content: `<@${norDiscordId}>`,
                 embeds,
+                components,
               })
             }
             continue
@@ -333,6 +384,7 @@ export async function generateTeamsMessage(
               await prevInteraction.editReply({
                 content: `<@${norDiscordId}>`,
                 embeds,
+                components,
               })
               continue
             } catch (error) {
@@ -347,6 +399,7 @@ export async function generateTeamsMessage(
         const message = await previousMessage.edit({
           content: `<@${norDiscordId}>`,
           embeds,
+          components,
         })
         // only save the message if we successfully edited it
         const fetchedMessage = await message.fetch()
@@ -406,6 +459,36 @@ Player B: \`team: ${playerB.team}\` \`${playerB.lobbyRank || playerBRank}: ${pla
     { discordId: getPlayerIdentifier(playerA), newTeam: playerB.team ?? null },
     { discordId: getPlayerIdentifier(playerB), newTeam: playerA.team ?? null },
   ])
+  const { team1, team2 } = await getTeams(guildId, await getSortedActivePlayers(guildId, true))
+  await generateTeamsMessage(interaction, team1, team2)
+}
+
+/**
+ * Handles a fair swap button click (e.g. fair_swap:4:6), swapping the two players
+ * and updating the teams preview in-place.
+ */
+export async function handleFairSwapButton(
+  interaction: ButtonInteraction<CacheType>,
+  rankA: number,
+  rankB: number
+): Promise<void> {
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+  await safeDeferUpdate(interaction)
+
+  const activePlayers = await getSortedActivePlayers(guildId)
+  const playerA = activePlayers.find(p => p.lobbyRank === rankA) ?? activePlayers[rankA - 1]
+  const playerB = activePlayers.find(p => p.lobbyRank === rankB) ?? activePlayers[rankB - 1]
+
+  if (!playerA || !playerB || playerA.team === playerB.team) {
+    return
+  }
+
+  await changeTeams(guildId, [
+    { discordId: getPlayerIdentifier(playerA), newTeam: playerB.team ?? null },
+    { discordId: getPlayerIdentifier(playerB), newTeam: playerA.team ?? null },
+  ])
+
   const { team1, team2 } = await getTeams(guildId, await getSortedActivePlayers(guildId, true))
   await generateTeamsMessage(interaction, team1, team2)
 }
