@@ -24,12 +24,12 @@ describe('store.substitutions tags', () => {
       hotsBattleTag: 'LentAccount#1234',
       isPrimary: false,
       ownerDiscordId: 'owner_999',
-      hpQmMMR: null,
-      hpSlMMR: null,
-      hpArMMR: null,
-      hpQmGames: null,
-      hpSlGames: null,
-      hpArGames: null,
+      hpQmMMR: 0,
+      hpSlMMR: 0,
+      hpArMMR: 0,
+      hpQmGames: 0,
+      hpSlGames: 0,
+      hpArGames: 0,
     }
 
     const label = getAccountLoanStatusTag(account, 'guild_1')
@@ -41,12 +41,12 @@ describe('store.substitutions tags', () => {
       id: 2,
       hotsBattleTag: 'MyAlt#1234',
       isPrimary: true,
-      hpQmMMR: null,
-      hpSlMMR: null,
-      hpArMMR: null,
-      hpQmGames: null,
-      hpSlGames: null,
-      hpArGames: null,
+      hpQmMMR: 0,
+      hpSlMMR: 0,
+      hpArMMR: 0,
+      hpQmGames: 0,
+      hpSlGames: 0,
+      hpArGames: 0,
     }
 
     const activeSubs: AccountSubstitution[] = [
@@ -71,12 +71,12 @@ describe('store.substitutions tags', () => {
       id: 3,
       hotsBattleTag: 'Normal#1234',
       isPrimary: true,
-      hpQmMMR: null,
-      hpSlMMR: null,
-      hpArMMR: null,
-      hpQmGames: null,
-      hpSlGames: null,
-      hpArGames: null,
+      hpQmMMR: 0,
+      hpSlMMR: 0,
+      hpArMMR: 0,
+      hpQmGames: 0,
+      hpSlGames: 0,
+      hpArGames: 0,
     }
 
     const label = getAccountLoanStatusTag(account, 'guild_1', 'user_normal', [])

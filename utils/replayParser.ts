@@ -1,5 +1,4 @@
 import { createRequire } from 'module'
-import path from 'path'
 import type { HotSReplayObject, ReplayData } from '../types/replay'
 
 const require = createRequire(import.meta.url)

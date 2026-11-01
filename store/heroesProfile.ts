@@ -6,20 +6,6 @@ import type { Browser } from 'rebrowser-puppeteer-core'
 export const userAgent =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
 
-let isInitialized = false
-
-// Initialize tokens on module load
-async function initialize() {
-  if (!isInitialized) {
-    isInitialized = true
-  }
-}
-
-initialize().catch(err => {
-  console.error('Failed to initialize HP tokens:', err)
-  console.error('Bot may not be able to fetch Heroes Profile data!')
-})
-
 export async function getHeroesProfileData(battleTag: string): Promise<HPData | undefined> {
   let browser: Browser | undefined
   try {
@@ -88,15 +74,22 @@ export async function getHeroesProfileData(battleTag: string): Promise<HPData | 
     const detectedRoles = detectionResult?.roles
     const detectedRolesReason = detectionResult?.reason
 
+    const qmMmr = hpDataReturned.qm_mmr_data?.mmr && hpDataReturned.qm_mmr_data.mmr > 0 ? hpDataReturned.qm_mmr_data.mmr : 0
+    const slMmr = hpDataReturned.sl_mmr_data?.mmr && hpDataReturned.sl_mmr_data.mmr > 0 ? hpDataReturned.sl_mmr_data.mmr : 0
+    const arMmr = hpDataReturned.ar_mmr_data?.mmr && hpDataReturned.ar_mmr_data.mmr > 0 ? hpDataReturned.ar_mmr_data.mmr : 0
+    const qmGames = Math.max(0, (hpDataReturned.qm_mmr_data?.win ?? 0) + (hpDataReturned.qm_mmr_data?.loss ?? 0))
+    const slGames = Math.max(0, (hpDataReturned.sl_mmr_data?.win ?? 0) + (hpDataReturned.sl_mmr_data?.loss ?? 0))
+    const arGames = Math.max(0, (hpDataReturned.ar_mmr_data?.win ?? 0) + (hpDataReturned.ar_mmr_data?.loss ?? 0))
+
     const hpData: HPData = {
       region,
       blizz_id,
-      qmMmr: hpDataReturned.qm_mmr_data?.mmr ?? NaN,
-      slMmr: hpDataReturned.sl_mmr_data?.mmr ?? NaN,
-      arMmr: hpDataReturned.ar_mmr_data?.mmr ?? NaN,
-      qmGames: (hpDataReturned.qm_mmr_data?.win ?? 0) + (hpDataReturned.qm_mmr_data?.loss ?? 0),
-      slGames: (hpDataReturned.sl_mmr_data?.win ?? 0) + (hpDataReturned.sl_mmr_data?.loss ?? 0),
-      arGames: (hpDataReturned.ar_mmr_data?.win ?? 0) + (hpDataReturned.ar_mmr_data?.loss ?? 0),
+      qmMmr,
+      slMmr,
+      arMmr,
+      qmGames,
+      slGames,
+      arGames,
       detectedRoles,
       detectedRolesReason,
     }

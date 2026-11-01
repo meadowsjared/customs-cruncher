@@ -1,10 +1,10 @@
 export interface HPData {
-  qmMmr: number | null
-  slMmr: number | null
-  arMmr: number | null
-  qmGames: number | null
-  slGames: number | null
-  arGames: number | null
+  qmMmr: number
+  slMmr: number
+  arMmr: number
+  qmGames: number
+  slGames: number
+  arGames: number
   region: number
   blizz_id: string
   detectedRoles?: string

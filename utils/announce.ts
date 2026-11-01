@@ -1,18 +1,13 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
   ButtonInteraction,
   CacheType,
   ChatInputCommandInteraction,
-  EmbedBuilder,
   MessageCreateOptions,
   MessageFlags,
   MessagePayload,
   ModalSubmitInteraction,
 } from 'discord.js'
 import { getBotChannel } from './channel'
-
-type InteractionReplyOptionsFlags = MessageCreateOptions['flags']
 
 /**
  * Announces a message in the bot channel.

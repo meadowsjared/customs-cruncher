@@ -480,12 +480,12 @@ export type HotsAccount = {
   isPrimary: boolean
   realIdName?: string | null
   ownerDiscordId?: string | null
-  hpQmMMR: number | null
-  hpSlMMR: number | null
-  hpArMMR: number | null
-  hpQmGames: number | null
-  hpSlGames: number | null
-  hpArGames: number | null
+  hpQmMMR: number
+  hpSlMMR: number
+  hpArMMR: number
+  hpQmGames: number
+  hpSlGames: number
+  hpArGames: number
 }
 
 export type HotsAccountRow = {
@@ -497,20 +497,12 @@ export type HotsAccountRow = {
   owner_discord_id?: string | null
   hp_region?: number | null
   hp_blizz_id?: number | string | null
-  hp_qm_mmr?: number | null
-  hp_sl_mmr?: number | null
-  hp_ar_mmr?: number | null
-  hp_qm_games?: number | null
-  hp_sl_games?: number | null
-  hp_ar_games?: number | null
-  HP_Region?: number | null
-  HP_Blizz_ID?: number | string | null
-  HP_QM_MMR?: number | null
-  HP_SL_MMR?: number | null
-  HP_AR_MMR?: number | null
-  HP_QM_Games?: number | null
-  HP_SL_Games?: number | null
-  HP_AR_Games?: number | null
+  hp_qm_mmr: number
+  hp_sl_mmr: number
+  hp_ar_mmr: number
+  hp_qm_games: number
+  hp_sl_games: number
+  hp_ar_games: number
 }
 
 export type Usernames = DiscordUserNames & {
@@ -530,7 +522,7 @@ export type Player = {
   lobbyRank: number
   draftOrder: number
   adjustment: number | null
-  mmr: number | null
+  mmr: number
   customGames?: number
   customWinRate?: number
   lastActive: Date
@@ -553,6 +545,9 @@ export type FlatPlayer = {
   lobby_rank: number | null
   draft_order: number | null
   last_active: string | Date
+  mmr: number
+  custom_games?: number | null
+  custom_win_rate?: number | null
 }
 
 export type AccountSubstitution = {
@@ -586,6 +581,7 @@ export type RegisteredPlayerAccount = {
   discordGlobalName?: string
   realIdName: string | null
   ownerDiscordId?: string | null
+  ownerDisplayName?: string | null
 }
 
 export type HotSAccountMatch = {
@@ -626,12 +622,12 @@ export const PLAYERS_TABLES_SCHEMA_SQL = `
     owner_discord_id TEXT,
     hp_region INTEGER,
     hp_blizz_id TEXT,
-    hp_qm_mmr INTEGER,
-    hp_sl_mmr INTEGER,
-    hp_ar_mmr INTEGER,
-    hp_qm_games INTEGER,
-    hp_sl_games INTEGER,
-    hp_ar_games INTEGER,
+    hp_qm_mmr INTEGER NOT NULL DEFAULT 0 CHECK (hp_qm_mmr >= 0),
+    hp_sl_mmr INTEGER NOT NULL DEFAULT 0 CHECK (hp_sl_mmr >= 0),
+    hp_ar_mmr INTEGER NOT NULL DEFAULT 0 CHECK (hp_ar_mmr >= 0),
+    hp_qm_games INTEGER NOT NULL DEFAULT 0 CHECK (hp_qm_games >= 0),
+    hp_sl_games INTEGER NOT NULL DEFAULT 0 CHECK (hp_sl_games >= 0),
+    hp_ar_games INTEGER NOT NULL DEFAULT 0 CHECK (hp_ar_games >= 0),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -724,7 +720,8 @@ export const PLAYER_MMR_FUNCTION_SQL = `
  * PostgreSQL View DDL for player MMR leaderboard and statistics.
  */
 export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
-  CREATE OR REPLACE VIEW v_player_mmr AS
+  DROP VIEW IF EXISTS v_player_mmr CASCADE;
+  CREATE VIEW v_player_mmr AS
   WITH custom_stats AS (
     SELECT
       LOWER(ha.hots_battle_tag) AS hots_battle_tag,
@@ -736,9 +733,10 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
   ),
   account_summary AS (
     SELECT
+      ha.id AS hots_account_id,
       ha.discord_id,
       ha.hots_battle_tag,
-      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr) AS account_mmr,
+      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr, 0) AS account_mmr,
       COALESCE(cs.games, 0) AS games,
       COALESCE(cs.win_rate, 50.0) AS win_rate
     FROM hots_accounts ha
@@ -747,25 +745,40 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
   player_best AS (
     SELECT
       discord_id,
-      MAX(account_mmr) AS base_mmr,
-      MAX(games) AS custom_games,
-      (ARRAY_AGG(win_rate ORDER BY games DESC))[1] AS custom_win_rate
+      COALESCE(MAX(account_mmr), 0) AS base_mmr,
+      COALESCE(MAX(games), 0) AS custom_games,
+      COALESCE((ARRAY_AGG(win_rate ORDER BY games DESC))[1], 50.0) AS custom_win_rate
     FROM account_summary
     WHERE discord_id IS NOT NULL
     GROUP BY discord_id
   )
   SELECT
     p.discord_id,
+    NULL::integer AS hots_account_id,
     p.discord_display_name AS player,
     p.role,
-    pb.base_mmr,
+    COALESCE(pb.base_mmr, 0) AS account_mmr,
+    COALESCE(pb.base_mmr, 0) AS base_mmr,
     COALESCE(p.adjustment, 0) AS adjustment,
-    pb.custom_games,
-    pb.custom_win_rate,
-    calculate_effective_mmr(pb.base_mmr, pb.custom_games, pb.custom_win_rate, p.adjustment) AS effective_mmr
+    COALESCE(pb.custom_games, 0) AS custom_games,
+    COALESCE(pb.custom_win_rate, 50.0) AS custom_win_rate,
+    GREATEST(COALESCE(calculate_effective_mmr(COALESCE(pb.base_mmr, 0), COALESCE(pb.custom_games, 0), COALESCE(pb.custom_win_rate, 50.0), p.adjustment), 0), 0)::integer AS mmr
   FROM players p
-  JOIN player_best pb ON pb.discord_id = p.discord_id
-  WHERE pb.base_mmr IS NOT NULL;
+  LEFT JOIN player_best pb ON pb.discord_id = p.discord_id
+  UNION ALL
+  SELECT
+    NULL::text AS discord_id,
+    ha.hots_account_id,
+    ha.hots_battle_tag AS player,
+    NULL::text AS role,
+    ha.account_mmr AS account_mmr,
+    ha.account_mmr AS base_mmr,
+    0 AS adjustment,
+    ha.games AS custom_games,
+    ha.win_rate AS custom_win_rate,
+    GREATEST(COALESCE(calculate_effective_mmr(ha.account_mmr, ha.games, ha.win_rate, 0), 0), 0)::integer AS mmr
+  FROM account_summary ha
+  WHERE ha.discord_id IS NULL;
 `
 
 

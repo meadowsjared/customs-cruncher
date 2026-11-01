@@ -430,7 +430,7 @@ function sortTeamByDraftOrder(players: Player[], captainId?: string): Player[] {
     const bIsCap = b.discordId === captainId
     if (aIsCap) return -1
     if (bIsCap) return 1
-    return (a.draftOrder ?? 0) - (b.draftOrder ?? 0)
+    return a.draftOrder - b.draftOrder
   })
 }
 

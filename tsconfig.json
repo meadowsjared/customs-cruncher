@@ -14,5 +14,5 @@
     "types": ["bun"]
   },
   "include": ["**/**/*.ts"],
-  "exclude": ["node_modules", "store_backup", "store/player_old.ts", "types/player_old.ts"]
+  "exclude": ["node_modules", "store_backup"]
 }

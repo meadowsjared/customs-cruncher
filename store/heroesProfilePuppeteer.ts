@@ -78,8 +78,8 @@ export async function puppeteerRefreshXsrfTokenAndCookies(url: string): Promise<
     let xsrfCookie: Protocol.Network.Cookie | undefined
     let cookieObjects: Protocol.Network.Cookie[] = []
 
+    const client = await page.createCDPSession()
     for (let i = 0; i < 20; i++) {
-      const client = await page.createCDPSession()
       const res = await client.send('Network.getAllCookies')
       cookieObjects = res.cookies
       xsrfCookie = cookieObjects.find(c => c.name.toUpperCase() === 'XSRF-TOKEN')

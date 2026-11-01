@@ -1,6 +1,5 @@
-import { createRequire } from 'module'
 import path from 'path'
-import type { HotSReplayObject, ReplayData } from '../types/replay'
+import type { ReplayData } from '../types/replay'
 import { parseReplay, parseReplaySync } from '../utils/replayParser'
 import { sql } from './db'
 import {
@@ -9,13 +8,10 @@ import {
   getOrCreateSubstituteAccount,
   refreshPlayerStatsView,
   relinkAccountSubstitutions,
-  ResolvedHotsAccount,
 } from './player'
 import { initReplaysTable, insertReplays } from './replays'
 
 export { parseReplay, parseReplaySync, relinkAccountSubstitutions }
-
-const require = createRequire(import.meta.url)
 
 // Initialize replays table and materialized view on startup
 initReplaysTable().catch(error => {

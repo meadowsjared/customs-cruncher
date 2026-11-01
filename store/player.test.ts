@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import {
   formatPlayerDisplay,
+  getPlayerFromRow,
   getPlayerIdentifier,
-  getPlayerMMR,
   getPlayerRolesFormatted,
 } from './player'
-import { Player, HotsAccount } from '../types/player'
+import { FlatPlayer, HotsAccount, HotsAccountRow, Player } from '../types/player'
 
 function createTestPlayer(overrides: Partial<Player> = {}): Player {
   return {
@@ -32,152 +32,152 @@ function createTestAccount(overrides: Partial<HotsAccount> = {}): HotsAccount {
     id: 1,
     hotsBattleTag: 'Player#1234',
     isPrimary: true,
-    hpQmMMR: null,
-    hpSlMMR: null,
-    hpArMMR: null,
-    hpQmGames: null,
-    hpSlGames: null,
-    hpArGames: null,
+    hpQmMMR: 0,
+    hpSlMMR: 0,
+    hpArMMR: 0,
+    hpQmGames: 0,
+    hpSlGames: 0,
+    hpArGames: 0,
     ...overrides,
   }
 }
 
-describe('store.player.getPlayerMMR', () => {
-  it('returns 0 if player has no accounts and no adjustment', () => {
-    const player = createTestPlayer()
-    expect(getPlayerMMR(player)).toBe(0)
+describe('player.mmr', () => {
+  it('stores and sorts players by their mmr property directly', () => {
+    const p1 = createTestPlayer({ mmr: 3100 })
+    const p2 = createTestPlayer({ mmr: 2850 })
+    const players = [p2, p1].sort((a, b) => b.mmr - a.mmr)
+    expect(players[0].mmr).toBe(3100)
+    expect(players[1].mmr).toBe(2850)
   })
 
-  it('picks the highest MMR among QM, SL, and ARAM for a single account', () => {
-    const player = createTestPlayer({
-      usernames: {
-        discordName: 'user',
-        discordDisplayName: 'User',
-        discordGlobalName: 'User',
-        accounts: [
-          createTestAccount({
-            hpQmMMR: 2400,
-            hpSlMMR: 2850,
-            hpArMMR: 2600,
-          }),
-        ],
-      },
-    })
-
-    expect(getPlayerMMR(player)).toBe(2850)
-  })
-
-  it('picks the highest MMR across multiple accounts', () => {
-    const player = createTestPlayer({
-      usernames: {
-        discordName: 'user',
-        discordDisplayName: 'User',
-        discordGlobalName: 'User',
-        accounts: [
-          createTestAccount({
-            hotsBattleTag: 'Main#1111',
-            hpSlMMR: 2500,
-          }),
-          createTestAccount({
-            hotsBattleTag: 'Smurf#2222',
-            hpSlMMR: 3100,
-          }),
-        ],
-      },
-    })
-
-    expect(getPlayerMMR(player)).toBe(3100)
-  })
-
-  it('correctly adds positive and negative adjustments', () => {
-    const playerPositive = createTestPlayer({
-      adjustment: 150,
-      usernames: {
-        discordName: 'user',
-        discordDisplayName: 'User',
-        discordGlobalName: 'User',
-        accounts: [createTestAccount({ hpSlMMR: 2800 })],
-      },
-    })
-    expect(getPlayerMMR(playerPositive)).toBe(2950)
-
-    const playerNegative = createTestPlayer({
-      adjustment: -200,
-      usernames: {
-        discordName: 'user',
-        discordDisplayName: 'User',
-        discordGlobalName: 'User',
-        accounts: [createTestAccount({ hpSlMMR: 2800 })],
-      },
-    })
-    expect(getPlayerMMR(playerNegative)).toBe(2600)
-  })
-
-  it('handles null values safely', () => {
-    const player = createTestPlayer({
+  it('uses postgres view computed mmr on player and computes each account.mmr', () => {
+    const flatPlayer: FlatPlayer = {
+      discord_id: 'user_1',
+      hots_battle_tag: '',
+      discord_name: 'testuser',
+      discord_global_name: 'Test User',
+      discord_display_name: 'Test User',
+      role: 'Tank',
+      active: true,
+      team: null,
       adjustment: null,
-      usernames: {
-        discordName: 'user',
-        discordDisplayName: 'User',
-        discordGlobalName: 'User',
-        accounts: [
-          createTestAccount({
-            hpQmMMR: null,
-            hpSlMMR: null,
-            hpArMMR: 2150,
-          }),
-        ],
+      lobby_rank: 0,
+      draft_order: 0,
+      last_active: new Date(),
+      mmr: 3150,
+    }
+
+    const accounts: HotsAccountRow[] = [
+      {
+        id: 1,
+        discord_id: 'user_1',
+        hots_battle_tag: 'Main#1234',
+        is_primary: true,
+        real_id_name: null,
+        hp_qm_mmr: 2600,
+        hp_sl_mmr: 2900,
+        hp_ar_mmr: 2400,
+        hp_qm_games: 100,
+        hp_sl_games: 150,
+        hp_ar_games: 50,
       },
-    })
-    expect(getPlayerMMR(player)).toBe(2150)
+      {
+        id: 2,
+        discord_id: 'user_1',
+        hots_battle_tag: 'Smurf#5678',
+        is_primary: false,
+        real_id_name: null,
+        hp_qm_mmr: 2750,
+        hp_sl_mmr: 3150,
+        hp_ar_mmr: 2500,
+        hp_qm_games: 80,
+        hp_sl_games: 120,
+        hp_ar_games: 40,
+      },
+    ]
+
+    const player = getPlayerFromRow(flatPlayer, accounts)
+    expect(player.usernames.accounts?.[0]?.hpSlMMR).toBe(2900)
+    expect(player.usernames.accounts?.[1]?.hpSlMMR).toBe(3150)
+    expect(player.mmr).toBe(3150)
   })
 
-  it('adjusts MMR dynamically based on custom game win rate and games played', () => {
-    // 60% win rate across 45 games with base 2800 MMR
-    // Confidence = 45 / (45 + 15) = 0.75
-    // Delta = (60 - 50) = +10
-    // Bonus = 10 * 0.75 * 15 = +113
-    const playerHighWR = createTestPlayer({
-      customGames: 45,
-      customWinRate: 60,
-      usernames: {
-        discordName: 'winner',
-        discordDisplayName: 'Winner',
-        discordGlobalName: 'Winner',
-        accounts: [createTestAccount({ hpSlMMR: 2800 })],
-      },
-    })
-    expect(getPlayerMMR(playerHighWR)).toBe(2913)
-
-    // 40% win rate across 45 games with base 2800 MMR
-    // Delta = (40 - 50) = -10
-    // Math.round(-10 * 0.75 * 15) = Math.round(-112.5) = -112
-    // 2800 - 112 = 2688
-    const playerLowWR = createTestPlayer({
-      customGames: 45,
-      customWinRate: 40,
-      usernames: {
-        discordName: 'struggler',
-        discordDisplayName: 'Struggler',
-        discordGlobalName: 'Struggler',
-        accounts: [createTestAccount({ hpSlMMR: 2800 })],
-      },
-    })
-    expect(getPlayerMMR(playerLowWR)).toBe(2688)
-
-    // Always adds manual admin adjustment directly on top
-    const playerWithAdminAdj = createTestPlayer({
-      customGames: 45,
-      customWinRate: 60,
+  it('uses postgres calculated mmr when provided in flatPlayer', () => {
+    const flatPlayer: FlatPlayer = {
+      discord_id: 'user_2',
+      hots_battle_tag: '',
+      discord_name: 'veteran',
+      discord_global_name: 'Veteran Player',
+      discord_display_name: 'Veteran Player',
+      role: 'Healer',
+      active: true,
+      team: null,
       adjustment: 50,
-      usernames: {
-        discordName: 'winner_adj',
-        discordDisplayName: 'Winner Adj',
-        discordGlobalName: 'Winner Adj',
-        accounts: [createTestAccount({ hpSlMMR: 2800 })],
+      lobby_rank: 1,
+      draft_order: 1,
+      last_active: new Date(),
+      mmr: 3120,
+    }
+
+    const accounts: HotsAccountRow[] = [
+      {
+        id: 3,
+        discord_id: 'user_2',
+        hots_battle_tag: 'Vet#9999',
+        is_primary: true,
+        real_id_name: null,
+        hp_qm_mmr: 3000,
+        hp_sl_mmr: 2800,
+        hp_ar_mmr: 2500,
+        hp_qm_games: 50,
+        hp_sl_games: 200,
+        hp_ar_games: 10,
       },
-    })
-    expect(getPlayerMMR(playerWithAdminAdj)).toBe(2963) // 2913 + 50
+    ]
+
+    const player = getPlayerFromRow(flatPlayer, accounts)
+    expect(player.mmr).toBe(3120)
+  })
+
+  it('defaults MMR and game counts to 0 when not defined or missing', () => {
+    const flatPlayer: FlatPlayer = {
+      discord_id: 'user_3',
+      hots_battle_tag: '',
+      discord_name: 'newbie',
+      discord_global_name: 'New Player',
+      discord_display_name: 'New Player',
+      role: 'Ranged Assassin',
+      active: true,
+      team: null,
+      adjustment: null,
+      lobby_rank: 0,
+      draft_order: 0,
+      last_active: new Date(),
+      mmr: 0,
+    }
+
+    const accounts: HotsAccountRow[] = [
+      {
+        id: 4,
+        discord_id: 'user_3',
+        hots_battle_tag: 'New#0001',
+        is_primary: true,
+        real_id_name: null,
+        hp_qm_mmr: 0,
+        hp_sl_mmr: 0,
+        hp_ar_mmr: 0,
+        hp_qm_games: 0,
+        hp_sl_games: 0,
+        hp_ar_games: 0,
+      },
+    ]
+
+    const player = getPlayerFromRow(flatPlayer, accounts)
+    expect(player.mmr).toBe(0)
+    expect(player.usernames.accounts?.[0]?.hpQmGames).toBe(0)
+    expect(player.usernames.accounts?.[0]?.hpSlGames).toBe(0)
+    expect(player.usernames.accounts?.[0]?.hpArGames).toBe(0)
   })
 })
 
@@ -252,7 +252,7 @@ describe('store.player.formatPlayerDisplay', () => {
   it('formats player with rank and MMR', () => {
     const player = createTestPlayer({
       discordId: '111222333',
-      lobbyRank: 0,
+      lobbyRank: 1,
       mmr: 2500,
     })
     const output = formatPlayerDisplay(player, 'guild_1')
@@ -272,7 +272,7 @@ describe('store.player.formatPlayerDisplay', () => {
   it('includes BattleTag when requested, stripping hash digits', () => {
     const player = createTestPlayer({
       discordId: '111222333',
-      lobbyRank: 2,
+      lobbyRank: 3,
       mmr: 2800,
       usernames: {
         discordName: 'user',
@@ -288,7 +288,7 @@ describe('store.player.formatPlayerDisplay', () => {
   it('includes role when requested', () => {
     const player = createTestPlayer({
       discordId: '111222333',
-      lobbyRank: 4,
+      lobbyRank: 5,
       mmr: 2300,
       role: 'H',
     })
@@ -299,11 +299,26 @@ describe('store.player.formatPlayerDisplay', () => {
   it('omits MMR when includeMMR is false for public broadcasts', () => {
     const player = createTestPlayer({
       discordId: '111222333',
-      lobbyRank: 4,
+      lobbyRank: 5,
       mmr: 2300,
       role: 'T',
     })
     const output = formatPlayerDisplay(player, 'guild_1', { includeRole: true, includeMMR: false })
     expect(output).toBe('`5` <@111222333> `🛡️ Tank`')
+  })
+
+  it('formats guest player without discordId using discordDisplayName', () => {
+    const player = createTestPlayer({
+      discordId: null,
+      lobbyRank: 2,
+      mmr: 2700,
+      usernames: {
+        discordName: 'Guest#1234',
+        discordDisplayName: 'Guest#1234',
+        discordGlobalName: 'Guest#1234',
+      },
+    })
+    const output = formatPlayerDisplay(player, 'guild_1')
+    expect(output).toBe('`2: 2700` @Guest#1234')
   })
 })

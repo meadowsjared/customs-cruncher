@@ -18,7 +18,6 @@ import {
   getActivePlayers,
   getPlayerByDiscordId,
   getPlayerIdentifier,
-  getPlayerMMR,
   getSortedActivePlayers,
   getStoredInteraction,
   getTeams,
@@ -60,7 +59,6 @@ export async function handleSetTeamsCommand(
     .filter(n => !isNaN(n))
   // now that we have the new team assignments
   const sortedPlayers = await getSortedActivePlayers(guildId)
-  sortedPlayers.forEach((p, index) => (p.lobbyRank = index))
   if (team1Input.length > sortedPlayers.length) {
     // the maximum length is the total number of players
     await safeReply(interaction, {
@@ -195,23 +193,22 @@ export async function generateTeamsMessage(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   const activePlayers = await getSortedActivePlayers(guildId)
-  activePlayers.forEach((p, index) => (p.lobbyRank = index))
   team1.forEach(p => {
     if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
       const pId = getPlayerIdentifier(p)
-      const idx = activePlayers.findIndex(ap => getPlayerIdentifier(ap) === pId)
-      if (idx !== -1) p.lobbyRank = idx
+      const ap = activePlayers.find(a => getPlayerIdentifier(a) === pId)
+      if (ap) p.lobbyRank = ap.lobbyRank
     }
   })
   team2.forEach(p => {
     if (p.lobbyRank === undefined || Number.isNaN(p.lobbyRank)) {
       const pId = getPlayerIdentifier(p)
-      const idx = activePlayers.findIndex(ap => getPlayerIdentifier(ap) === pId)
-      if (idx !== -1) p.lobbyRank = idx
+      const ap = activePlayers.find(a => getPlayerIdentifier(a) === pId)
+      if (ap) p.lobbyRank = ap.lobbyRank
     }
   })
-  team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
-  team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
+  team1.sort((a, b) => b.mmr - a.mmr)
+  team2.sort((a, b) => b.mmr - a.mmr)
   const team1List = team1
     .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeRole: true, includeMMR: true }))
     .join('\n')
@@ -227,7 +224,7 @@ export async function generateTeamsMessage(
     return id ? !assignedIds.has(id) : true
   })
   const spectatorList = spectators
-    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeMMR: !publish }))
+    .map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true, includeMMR: true }))
     .join('\n')
 
   const team1lengthMessage = team1.length === 5 ? '' : ` (${team1.length} players)`
@@ -543,9 +540,6 @@ export async function handleCheckTeamsCommand(
 
     // Bot's stored teams
     const activePlayers = await getSortedActivePlayers(guildId)
-    activePlayers.forEach((p, index) => {
-      p.lobbyRank = index
-    })
     const { team1, team2 } = await getTeams(guildId, activePlayers)
 
     const lobbyTeam1Ids = scanSummary.team1DiscordIds ?? []

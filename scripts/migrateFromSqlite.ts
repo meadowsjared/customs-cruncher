@@ -184,6 +184,13 @@ export async function migrateFromSqlite(sqlitePath: string): Promise<void> {
 
     for (const a of accounts) {
       const blizzId = a.HP_Blizz_ID !== null && a.HP_Blizz_ID !== undefined ? String(a.HP_Blizz_ID) : null
+      const qmMmr = a.HP_QM_MMR != null && a.HP_QM_MMR > 0 ? Math.round(a.HP_QM_MMR) : 0
+      const slMmr = a.HP_SL_MMR != null && a.HP_SL_MMR > 0 ? Math.round(a.HP_SL_MMR) : 0
+      const arMmr = a.HP_AR_MMR != null && a.HP_AR_MMR > 0 ? Math.round(a.HP_AR_MMR) : 0
+      const qmGames = a.HP_QM_Games != null && a.HP_QM_Games > 0 ? Math.round(a.HP_QM_Games) : 0
+      const slGames = a.HP_SL_Games != null && a.HP_SL_Games > 0 ? Math.round(a.HP_SL_Games) : 0
+      const arGames = a.HP_AR_Games != null && a.HP_AR_Games > 0 ? Math.round(a.HP_AR_Games) : 0
+
       await sql`
         INSERT INTO hots_accounts (
           id,
@@ -210,12 +217,12 @@ export async function migrateFromSqlite(sqlitePath: string): Promise<void> {
           ${a.owner_discord_id},
           ${a.HP_Region},
           ${blizzId},
-          ${a.HP_QM_MMR},
-          ${a.HP_SL_MMR},
-          ${a.HP_AR_MMR},
-          ${a.HP_QM_Games},
-          ${a.HP_SL_Games},
-          ${a.HP_AR_Games},
+          ${qmMmr},
+          ${slMmr},
+          ${arMmr},
+          ${qmGames},
+          ${slGames},
+          ${arGames},
           ${a.updated_at ? new Date(a.updated_at) : new Date()}
         )
         ON CONFLICT (id) DO UPDATE SET

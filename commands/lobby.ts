@@ -29,7 +29,6 @@ import {
   markAllPlayersInactive,
   savePlayer,
   setPlayerActive,
-  triggerAccountMmrFetch,
 } from '../store/player'
 import { Player } from '../types/player'
 import { announce, safePing } from '../utils/announce'
@@ -48,11 +47,16 @@ import { fetchDiscordNames, handleUserNameModalSubmit } from './shared'
  */
 async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?: string): Promise<string> {
   const lobbyMessages = await getLobbyMessages(guildId, [CommandIds.NEW_GAME])
-  const prevPlayersFromDb: string[] = JSON.parse(lobbyMessages?.[0]?.previousPlayersList ?? '[]')
+  let prevPlayersFromDb: string[] = []
+  try {
+    prevPlayersFromDb = JSON.parse(lobbyMessages?.[0]?.previousPlayersList ?? '[]')
+  } catch {
+    prevPlayersFromDb = []
+  }
   const previousPlayersMessage = generatePreviousPlayersMessage(prevPlayersFromDb)
   const previousPlayersList = pPreviousPlayersList ?? previousPlayersMessage ?? ''
   const activePlayers = await getActivePlayers(guildId)
-  activePlayers.sort((a, b) => a.lastActive.getTime() - b.lastActive.getTime()) // sort by last_active ascending
+  activePlayers.sort((a, b) => (a.lastActive?.getTime?.() || 0) - (b.lastActive?.getTime?.() || 0)) // sort by last_active ascending
   const lobbyPlayers = activePlayers.map((p, index) => {
     const subAccount = p.usernames.accounts?.find(a => a.ownerDiscordId)
     const primaryAccount = subAccount ?? p.usernames.accounts?.find(a => a.isPrimary)
@@ -65,24 +69,11 @@ async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?
 
     const hasSingleAccount = p.usernames.accounts?.length === 1
     const acc = p.usernames.accounts?.[0]
-    let isLoading = false
-    let isError = false
-    if (hasSingleAccount && acc) {
-      if (isFetchingMmr(acc.hotsBattleTag)) {
-        isLoading = true
-      } else if (acc.hpSlGames === null && acc.hpQmGames === null && acc.hpArGames === null) {
-        isLoading = true
-        triggerAccountMmrFetch(acc.hotsBattleTag, guildId).catch(err => {
-          console.error(`Error triggering MMR fetch for ${acc.hotsBattleTag}:`, err)
-        })
-      } else if (acc.hpSlGames === -1 && acc.hpQmGames === -1 && acc.hpArGames === -1) {
-        isError = true
-      }
-    }
+    const isLoading = Boolean(hasSingleAccount && acc && isFetchingMmr(acc.hotsBattleTag))
 
     return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${
       isLoading ? ' loading MMR...' : ''
-    }${isError ? ' MMR error!... :scream:' : ''}`
+    }`
   })
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
@@ -303,7 +294,9 @@ export async function handleRejoinCommand(
   if (!guildId) return
   // first check it the user has a hotsBattleTag in the database
   const existingPlayer = await getPlayerByDiscordId(interaction.user.id, guildId)
-  if (!existingPlayer?.usernames.accounts?.find(a => a.isPrimary)) {
+  const primaryAccount =
+    existingPlayer?.usernames.accounts?.find(a => a.isPrimary) ?? existingPlayer?.usernames.accounts?.[0]
+  if (!primaryAccount) {
     // if they don't have a hotsBattleTag, show the modal to collect it
     await showJoinModal(guildId, interaction, pBattleTag)
     return
@@ -313,11 +306,12 @@ export async function handleRejoinCommand(
     // always update the lobby message instead of announcing
     await updateLobbyMessage(guildId, interaction)
     const joinVerb = newUser ? 'joined' : 'rejoined'
+    const playerPrimary =
+      player.usernames.accounts?.find(a => a.isPrimary) ?? player.usernames.accounts?.[0]
+    const tagDisplay = playerPrimary?.hotsBattleTag ? playerPrimary.hotsBattleTag.replace(/#.*$/, '') : 'unknown'
     const content =
       (updated === false ? `You are already in` : `You have ${joinVerb}`) +
-      ` the lobby as: \`${player.usernames.accounts
-        ?.find(a => a.isPrimary)
-        ?.hotsBattleTag.replace(/#.*$/, '')}\`, \`${getPlayerRolesFormatted(
+      ` the lobby as: \`${tagDisplay}\`, \`${getPlayerRolesFormatted(
         player.role
       )}\`\nUse /leave to leave the lobby, or use the buttons below.`
     await safeReply(interaction, {
@@ -401,7 +395,7 @@ ${validationResult.rules}
       flags: MessageFlags.Ephemeral,
     })
     await new Promise(resolve => setTimeout(resolve, 8000))
-    await reply?.delete()
+    await reply?.delete().catch(() => {})
   }
   if (
     !hpCalled &&
@@ -423,7 +417,7 @@ export async function handleRefreshLobbyMessage(
       content: 'Lobby messages refreshed.',
       flags: MessageFlags.Ephemeral,
     })
-    await replyMessage?.delete()
+    await replyMessage?.delete().catch(() => {})
   }
 }
 

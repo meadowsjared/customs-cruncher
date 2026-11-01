@@ -2,7 +2,6 @@ import { Attachment, ButtonInteraction, CacheType, ChatInputCommandInteraction, 
 import { CommandIds } from '../constants'
 import {
   getPlayerIdentifier,
-  getPlayerMMR,
   getSortedActivePlayers,
   setTeamsFromPlayers,
 } from '../store/player'
@@ -94,9 +93,6 @@ async function applyTeamsFromScan(
     return
   }
   const sortedPlayers = await getSortedActivePlayers(guildId, true)
-  sortedPlayers.forEach((p, index) => {
-    p.lobbyRank = index
-  })
 
   const team1: Player[] = []
   const team2: Player[] = []
@@ -118,9 +114,6 @@ async function applyTeamsFromScan(
       spectators.push(p)
     }
   }
-
-  team1.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
-  team2.sort((a, b) => (b.mmr ?? getPlayerMMR(b)) - (a.mmr ?? getPlayerMMR(a)))
 
   team1.forEach((p, i) => {
     p.team = 1

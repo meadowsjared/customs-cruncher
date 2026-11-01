@@ -107,19 +107,6 @@ export function isFlex(player: Player): boolean {
   return player.role.toUpperCase().includes('F')
 }
 
-/**
- * Retrieves effective MMR score for player ranking and balance deltas.
- */
-export function getPlayerScore(player: Player): number {
-  if (player.mmr !== null && player.mmr !== undefined && !Number.isNaN(player.mmr)) {
-    return player.mmr
-  }
-  const accounts = player.usernames.accounts
-  const baseMmr =
-    accounts?.reduce((best, acc) => Math.max(best, acc.hpQmMMR ?? 0, acc.hpSlMMR ?? 0, acc.hpArMMR ?? 0), 0) ?? 0
-  return baseMmr + (player.adjustment ?? 0)
-}
-
 function countTeamRoles(team: Player[]) {
   let primaryTanks = 0
   let anyTanks = 0
@@ -202,8 +189,8 @@ export function calculateRoleImbalance(team1: Player[], team2: Player[]): number
 }
 
 function getTeamMmrDiff(team1: Player[], team2: Player[]): number {
-  const sum1 = team1.reduce((sum, p) => sum + getPlayerScore(p), 0)
-  const sum2 = team2.reduce((sum, p) => sum + getPlayerScore(p), 0)
+  const sum1 = team1.reduce((sum, p) => sum + p.mmr, 0)
+  const sum2 = team2.reduce((sum, p) => sum + p.mmr, 0)
   return Math.abs(sum1 - sum2)
 }
 
@@ -347,21 +334,6 @@ export function createOptimalTeams(
   const team1 = bestSplit?.team1 ?? activePool.slice(0, teamSize)
   const team2 = bestSplit?.team2 ?? activePool.slice(teamSize)
 
-  // Assign player metadata and order
-  team1.forEach((p, idx) => {
-    p.team = 1
-    const overallRank = sortedPlayers.indexOf(p)
-    p.lobbyRank = overallRank >= 0 ? overallRank : idx
-    p.draftOrder = p.lobbyRank + 1
-  })
-
-  team2.forEach((p, idx) => {
-    p.team = 2
-    const overallRank = sortedPlayers.indexOf(p)
-    p.lobbyRank = overallRank >= 0 ? overallRank : idx
-    p.draftOrder = p.lobbyRank + 1
-  })
-
   return { team1, team2, spectators }
 }
 
@@ -391,18 +363,12 @@ export function createTeams(
   sortedPlayers.forEach((p, index) => {
     const rank = index + 1
     if (team1Set.has(rank) && team1.length < maxPlayersPerTeam) {
-      p.draftOrder = rank
-      p.lobbyRank = index
       p.team = 1
       team1.push(p)
     } else if (team2Set.has(rank) && team2.length < maxPlayersPerTeam) {
-      p.draftOrder = rank
-      p.lobbyRank = index
       p.team = 2
       team2.push(p)
     } else {
-      p.draftOrder = NaN
-      p.lobbyRank = NaN
       p.team = 0
       spectators.push(p)
     }
@@ -430,8 +396,8 @@ export interface MatchupPrediction {
  * Uses an Elo logistic curve based on the average MMR difference between the teams.
  */
 export function calculateMatchupPrediction(team1: Player[], team2: Player[]): MatchupPrediction {
-  const t1Scores = team1.map(getPlayerScore)
-  const t2Scores = team2.map(getPlayerScore)
+  const t1Scores = team1.map(p => p.mmr)
+  const t2Scores = team2.map(p => p.mmr)
 
   const t1Total = t1Scores.reduce((sum, s) => sum + s, 0)
   const t2Total = t2Scores.reduce((sum, s) => sum + s, 0)

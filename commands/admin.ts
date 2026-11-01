@@ -20,7 +20,6 @@ import {
   getPlayerByDiscordId,
   getPlayerByIdentifier,
   getPlayerIdentifier,
-  getPlayerMMR,
   getPlayerRolesFormatted,
   getStoredInteraction,
   setPlayerActive,
@@ -628,9 +627,9 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
     // View current adjustment
     const currentAdj = player.adjustment ?? 0
     const adjStr = currentAdj >= 0 ? `+${currentAdj}` : `${currentAdj}`
-    const netMMR = getPlayerMMR(player)
+    const mmr = player.mmr
     await safeReply(interaction, {
-      content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (Net MMR: **${netMMR}**).`,
+      content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (MMR: **${mmr}**).`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -650,10 +649,10 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
   const prevAdjVal = previousAdjustment ?? 0
   const prevAdjStr = prevAdjVal >= 0 ? `+${prevAdjVal}` : `${prevAdjVal}`
   const newAdjStr = amount >= 0 ? `+${amount}` : `${amount}`
-  const newNetMMR = getPlayerMMR(updatedPlayer)
+  const newMMR = updatedPlayer.mmr
 
   await safeReply(interaction, {
-    content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (Net MMR: **${newNetMMR}**).`,
+    content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (MMR: **${newMMR}**).`,
   })
 }
 

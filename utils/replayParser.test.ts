@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test'
-import path from 'path'
 import { collectReplayFiles } from '../commands/replays'
 import { parseReplaySync } from './replayParser'
 import { processReplaysInPool } from './replayWorkerPool'

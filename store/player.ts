@@ -49,6 +49,7 @@ import {
 } from './playerStats'
 import {
   clearAccountSubstitutions,
+  clearResolvedAccountCache,
   filterActiveSubstitutedAccounts,
   getAccountLoanStatusTag,
   getAccountWithSubstitution,
@@ -70,7 +71,6 @@ import {
   getSortedActivePlayers,
   getTeams,
   markAllPlayersInactive,
-  recalculateLobbyRanks,
   resetActivePlayerTeams,
   setPlayerActive,
   setTeamsFromPlayers,
@@ -81,6 +81,7 @@ export {
   changeTeams,
   clearAccountSubstitutions,
   clearActivePlayersCache,
+  clearResolvedAccountCache,
   clearTeams,
   filterActiveSubstitutedAccounts,
   getAccountLoanStatusTag,
@@ -103,7 +104,6 @@ export {
   isFetchingMmr,
   markAllPlayersInactive,
   PlayerIdPrefix,
-  recalculateLobbyRanks,
   refreshPlayerStatsView,
   relinkAccountSubstitutions,
   removeInteraction,
@@ -186,10 +186,9 @@ export async function savePlayer(
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
 }
 
-function getPlayerFromRow(
+export function getPlayerFromRow(
   flatPlayer: FlatPlayer,
-  hotsAccountsRow: HotsAccountRow[],
-  customStatsMap?: Map<string, { games: number; winRate: number }>
+  hotsAccountsRow: HotsAccountRow[]
 ): Player {
   cachePlayerDisplayName(
     flatPlayer.discord_id,
@@ -212,34 +211,6 @@ function getPlayerFromRow(
 
   const isActive = typeof flatPlayer.active === 'boolean' ? flatPlayer.active : flatPlayer.active === 1
 
-  // Resolve best custom stats across their accounts
-  let customGames = 0
-  let customWinRate = 50
-  if (customStatsMap) {
-    let mostGames = 0
-    for (const acc of accountsNew) {
-      const stats = customStatsMap.get(acc.hotsBattleTag.toLowerCase())
-      if (stats && stats.games > mostGames) {
-        mostGames = stats.games
-        customGames = stats.games
-        customWinRate = stats.winRate
-      }
-    }
-  }
-
-  const baseMmr =
-    accountsNew.reduce(
-      (max: number | null, account) =>
-        Math.max(max ?? 0, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
-      0
-    ) ?? 0
-
-  const calculatedMmr = calculateEffectiveMMR(
-    baseMmr,
-    customGames > 0 ? { games: customGames, winRate: customWinRate } : undefined,
-    flatPlayer.adjustment
-  )
-
   return {
     discordId: flatPlayer.discord_id,
     usernames: {
@@ -254,9 +225,9 @@ function getPlayerFromRow(
     lobbyRank: flatPlayer.lobby_rank ?? NaN,
     draftOrder: flatPlayer.draft_order ?? NaN,
     adjustment: flatPlayer.adjustment,
-    mmr: calculatedMmr,
-    customGames: customGames > 0 ? customGames : undefined,
-    customWinRate: customGames > 0 ? customWinRate : undefined,
+    mmr: flatPlayer.mmr,
+    customGames: flatPlayer.custom_games ?? undefined,
+    customWinRate: flatPlayer.custom_win_rate ?? undefined,
     lastActive: flatPlayer.last_active instanceof Date ? flatPlayer.last_active : new Date(flatPlayer.last_active),
   }
 }
@@ -268,12 +239,12 @@ function getAccountFromAccountRow(account: HotsAccountRow): HotsAccount {
     isPrimary: Boolean(account.is_primary),
     realIdName: account.real_id_name ?? null,
     ownerDiscordId: account.owner_discord_id ?? null,
-    hpQmMMR: account.hp_qm_mmr ?? account.HP_QM_MMR ?? null,
-    hpSlMMR: account.hp_sl_mmr ?? account.HP_SL_MMR ?? null,
-    hpArMMR: account.hp_ar_mmr ?? account.HP_AR_MMR ?? null,
-    hpQmGames: account.hp_qm_games ?? account.HP_QM_Games ?? null,
-    hpSlGames: account.hp_sl_games ?? account.HP_SL_Games ?? null,
-    hpArGames: account.hp_ar_games ?? account.HP_AR_Games ?? null,
+    hpQmMMR: account.hp_qm_mmr,
+    hpSlMMR: account.hp_sl_mmr,
+    hpArMMR: account.hp_ar_mmr,
+    hpQmGames: account.hp_qm_games,
+    hpSlGames: account.hp_sl_games,
+    hpArGames: account.hp_ar_games,
   }
 }
 
@@ -294,9 +265,13 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
       p.adjustment,
       lp.lobby_rank,
       lp.draft_order,
-      COALESCE(p.last_active, NOW()) AS last_active
+      COALESCE(p.last_active, NOW()) AS last_active,
+      COALESCE(v.mmr, 0) AS mmr,
+      v.custom_games,
+      v.custom_win_rate
     FROM lobby_players lp
     LEFT JOIN players p ON lp.discord_id = p.discord_id
+    LEFT JOIN v_player_mmr v ON (v.discord_id = lp.discord_id) OR (lp.discord_id IS NULL AND v.hots_account_id = lp.hots_account_id)
     LEFT JOIN hots_accounts ha ON ha.id = COALESCE(
       lp.hots_account_id,
       (SELECT id FROM hots_accounts WHERE discord_id = lp.discord_id ORDER BY is_primary DESC, id ASC LIMIT 1)
@@ -304,6 +279,13 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
     WHERE lp.guild_id = ${guildId} AND lp.active = TRUE
     ORDER BY lp.lobby_rank, lp.active, lp.team
   `
+
+  if (rows.length === 0) {
+    return []
+  }
+
+  const activeDiscordIds = rows.map(r => r.discord_id).filter((id): id is string => Boolean(id))
+  const activeTags = rows.map(r => r.hots_battle_tag).filter(Boolean)
 
   const allAccounts = await sql<
     Array<
@@ -332,6 +314,10 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
       op.discord_name AS owner_name
     FROM hots_accounts ha
     LEFT JOIN players op ON ha.owner_discord_id = op.discord_id
+    WHERE (
+      ${activeDiscordIds.length > 0 ? sql`ha.discord_id IN ${sql(activeDiscordIds)}` : sql`FALSE`}
+      OR ${activeTags.length > 0 ? sql`LOWER(ha.hots_battle_tag) IN ${sql(activeTags.map(t => t.toLowerCase()))}` : sql`FALSE`}
+    )
   `
 
   for (const acc of allAccounts) {
@@ -341,23 +327,6 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
   }
 
   const validAccounts = await filterActiveSubstitutedAccounts(allAccounts, guildId)
-
-  // Fetch aggregated custom stats for players in the lobby (fast single indexed scan)
-  const customStatsRows = await sql<
-    Array<{ hots_battle_tag: string; games: number; win_rate: number }>
-  >`
-    SELECT
-      LOWER(ha.hots_battle_tag) AS hots_battle_tag,
-      COUNT(*)::int AS games,
-      ROUND(100.0 * AVG(CASE WHEN s.win THEN 1.0 ELSE 0.0 END)::numeric, 1)::float AS win_rate
-    FROM mv_replay_player_stats s
-    JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
-    GROUP BY LOWER(ha.hots_battle_tag)
-  `
-  const customStatsMap = new Map<string, { games: number; winRate: number }>()
-  for (const cs of customStatsRows) {
-    customStatsMap.set(cs.hots_battle_tag, { games: cs.games, winRate: cs.win_rate })
-  }
 
   const seenPlayerKeys = new Set<string>()
   const uniquePlayers: Player[] = []
@@ -369,7 +338,7 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
       continue
     }
     seenPlayerKeys.add(key)
-    uniquePlayers.push(getPlayerFromRow(row, validAccounts, customStatsMap))
+    uniquePlayers.push(getPlayerFromRow(row, validAccounts))
   }
   return uniquePlayers
 }
@@ -384,6 +353,9 @@ export async function getAllRegisteredHotSAccounts(guildId: string): Promise<Reg
     discord_global_name: string | null
     real_id_name: string | null
     owner_discord_id: string | null
+    owner_display_name: string | null
+    owner_name: string | null
+    owner_global_name: string | null
   }
 
   const rows = await sql<QueryRow[]>`
@@ -395,13 +367,20 @@ export async function getAllRegisteredHotSAccounts(guildId: string): Promise<Reg
       ha.owner_discord_id,
       COALESCE(p.discord_display_name, ha.hots_battle_tag) AS discord_display_name,
       COALESCE(p.discord_name, ha.hots_battle_tag) AS discord_name,
-      COALESCE(p.discord_global_name, ha.hots_battle_tag) AS discord_global_name
+      COALESCE(p.discord_global_name, ha.hots_battle_tag) AS discord_global_name,
+      op.discord_display_name AS owner_display_name,
+      op.discord_name AS owner_name,
+      op.discord_global_name AS owner_global_name
     FROM hots_accounts ha
     LEFT JOIN players p ON ha.discord_id = p.discord_id
+    LEFT JOIN players op ON ha.owner_discord_id = op.discord_id
   `
 
   for (const r of rows) {
     cachePlayerDisplayName(r.discord_id, r.discord_display_name, r.discord_global_name, r.discord_name)
+    if (r.owner_discord_id) {
+      cachePlayerDisplayName(r.owner_discord_id, r.owner_display_name, r.owner_global_name, r.owner_name)
+    }
   }
 
   const activeSubs = guildId ? await getActiveSubstitutions(guildId) : []
@@ -429,6 +408,7 @@ export async function getAllRegisteredHotSAccounts(guildId: string): Promise<Reg
         discordGlobalName: r.discord_global_name ?? r.hots_battle_tag,
         realIdName: r.real_id_name ?? null,
         ownerDiscordId: r.owner_discord_id ?? null,
+        ownerDisplayName: r.owner_display_name ?? null,
       })
     }
   }
@@ -531,7 +511,7 @@ export async function findPlayersByHotSAccount(query: string, guildId: string): 
       seenAccountIds.add(accRow.id)
 
       const hotsAcc = getAccountFromAccountRow(accRow)
-      const guestPlayer = await getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${accRow.id}`, guildId)
+      const guestPlayer = await buildGuestPlayer(accRow, guildId)
       if (guestPlayer) {
         results.push({
           player: guestPlayer,
@@ -557,39 +537,45 @@ export async function getAllPlayers(
       FALSE AS active,
       NULL::int AS team,
       NULL::int AS lobby_rank,
-      NULL::int AS draft_order
+      NULL::int AS draft_order,
+      COALESCE(v.mmr, 0) AS mmr,
+      v.custom_games,
+      v.custom_win_rate
     FROM players p
-    LEFT JOIN (
-      SELECT
-        discord_id,
-        MAX(GREATEST(COALESCE(hp_qm_mmr, 0), COALESCE(hp_sl_mmr, 0), COALESCE(hp_ar_mmr, 0))) AS mmr
-      FROM hots_accounts
-      GROUP BY discord_id
-    ) h ON p.discord_id = h.discord_id
+    LEFT JOIN v_player_mmr v ON p.discord_id = v.discord_id
     ORDER BY
-      CASE WHEN ${sort} = 'mmr' AND ${ascending} THEN (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) END DESC,
-      CASE WHEN ${sort} = 'mmr' AND NOT ${ascending} THEN (COALESCE(h.mmr, 0) + COALESCE(p.adjustment, 0)) END ASC,
+      CASE WHEN ${sort} = 'mmr' AND ${ascending} THEN v.mmr END DESC NULLS LAST,
+      CASE WHEN ${sort} = 'mmr' AND NOT ${ascending} THEN v.mmr END ASC NULLS LAST,
       CASE WHEN ${sort} = 'alphabetical' AND NOT ${ascending} THEN p.discord_display_name END DESC,
       p.discord_display_name ASC
     LIMIT 20 OFFSET ${offset}
   `
 
-  const accounts = await sql<HotsAccountRow[]>`
-    SELECT
-      id,
-      discord_id,
-      hots_battle_tag,
-      is_primary,
-      hp_qm_mmr,
-      hp_sl_mmr,
-      hp_ar_mmr,
-      hp_qm_games,
-      hp_sl_games,
-      hp_ar_games,
-      real_id_name,
-      owner_discord_id
-    FROM hots_accounts
-  `
+  if (rows.length === 0) {
+    return []
+  }
+
+  const discordIds = rows.map(r => r.discord_id).filter((id): id is string => Boolean(id))
+  const accounts = discordIds.length > 0
+    ? await sql<HotsAccountRow[]>`
+        SELECT
+          id,
+          discord_id,
+          hots_battle_tag,
+          is_primary,
+          hp_qm_mmr,
+          hp_sl_mmr,
+          hp_ar_mmr,
+          hp_qm_games,
+          hp_sl_games,
+          hp_ar_games,
+          real_id_name,
+          owner_discord_id
+        FROM hots_accounts
+        WHERE discord_id IN ${sql(discordIds)}
+      `
+    : []
+
   return rows.map<Player>(row => getPlayerFromRow(row, accounts))
 }
 
@@ -603,26 +589,29 @@ export async function triggerAccountMmrFetch(battleTag: string, guildId?: string
 
   try {
     const profileData = await getHeroesProfileData(battleTag)
-    if (profileData && !(profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1)) {
+    if (profileData) {
+      const qmMmr = profileData.qmMmr
+      const slMmr = profileData.slMmr
+      const arMmr = profileData.arMmr
+      const qmGames = profileData.qmGames
+      const slGames = profileData.slGames
+      const arGames = profileData.arGames
       await sql`
         UPDATE hots_accounts SET
           hp_region = ${profileData.region},
           hp_blizz_id = ${String(profileData.blizz_id)},
-          hp_qm_mmr = ${Number.isNaN(profileData.qmMmr) ? null : profileData.qmMmr},
-          hp_sl_mmr = ${Number.isNaN(profileData.slMmr) ? null : profileData.slMmr},
-          hp_ar_mmr = ${Number.isNaN(profileData.arMmr) ? null : profileData.arMmr},
-          hp_qm_games = ${profileData.qmGames},
-          hp_sl_games = ${profileData.slGames},
-          hp_ar_games = ${profileData.arGames},
+          hp_qm_mmr = ${qmMmr},
+          hp_sl_mmr = ${slMmr},
+          hp_ar_mmr = ${arMmr},
+          hp_qm_games = ${qmGames},
+          hp_sl_games = ${slGames},
+          hp_ar_games = ${arGames},
           updated_at = NOW()
         WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
       `
     } else {
       await sql`
         UPDATE hots_accounts SET
-          hp_qm_games = -1,
-          hp_sl_games = -1,
-          hp_ar_games = -1,
           updated_at = NOW()
         WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
       `
@@ -631,17 +620,15 @@ export async function triggerAccountMmrFetch(battleTag: string, guildId?: string
     console.error(`Error fetching HP MMR for ${battleTag}:`, err)
     await sql`
       UPDATE hots_accounts SET
-        hp_qm_games = -1,
-        hp_sl_games = -1,
-        hp_ar_games = -1,
         updated_at = NOW()
       WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
-    `
+    `.catch(e => console.error(`Error updating updated_at for ${battleTag}:`, e))
   } finally {
     removeFetchingMmrTag(battleTag)
     if (guildId) {
       try {
         clearActivePlayersCache(guildId)
+        clearResolvedAccountCache()
         await updateLobbyMessage(guildId)
       } catch (e) {
         console.error('Error updating lobby message after MMR fetch:', e)
@@ -684,9 +671,8 @@ ${validationResult.rules}
   const existingAccount = existingAccounts[0]
   if (existingAccount) {
     await safeReply(interaction, {
-      content: `This HotS account is already in use by another player: <@${
-        existingAccount.discord_id
-      }>\nare you sure this is ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"} account...`,
+      content: `This HotS account is already in use by another player: <@${existingAccount.discord_id
+        }>\nare you sure this is ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"} account...`,
       files: [
         {
           attachment: 'https://i.giphy.com/media/hPkJ9Q7dh6itMoMIMC/giphy.gif',
@@ -759,14 +745,14 @@ ${validationResult.rules}
         ? Boolean(currentAccount.is_primary)
         : !player.usernames.accounts || player.usernames.accounts.length <= 1
 
-    const qmMmr = profileData && !Number.isNaN(profileData.qmMmr) ? profileData.qmMmr : null
-    const slMmr = profileData && !Number.isNaN(profileData.slMmr) ? profileData.slMmr : null
-    const arMmr = profileData && !Number.isNaN(profileData.arMmr) ? profileData.arMmr : null
+    const qmMmr = profileData?.qmMmr ?? 0
+    const slMmr = profileData?.slMmr ?? 0
+    const arMmr = profileData?.arMmr ?? 0
     const hpRegion = profileData?.region ?? null
     const hpBlizzId = profileData?.blizz_id != null ? String(profileData.blizz_id) : null
-    const hpQmGames = profileData?.qmGames ?? null
-    const hpSlGames = profileData?.slGames ?? null
-    const hpArGames = profileData?.arGames ?? null
+    const hpQmGames = profileData?.qmGames ?? 0
+    const hpSlGames = profileData?.slGames ?? 0
+    const hpArGames = profileData?.arGames ?? 0
 
     await sql.begin(async tx => {
       let accountId: number
@@ -827,6 +813,7 @@ ${validationResult.rules}
       player.role = profileData.detectedRoles
     }
     clearActivePlayersCache(guildId)
+    clearResolvedAccountCache()
     if (interaction) {
       await updateLobbyMessage(guildId, interaction)
     }
@@ -839,11 +826,9 @@ ${validationResult.rules}
         profileData?.detectedRoles && player.role === profileData.detectedRoles
           ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
           : ''
-      const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${
-        userIsSelf ? 'have' : 'has'
-      } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${
-        userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
-      } Heroes profile data and BattleTag formatting have been updated.${roleText}${noticeText}`
+      const content = `${userIsSelf ? 'You' : '<@' + discordId + '>'} already ${userIsSelf ? 'have' : 'has'
+        } this HotS account linked: \`${hotsBattleTag}\`\n\nHowever, ${userIsSelf ? 'your' : '<@' + discordId + '>' + "'s"
+        } Heroes profile data and BattleTag formatting have been updated.${roleText}${noticeText}`
       try {
         await interaction?.editReply({
           content,
@@ -861,9 +846,8 @@ ${validationResult.rules}
           ? `\nAuto-populated role: ${getPlayerRolesFormatted(player.role)}${reasonText}`
           : ''
       await safeReply(interaction, {
-        content: `${
-          discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-        } HotS account has been added: \`${hotsBattleTag}\`${roleText}${noticeText}`,
+        content: `${discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+          } HotS account has been added: \`${hotsBattleTag}\`${roleText}${noticeText}`,
         flags: MessageFlags.Ephemeral,
       })
     }
@@ -928,9 +912,8 @@ async function handleAccountNotFound(
     .setLabel('Try Again')
     .setStyle(ButtonStyle.Primary)
   await safeReply(interaction, {
-    content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${
-      discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
-    } account?`,
+    content: `heroesprofile could not find data for \`${hotsBattleTag}\`\nare you sure this is the right battle tag for ${discordId === interaction?.user.id ? 'your' : '<@' + discordId + ">'s"
+      } account?`,
     flags: MessageFlags.Ephemeral,
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joinBtn)],
   })
@@ -949,6 +932,9 @@ export async function deletePlayer(
     deletedPlayer = playerResult.count
   })
 
+  clearActivePlayersCache()
+  clearResolvedAccountCache()
+
   return {
     playersDeleted: deletedPlayer,
     hotsAccountsDeleted: deletedAccounts,
@@ -957,11 +943,15 @@ export async function deletePlayer(
 
 export async function deletePlayerHotsAccounts(discordId: string): Promise<number> {
   const result = await sql`DELETE FROM hots_accounts WHERE discord_id = ${discordId}`
+  clearActivePlayersCache()
+  clearResolvedAccountCache()
   return result.count
 }
 
 export async function deleteHotsAccount(hotsBattleTag: string): Promise<number> {
   const result = await sql`DELETE FROM hots_accounts WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})`
+  clearActivePlayersCache()
+  clearResolvedAccountCache()
   return result.count
 }
 
@@ -1006,9 +996,8 @@ export async function setPrimaryAccount(
 
   if (!interaction.isButton()) {
     await safeReply(interaction, {
-      content: `${
-        discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
-      } primary HotS account has been set to \`${hotsBattleTag}\`.`,
+      content: `${discordId === interaction?.user.id ? 'Your' : '<@' + discordId + ">'s"
+        } primary HotS account has been set to \`${hotsBattleTag}\`.`,
       flags: MessageFlags.Ephemeral,
     })
     return true
@@ -1135,8 +1124,12 @@ export async function getPlayerByDiscordId(
       COALESCE(lp.active, FALSE) AS active,
       lp.team,
       lp.lobby_rank,
-      lp.draft_order
+      lp.draft_order,
+      COALESCE(v.mmr, 0) AS mmr,
+      v.custom_games,
+      v.custom_win_rate
     FROM players p
+    LEFT JOIN v_player_mmr v ON p.discord_id = v.discord_id
     LEFT JOIN lobby_players lp ON p.discord_id = lp.discord_id AND lp.guild_id = ${guildId}
     WHERE p.discord_id = ${discordId}
     LIMIT 1
@@ -1207,43 +1200,54 @@ export function getPlayerIdentifier(player: Player): string {
   return tag ? `${PlayerIdPrefix.TAG}${tag}` : ''
 }
 
-type GuestLobbyInfo = {
-  role: string | null
-  active: boolean
-  team: number | null
-  lobby_rank: number | null
-  draft_order: number | null
-}
-
 async function buildGuestPlayer(account: HotsAccountRow, guildId: string): Promise<Player> {
-  const rows = await sql<GuestLobbyInfo[]>`
-    SELECT role, active, team, lobby_rank, draft_order
-    FROM lobby_players
-    WHERE guild_id = ${guildId} AND hots_account_id = ${account.id}
+  const rows = await sql<FlatPlayer[]>`
+    SELECT
+      NULL AS discord_id,
+      ha.hots_battle_tag,
+      ha.hots_battle_tag AS discord_name,
+      ha.hots_battle_tag AS discord_global_name,
+      ha.hots_battle_tag AS discord_display_name,
+      COALESCE(lp.role, '') AS role,
+      COALESCE(lp.active, FALSE) AS active,
+      lp.team,
+      0 AS adjustment,
+      lp.lobby_rank,
+      lp.draft_order,
+      NOW() AS last_active,
+      COALESCE(v.mmr, 0) AS mmr,
+      v.custom_games,
+      v.custom_win_rate
+    FROM hots_accounts ha
+    LEFT JOIN lobby_players lp ON lp.guild_id = ${guildId} AND lp.hots_account_id = ha.id
+    LEFT JOIN v_player_mmr v ON v.hots_account_id = ha.id
+    WHERE ha.id = ${account.id}
     LIMIT 1
   `
-  const lp = rows[0]
-
-  const hotsAcc: HotsAccount = getAccountFromAccountRow(account)
-  const mmr = Math.max(hotsAcc.hpQmMMR ?? 0, hotsAcc.hpSlMMR ?? 0, hotsAcc.hpArMMR ?? 0)
-
-  return {
-    discordId: null,
-    usernames: {
-      accounts: [hotsAcc],
-      discordName: account.hots_battle_tag,
-      discordDisplayName: account.hots_battle_tag,
-      discordGlobalName: account.hots_battle_tag,
-    },
-    role: lp?.role ?? undefined,
-    active: Boolean(lp?.active),
-    team: lp?.team ?? null,
-    lobbyRank: lp?.lobby_rank ?? NaN,
-    draftOrder: lp?.draft_order ?? NaN,
-    adjustment: null,
-    mmr,
-    lastActive: new Date(),
+  const row = rows[0]
+  if (!row) {
+    const peakMmr = Math.max(account.hp_qm_mmr, account.hp_sl_mmr, account.hp_ar_mmr)
+    return getPlayerFromRow(
+      {
+        discord_id: null,
+        hots_battle_tag: account.hots_battle_tag,
+        discord_name: account.hots_battle_tag,
+        discord_global_name: account.hots_battle_tag,
+        discord_display_name: account.hots_battle_tag,
+        role: '',
+        mmr: peakMmr,
+        active: false,
+        team: null,
+        adjustment: null,
+        lobby_rank: NaN,
+        draft_order: NaN,
+        last_active: new Date(),
+      },
+      [account]
+    )
   }
+
+  return getPlayerFromRow(row, [account])
 }
 
 /**
@@ -1277,8 +1281,8 @@ export async function getPlayerByIdentifier(identifier: string, guildId: string)
 }
 
 async function getPlayerByBattleTag(battleTag: string, guildId: string): Promise<Player | undefined> {
-  const accounts = await sql<Array<{ id: number; discord_id: string | null }>>`
-    SELECT id, discord_id
+  const accounts = await sql<HotsAccountRow[]>`
+    SELECT *
     FROM hots_accounts
     WHERE LOWER(hots_battle_tag) = LOWER(${battleTag}) AND owner_discord_id IS NULL
     LIMIT 1
@@ -1287,7 +1291,7 @@ async function getPlayerByBattleTag(battleTag: string, guildId: string): Promise
   if (!account) return undefined
   return account.discord_id
     ? await getPlayerByDiscordId(account.discord_id, guildId)
-    : await getPlayerByIdentifier(`${PlayerIdPrefix.HOTS_ROW_ID}${account.id}`, guildId)
+    : await buildGuestPlayer(account, guildId)
 }
 
 /**
@@ -1396,49 +1400,6 @@ export async function setPlayerAdjustment(
 }
 
 /**
- * Calculates effective MMR using the confidence-weighted custom win rate formula,
- * with any manual admin adjustment always added on top.
- *
- * Formula:
- * EffectiveMMR = BaseMMR + (WinRate - 50%) * Confidence(Games) * ScalingFactor + AdminAdjustment
- */
-export function calculateEffectiveMMR(
-  baseMmr: number,
-  customStats?: { games: number; winRate: number },
-  adjustment?: number | null
-): number {
-  let customOffset = 0
-  if (customStats && customStats.games > 0) {
-    // Confidence factor: K = 15 means 15 games gives 50% confidence; scales smoothly up to ~95%
-    const confidence = customStats.games / (customStats.games + 15)
-    // Deviation from 50% win rate (e.g. 58% WR -> +8)
-    const winRateDelta = customStats.winRate - 50.0
-    // Scaling factor of 15 (e.g. +10% WR at 90% confidence gives ~ +135 MMR)
-    customOffset = Math.round(winRateDelta * confidence * 15)
-  }
-
-  return baseMmr + customOffset + (adjustment ?? 0)
-}
-
-/**
- * Calculates the MMR for a player (including custom stats and admin adjustments).
- */
-export function getPlayerMMR(player: Player): number {
-  const baseMmr =
-    player.usernames.accounts?.reduce(
-      (bestMMR, account) => Math.max(bestMMR, account.hpQmMMR ?? 0, account.hpSlMMR ?? 0, account.hpArMMR ?? 0),
-      0
-    ) ?? 0
-
-  const customStats =
-    player.customGames && player.customGames > 0
-      ? { games: player.customGames, winRate: player.customWinRate ?? 50 }
-      : undefined
-
-  return calculateEffectiveMMR(baseMmr, customStats, player.adjustment)
-}
-
-/**
  * Gets the roles of the player as a pretty string.
  */
 export function getPlayerRolesFormatted(role?: string): string {
@@ -1460,19 +1421,20 @@ export function formatPlayerDisplay(
   options: FormatPlayerDisplayOptions = {}
 ): string {
   const includeMMR = options.includeMMR ?? true
-  const mmr = player.mmr ?? getPlayerMMR(player)
+  const mmr = player.mmr
   const hasRank = player.lobbyRank !== undefined && !Number.isNaN(player.lobbyRank)
 
   let rankStr = ''
   if (hasRank && includeMMR) {
-    rankStr = `${player.lobbyRank + 1}: ${mmr}`
+    rankStr = `${player.lobbyRank}: ${mmr}`
   } else if (hasRank) {
-    rankStr = `${player.lobbyRank + 1}`
+    rankStr = `${player.lobbyRank}`
   } else if (includeMMR) {
     rankStr = `${mmr}`
   }
 
-  let result = rankStr ? `\`${rankStr}\` <@${player.discordId}>` : `<@${player.discordId}>`
+  const playerMention = player.discordId ? `<@${player.discordId}>` : `@${player.usernames.discordDisplayName}`
+  let result = rankStr ? `\`${rankStr}\` ${playerMention}` : playerMention
 
   if (options.includeBattleTag) {
     const subAccount = player.usernames.accounts?.find(account => account.ownerDiscordId)

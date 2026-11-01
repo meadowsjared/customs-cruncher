@@ -206,15 +206,22 @@ class CSVImporter {
         const slGames = this.parseValue(record['SL Games'] ?? '')
         const arGames = this.parseValue(record['AR Games'] ?? '')
 
+        const qmMmrVal = typeof qmMmr === 'number' && qmMmr > 0 ? Math.round(qmMmr) : 0
+        const slMmrVal = typeof slMmr === 'number' && slMmr > 0 ? Math.round(slMmr) : 0
+        const arMmrVal = typeof arMmr === 'number' && arMmr > 0 ? Math.round(arMmr) : 0
+        const qmGamesVal = typeof qmGames === 'number' && qmGames > 0 ? Math.round(qmGames) : 0
+        const slGamesVal = typeof slGames === 'number' && slGames > 0 ? Math.round(slGames) : 0
+        const arGamesVal = typeof arGames === 'number' && arGames > 0 ? Math.round(arGames) : 0
+
         const result = await this.db`
           UPDATE hots_accounts
           SET
-            hp_qm_mmr = ${typeof qmMmr === 'number' ? Math.round(qmMmr) : null},
-            hp_sl_mmr = ${typeof slMmr === 'number' ? Math.round(slMmr) : null},
-            hp_ar_mmr = ${typeof arMmr === 'number' ? Math.round(arMmr) : null},
-            hp_qm_games = ${typeof qmGames === 'number' ? Math.round(qmGames) : null},
-            hp_sl_games = ${typeof slGames === 'number' ? Math.round(slGames) : null},
-            hp_ar_games = ${typeof arGames === 'number' ? Math.round(arGames) : null},
+            hp_qm_mmr = ${qmMmrVal},
+            hp_sl_mmr = ${slMmrVal},
+            hp_ar_mmr = ${arMmrVal},
+            hp_qm_games = ${qmGamesVal},
+            hp_sl_games = ${slGamesVal},
+            hp_ar_games = ${arGamesVal},
             updated_at = NOW()
           WHERE hots_battle_tag = ${record.Lookup}
         `

@@ -5,7 +5,6 @@ import {
   getAccountRowIdFromIdentifier,
   getActivePlayers,
   getPlayerByIdentifier,
-  getPlayerMMR,
   triggerAccountMmrFetch,
 } from './player'
 import {
@@ -85,7 +84,7 @@ async function activatePlayerInLobby(guildId: string, player: Player, accId: num
 }
 
 async function deactivatePlayerInLobby(guildId: string, player: Player, accId: number | null): Promise<void> {
-  if (player.lobbyRank > 0) {
+  if (typeof player.lobbyRank === 'number' && !Number.isNaN(player.lobbyRank) && player.lobbyRank > 0) {
     await sql`
       UPDATE lobby_players
       SET lobby_rank = lobby_rank - 1
@@ -173,35 +172,35 @@ export async function setPlayerActive(
 /**
  * Recalculates the lobby ranks for all players in a guild.
  */
-export async function recalculateLobbyRanks(guildId: string): Promise<void> {
-  const activePlayers = await getActivePlayers(guildId)
-  const allPlayers = activePlayers.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a))
-
-  let currentRank = 1
-  for (let i = 0; i < allPlayers.length; i++) {
-    const player = allPlayers[i]
-    if (player.active) {
-      const lobbyRank = currentRank++
-      if (player.lobbyRank !== lobbyRank) {
-        const accId = player.usernames.accounts?.[0]?.id
-        if (player.discordId) {
-          await sql`
-            UPDATE lobby_players
-            SET lobby_rank = ${lobbyRank}
-            WHERE guild_id = ${guildId} AND discord_id = ${player.discordId}
-          `
-        } else if (accId) {
-          await sql`
-            UPDATE lobby_players
-            SET lobby_rank = ${lobbyRank}
-            WHERE guild_id = ${guildId} AND hots_account_id = ${accId}
-          `
-        }
+async function persistLobbyRankUpdates(
+  guildId: string,
+  rankUpdates: Array<{ discordId?: string; accId?: number; rank: number }>
+): Promise<void> {
+  if (rankUpdates.length === 0) return
+  await sql.begin(async tx => {
+    for (const update of rankUpdates) {
+      if (update.discordId) {
+        await tx`
+          UPDATE lobby_players
+          SET lobby_rank = ${update.rank}
+          WHERE guild_id = ${guildId} AND discord_id = ${update.discordId}
+        `
+      } else if (update.accId) {
+        await tx`
+          UPDATE lobby_players
+          SET lobby_rank = ${update.rank}
+          WHERE guild_id = ${guildId} AND hots_account_id = ${update.accId}
+        `
       }
-      player.lobbyRank = i
     }
-  }
-  setActivePlayersCacheEntry(guildId, allPlayers)
+  })
+}
+
+/**
+ * Recalculates the lobby ranks for all players in a guild.
+ */
+export async function recalculateLobbyRanks(guildId: string): Promise<void> {
+  await getSortedActivePlayers(guildId, true)
 }
 
 /**
@@ -415,10 +414,27 @@ export async function getSortedActivePlayers(guildId: string, forceRefresh = fal
   const cacheEntry = getActivePlayersCacheEntry(guildId)
   if (forceRefresh || !cacheEntry || Date.now() - cacheEntry.timestamp >= 5000) {
     const active = await getActivePlayers(guildId)
-    const data = active.sort((a, b) => getPlayerMMR(b) - getPlayerMMR(a))
-    data.forEach((p, index) => {
-      p.lobbyRank = index
-    })
+    const data = active.sort((a, b) => b.mmr - a.mmr)
+    const rankUpdates: Array<{ discordId?: string; accId?: number; rank: number }> = []
+
+    for (let i = 0; i < data.length; i++) {
+      const player = data[i]
+      const expectedRank = i + 1
+      if (player.lobbyRank !== expectedRank) {
+        const accId = player.usernames.accounts?.[0]?.id
+        if (player.discordId) {
+          rankUpdates.push({ discordId: player.discordId, rank: expectedRank })
+        } else if (accId) {
+          rankUpdates.push({ accId, rank: expectedRank })
+        }
+      }
+      player.lobbyRank = expectedRank
+    }
+
+    if (rankUpdates.length > 0) {
+      await persistLobbyRankUpdates(guildId, rankUpdates)
+    }
+
     setActivePlayersCacheEntry(guildId, data)
     return data
   }

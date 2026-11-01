@@ -64,14 +64,14 @@ export async function processReplaysInPool(
     return false
   }
 
+  const workers: Worker[] = []
   try {
-    const workers: Worker[] = []
     for (let w = 0; w < concurrency; w++) {
       workers.push(new Worker(workerScript))
     }
 
     const runWorkerTask = (worker: Worker): Promise<void> => {
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<void>(resolve => {
         const dispatchNext = () => {
           if (checkShouldStop() || nextIndex >= files.length) {
             resolve()
@@ -120,10 +120,6 @@ export async function processReplaysInPool(
     }
 
     await Promise.all(workers.map(w => runWorkerTask(w)))
-
-    for (const w of workers) {
-      w.terminate().catch(() => {})
-    }
   } catch (poolError) {
     console.warn('Worker pool execution encountered an error, falling back to synchronous parsing:', poolError)
     while (nextIndex < files.length && !checkShouldStop()) {
@@ -136,6 +132,10 @@ export async function processReplaysInPool(
         processedCount,
         totalCount,
       })
+    }
+  } finally {
+    for (const w of workers) {
+      w.terminate().catch(() => {})
     }
   }
 }

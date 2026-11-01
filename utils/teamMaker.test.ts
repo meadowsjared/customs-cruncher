@@ -283,12 +283,12 @@ describe('teamMaker.createTeams', () => {
     const optimal = createTeams(players, MakeTeamsMode.OPTIMAL, 5)
     const standard = createTeams(players, MakeTeamsMode.STANDARD, 5)
 
-    const optT1Sum = optimal.team1.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
-    const optT2Sum = optimal.team2.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
+    const optT1Sum = optimal.team1.reduce((sum, p) => sum + p.mmr, 0)
+    const optT2Sum = optimal.team2.reduce((sum, p) => sum + p.mmr, 0)
     const optDiff = Math.abs(optT1Sum - optT2Sum)
 
-    const stdT1Sum = standard.team1.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
-    const stdT2Sum = standard.team2.reduce((sum, p) => sum + (p.mmr ?? 0), 0)
+    const stdT1Sum = standard.team1.reduce((sum, p) => sum + p.mmr, 0)
+    const stdT2Sum = standard.team2.reduce((sum, p) => sum + p.mmr, 0)
     const stdDiff = Math.abs(stdT1Sum - stdT2Sum)
 
     // Optimal should achieve much closer MMR parity than standard

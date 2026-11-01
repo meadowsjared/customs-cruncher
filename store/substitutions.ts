@@ -101,10 +101,26 @@ export async function getAssignAccountChoices(
   })
 }
 
+const activeSubsCache = new Map<string, { subs: AccountSubstitution[]; timestamp: number }>()
+const SUBS_CACHE_TTL_MS = 5000
+
+export function clearActiveSubstitutionsCache(guildId?: string): void {
+  if (guildId) {
+    activeSubsCache.delete(guildId)
+  } else {
+    activeSubsCache.clear()
+  }
+}
+
 /**
  * Retrieves all currently active account substitutions for a specific guild.
  */
 export async function getActiveSubstitutions(guildId: string): Promise<AccountSubstitution[]> {
+  const cached = activeSubsCache.get(guildId)
+  if (cached && Date.now() - cached.timestamp < SUBS_CACHE_TTL_MS) {
+    return cached.subs
+  }
+
   const rows = await sql<AccountSubstitutionRow[]>`
     SELECT *
     FROM account_substitutions
@@ -112,7 +128,9 @@ export async function getActiveSubstitutions(guildId: string): Promise<AccountSu
     ORDER BY date DESC
   `
 
-  return rows.map(mapSubstitutionRow)
+  const subs = rows.map(mapSubstitutionRow)
+  activeSubsCache.set(guildId, { subs, timestamp: Date.now() })
+  return subs
 }
 
 /**
@@ -288,6 +306,8 @@ export async function setAccountSubstitution(
   const accountId = await getOrCreateSubstituteAccount(substituteDiscordId, fullBattleTag, ownerId)
 
   clearActivePlayersCache(guildId)
+  clearActiveSubstitutionsCache(guildId)
+  clearResolvedAccountCache()
 
   return {
     success: true,
@@ -337,14 +357,14 @@ export async function getOrCreateSubstituteAccount(
       ${fullBattleTag},
       FALSE,
       ${ownerId},
-      ${origAccount?.hp_region ?? origAccount?.HP_Region ?? null},
-      ${origAccount?.hp_blizz_id !== undefined && origAccount?.hp_blizz_id !== null ? String(origAccount.hp_blizz_id) : origAccount?.HP_Blizz_ID !== undefined && origAccount?.HP_Blizz_ID !== null ? String(origAccount.HP_Blizz_ID) : null},
-      ${origAccount?.hp_qm_mmr ?? origAccount?.HP_QM_MMR ?? null},
-      ${origAccount?.hp_sl_mmr ?? origAccount?.HP_SL_MMR ?? null},
-      ${origAccount?.hp_ar_mmr ?? origAccount?.HP_AR_MMR ?? null},
-      ${origAccount?.hp_qm_games ?? origAccount?.HP_QM_Games ?? null},
-      ${origAccount?.hp_sl_games ?? origAccount?.HP_SL_Games ?? null},
-      ${origAccount?.hp_ar_games ?? origAccount?.HP_AR_Games ?? null}
+      ${origAccount?.hp_region ?? null},
+      ${origAccount?.hp_blizz_id !== undefined && origAccount?.hp_blizz_id !== null ? String(origAccount.hp_blizz_id) : null},
+      ${origAccount?.hp_qm_mmr ?? 0},
+      ${origAccount?.hp_sl_mmr ?? 0},
+      ${origAccount?.hp_ar_mmr ?? 0},
+      ${origAccount?.hp_qm_games ?? 0},
+      ${origAccount?.hp_sl_games ?? 0},
+      ${origAccount?.hp_ar_games ?? 0}
     )
     RETURNING id
   `
@@ -422,6 +442,8 @@ export async function getAccountWithSubstitution(
  */
 export async function clearAccountSubstitutions(guildId: string, battleTag?: string): Promise<number> {
   clearActivePlayersCache(guildId)
+  clearActiveSubstitutionsCache(guildId)
+  clearResolvedAccountCache()
   if (battleTag) {
     const hashPrefixPattern = `${battleTag}#%`
     const result = await sql`

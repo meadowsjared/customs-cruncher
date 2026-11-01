@@ -29,7 +29,7 @@ import {
   getAllRegisteredHotSAccounts,
   getPlayerByDiscordId,
   getPlayerRolesFormatted,
-   getStoredInteraction,
+  getStoredInteraction,
   savePlayer,
   setPlayerDiscordNames,
   setPlayerName,
@@ -80,7 +80,7 @@ export async function handlePlayersCommand(
         return onlyRaw
           ? `<@${discordId}>`
           : `@${user?.displayName ?? usernames.discordDisplayName}` +
-              `${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
+          `${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
       })
       .join('\n') || 'No players in the lobby'
   const rawPlayerList = Object.values(players)
@@ -170,8 +170,7 @@ export async function handlePlayersAllCommand(
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)
     const sortAlphbetically = new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
-          sort === 'alphabetical' ? !ascending : ascending
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${sort === 'alphabetical' ? !ascending : ascending
         }_${pageNumber}`
       )
       .setEmoji('🔤')
@@ -202,7 +201,7 @@ export async function handleLookupByDiscordIdCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
-    console.error('Interaction is not a command or button interaction')
+    console.error('Expected chat input command interaction, received button interaction')
     return
   }
   const guildId = await requireGuildId(interaction)
@@ -282,25 +281,18 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
     })
   }
 
-  const choices = await Promise.all(
-    filtered.slice(0, 25).map(async acc => {
-      let discordStr = `@${acc.discordDisplayName}`
-      if (acc.ownerDiscordId) {
-        const owner = await getPlayerByDiscordId(acc.ownerDiscordId, guildId)
-        const ownerName =
-          owner?.usernames.discordDisplayName ??
-          owner?.usernames.discordGlobalName ??
-          owner?.usernames.discordName ??
-          'unknown'
-        discordStr += `, owned by @${ownerName}`
-      }
-      const label = `${acc.hotsBattleTag} (${discordStr})`.slice(0, 100)
-      return {
-        name: label,
-        value: acc.hotsBattleTag,
-      }
-    })
-  )
+  const choices = filtered.slice(0, 25).map(acc => {
+    let discordStr = `@${acc.discordDisplayName}`
+    if (acc.ownerDiscordId) {
+      const ownerName = acc.ownerDisplayName ?? 'unknown'
+      discordStr += `, owned by @${ownerName}`
+    }
+    const label = `${acc.hotsBattleTag} (${discordStr})`.slice(0, 100)
+    return {
+      name: label,
+      value: acc.hotsBattleTag,
+    }
+  })
 
   // Fallback to unlinked replay accounts if choices under limit and not filtering for a specific player
   if (choices.length < 25 && !targetDiscordId) {
@@ -328,7 +320,7 @@ export async function handleLookupCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
-    console.error('Interaction is not a command or button interaction')
+    console.error('Expected chat input command interaction, received button interaction')
     return
   }
   const guildId = await requireGuildId(interaction)
@@ -453,13 +445,13 @@ export async function handleLookupCommand(
           .setDescription(`**${matchedTag}** is a guest HotS account and is not currently linked to a Discord user.`)
           .addFields(
             { name: 'BattleTag', value: matchedTag, inline: true },
-            { name: 'MMR', value: String(player.mmr ?? 0), inline: true },
+            { name: 'MMR', value: String(player.mmr), inline: true },
             {
               name: 'Games Played',
               value: String(
                 (matchedAccounts[0]?.hpQmGames ?? 0) +
-                  (matchedAccounts[0]?.hpSlGames ?? 0) +
-                  (matchedAccounts[0]?.hpArGames ?? 0)
+                (matchedAccounts[0]?.hpSlGames ?? 0) +
+                (matchedAccounts[0]?.hpArGames ?? 0)
               ),
               inline: true,
             }
@@ -564,22 +556,24 @@ async function handleLookupCommandSub(
     // show the player's hots_accounts.hotsBattleTag
     const hotsAccounts =
       player?.usernames.accounts?.sort((a, b) => {
-        const aMMR = Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)
-        const bMMR = Math.max(b.hpSlMMR || 0, b.hpArMMR || 0, b.hpQmMMR || 0)
-        return bMMR - aMMR
+        const aMmr = Math.max(a.hpSlMMR, a.hpArMMR, a.hpQmMMR)
+        const bMmr = Math.max(b.hpSlMMR, b.hpArMMR, b.hpQmMMR)
+        return bMmr - aMmr
       }) || []
     const activeSubs = await getActiveSubstitutions(guildId)
     const accounts =
       hotsAccounts
-        ?.map(
-          (a, index) =>
-            `${index + 1}. ${Math.max(a.hpSlMMR || 0, a.hpArMMR || 0, a.hpQmMMR || 0)} ${a.hotsBattleTag}` +
+        ?.map((a, index) => {
+          const accMmr = Math.max(a.hpSlMMR, a.hpArMMR, a.hpQmMMR)
+          return (
+            `${index + 1}. ${accMmr} ${a.hotsBattleTag}` +
             (a.isPrimary ? ' (Primary)' : '') +
             getAccountLoanStatusTag(a, guildId, discordId, activeSubs)
-        )
+          )
+        })
         .join('\n') || 'No HotS accounts'
 
-    // get the player's highest MMR from the max player?.usernames using hpSlMMR, hpArMMR, or hpQmMMR
+    // get the player's MMR calculated by the database
     const MMR = player?.mmr ?? 0
 
     const limit = interaction.options.getInteger(CommandIds.RECENT_MATCHES_LIMIT, false) ?? 30
@@ -599,7 +593,7 @@ async function handleLookupCommandSub(
         },
         {
           name: '🎮 HotS Accounts & MMR',
-          value: `**Highest MMR:** ${MMR}\n${accounts}`,
+          value: `**MMR:** ${MMR}\n${accounts}`,
           inline: false,
         }
       )
@@ -811,10 +805,10 @@ async function handleLookupCommandSub(
         const dateStr =
           matchDate && !isNaN(matchDate.getTime())
             ? matchDate.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
             : 'Unknown date'
 
         const winLoss = m.win ? '🟩 Win' : '🟥 Loss'
@@ -903,7 +897,7 @@ export async function handleDeletePlayerCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
-    console.error('Interaction is not a command or button interaction')
+    console.error('Expected chat input command interaction, received button interaction')
     return
   }
   const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
@@ -920,9 +914,8 @@ export async function handleDeletePlayerCommand(
   await updateLobbyMessage(guildId, interaction)
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
-    content: `Deleted ${playersDeleted} player${
-      playersDeleted === 1 ? '' : 's'
-    } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+    content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
+      } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -931,7 +924,7 @@ export async function handleDeleteHotsAccountCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
   if (interaction.isButton()) {
-    console.error('Interaction is not a command or button interaction')
+    console.error('Expected chat input command interaction, received button interaction')
     return
   }
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true)
