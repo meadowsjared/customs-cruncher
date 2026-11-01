@@ -1,3 +1,6 @@
+import fs from 'fs/promises'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 import { createWorker, Worker } from 'tesseract.js'
 import {
@@ -257,11 +260,76 @@ function findBestAccountMatch(
   return bestMatch
 }
 
+const currentDir = path.dirname(fileURLToPath(import.meta.url))
+export const TEST_LOBBY_IMAGES_DIR = path.resolve(currentDir, '../assets/test-lobby-images')
+
+/**
+ * TOGGLE: Set this to false to easily disable saving scanned lobby images to /assets/test-lobby-images.
+ */
+export const SAVE_TEST_LOBBY_IMAGES = true
+
+/**
+ * Saves a scanned lobby screenshot under /assets/test-lobby-images.
+ * Uses a timestamped filename to prevent collisions and preserve scan history.
+ */
+export async function saveScannedLobbyImage(
+  imageBuffer: Buffer,
+  originalFilename?: string,
+  destinationDir = TEST_LOBBY_IMAGES_DIR
+): Promise<string | null> {
+  // To disable saving lobby images, toggle SAVE_TEST_LOBBY_IMAGES to false above
+  if (!SAVE_TEST_LOBBY_IMAGES) {
+    return null
+  }
+
+  try {
+    await fs.mkdir(destinationDir, { recursive: true })
+
+    let ext = 'png'
+    try {
+      const metadata = await sharp(imageBuffer).metadata()
+      if (metadata.format === 'jpeg') {
+        ext = 'jpg'
+      } else if (metadata.format) {
+        ext = metadata.format
+      }
+    } catch {
+      // Fallback to png if metadata parse fails
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    let sanitizedBase = 'lobby'
+
+    if (originalFilename) {
+      const parsed = path.parse(originalFilename)
+      const cleaned = parsed.name.replace(/[^a-zA-Z0-9_-]/g, '_')
+      if (cleaned.length > 0 && cleaned.toLowerCase() !== 'image') {
+        sanitizedBase = cleaned
+      }
+    }
+
+    const filename = `${sanitizedBase}_${timestamp}.${ext}`
+    const targetPath = path.join(destinationDir, filename)
+
+    await fs.writeFile(targetPath, imageBuffer)
+    return targetPath
+  } catch (err) {
+    console.error('Failed to save scanned lobby image:', err)
+    return null
+  }
+}
+
 export async function scanLobbyScreenshot(
   imageBuffer: Buffer,
   guildId: string,
-  sync = false
+  sync = false,
+  originalFilename?: string
 ): Promise<ScanLobbySummary> {
+  // To disable saving scanned images, toggle SAVE_TEST_LOBBY_IMAGES to false above (or comment out this call)
+  if (SAVE_TEST_LOBBY_IMAGES) {
+    await saveScannedLobbyImage(imageBuffer, originalFilename)
+  }
+
   const metadata = await sharp(imageBuffer).metadata()
   const width = metadata.width ?? 1920
   const height = metadata.height ?? 1080

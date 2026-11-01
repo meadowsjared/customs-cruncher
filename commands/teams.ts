@@ -603,7 +603,7 @@ export async function handleCheckTeamsCommand(
     const response = await fetch(screenshot.url)
     const arrayBuffer = await response.arrayBuffer()
     const imageBuffer = Buffer.from(arrayBuffer)
-    const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false)
+    const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false, screenshot.name)
 
     // Bot's stored teams
     const activePlayers = await getSortedActivePlayers(guildId)

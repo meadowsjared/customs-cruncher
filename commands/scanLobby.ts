@@ -151,7 +151,7 @@ export async function processAndApplyLobbyScan(
   const response = await fetch(screenshot.url)
   const arrayBuffer = await response.arrayBuffer()
   const imageBuffer = Buffer.from(arrayBuffer)
-  const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync)
+  const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync, screenshot.name)
 
   if (options?.updateLobby) {
     await updateLobbyMessage(guildId, interaction)
