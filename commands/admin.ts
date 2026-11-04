@@ -611,6 +611,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
 
   const targetUser = interaction.options.getUser('player', true)
   const amount = interaction.options.getNumber('amount')
+  const publish = interaction.options.getBoolean(CommandIds.PUBLISH) ?? false
 
   const player = await getPlayerByDiscordId(targetUser.id, guildId)
   if (!player) {
@@ -630,7 +631,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
     const mmr = player.mmr
     await safeReply(interaction, {
       content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (MMR: **${mmr}**).`,
-      flags: MessageFlags.Ephemeral,
+      ...(publish ? {} : { flags: MessageFlags.Ephemeral }),
     })
     return
   }
@@ -653,7 +654,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
 
   await safeReply(interaction, {
     content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (MMR: **${newMMR}**).`,
-    flags: MessageFlags.Ephemeral,
+    ...(publish ? {} : { flags: MessageFlags.Ephemeral }),
   })
 }
 

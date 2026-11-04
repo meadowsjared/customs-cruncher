@@ -908,6 +908,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         description: 'The MMR adjustment value to set (leave blank to view current adjustment)',
         required: false,
       },
+      {
+        name: CommandIds.PUBLISH,
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Show the response publicly instead of ephemeral (defaults to False)',
+        required: false,
+      },
     ],
   },
   {
