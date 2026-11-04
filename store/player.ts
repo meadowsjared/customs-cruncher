@@ -65,15 +65,19 @@ import {
 import {
   assignPlayerToTeam,
   changeTeams,
+  clearLastLobbyScan,
   clearTeams,
   getDraftPickedCount,
+  getLastLobbyScan,
   getNextDraftOrder,
   getSortedActivePlayers,
   getTeams,
   markAllPlayersInactive,
   resetActivePlayerTeams,
+  saveLastLobbyScan,
   setPlayerActive,
   setTeamsFromPlayers,
+  type StoredLobbyScan,
 } from './lobby'
 
 export {
@@ -81,6 +85,7 @@ export {
   changeTeams,
   clearAccountSubstitutions,
   clearActivePlayersCache,
+  clearLastLobbyScan,
   clearResolvedAccountCache,
   clearTeams,
   filterActiveSubstitutedAccounts,
@@ -90,6 +95,7 @@ export {
   getAssignAccountChoices,
   getAssignAccountClearChoices,
   getDraftPickedCount,
+  getLastLobbyScan,
   getNextDraftOrder,
   getOrCreateSubstituteAccount,
   getPlayerAggregatedStats,
@@ -108,6 +114,7 @@ export {
   relinkAccountSubstitutions,
   removeInteraction,
   resetActivePlayerTeams,
+  saveLastLobbyScan,
   setAccountSubstitution,
   setPlayerActive,
   setTeamsFromPlayers,
@@ -116,6 +123,7 @@ export {
   type HotSAccountMatch,
   type RegisteredPlayerAccount,
   type ResolvedHotsAccount,
+  type StoredLobbyScan,
 }
 
 /**

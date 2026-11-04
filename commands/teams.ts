@@ -16,11 +16,13 @@ import {
   changeTeams,
   formatPlayerDisplay,
   getActivePlayers,
+  getLastLobbyScan,
   getPlayerByDiscordId,
   getPlayerIdentifier,
   getSortedActivePlayers,
   getStoredInteraction,
   getTeams,
+  saveLastLobbyScan,
   setTeamsFromPlayers,
   storeInteraction,
 } from '../store/player'
@@ -151,6 +153,116 @@ export async function handleMakeTeamsCommand(
   await generateTeamsMessage(interaction, team1, team2, publish, true)
 }
 
+export interface TeamComparisonResult {
+  matches: boolean
+  swaps: string[]
+  moves: string[]
+  missingFromLobby: Player[]
+  extraInLobby: string[]
+  unregisteredInLobby: string[]
+  formattedReport: string
+}
+
+/**
+ * Compares current team rosters against a lobby scan (from screenshot OCR).
+ * Reused across /check_teams and team publishing (/make_teams, /publish) to show Nor required swaps.
+ */
+export async function compareTeamsToLobbyScan(
+  guildId: string,
+  team1: Player[],
+  team2: Player[],
+  lobbyScan: {
+    team1DiscordIds?: string[]
+    team2DiscordIds?: string[]
+    unregistered?: string[]
+  }
+): Promise<TeamComparisonResult> {
+  const lobbyTeam1Ids = lobbyScan.team1DiscordIds ?? []
+  const lobbyTeam2Ids = lobbyScan.team2DiscordIds ?? []
+  const unregisteredInLobby = lobbyScan.unregistered ?? []
+
+  // Determine mismatches
+  const mismatchedInTeam1 = team1.filter(p => !matchesScanList(p, lobbyTeam1Ids))
+  const mismatchedInTeam2 = team2.filter(p => !matchesScanList(p, lobbyTeam2Ids))
+
+  // Players that are on the opposite side in the screenshot
+  const team1InLobbyTeam2 = team1.filter(p => matchesScanList(p, lobbyTeam2Ids))
+  const team2InLobbyTeam1 = team2.filter(p => matchesScanList(p, lobbyTeam1Ids))
+
+  // Build swap suggestions
+  const swaps: string[] = []
+  const minSwaps = Math.min(team1InLobbyTeam2.length, team2InLobbyTeam1.length)
+  for (let i = 0; i < minSwaps; i++) {
+    swaps.push(
+      `Swap ${formatPlayerDisplay(team1InLobbyTeam2[i], guildId, { includeBattleTag: true })} ↔ ${formatPlayerDisplay(team2InLobbyTeam1[i], guildId, { includeBattleTag: true })}`
+    )
+  }
+
+  const moves: string[] = []
+  for (let i = minSwaps; i < team2InLobbyTeam1.length; i++) {
+    moves.push(`Move ${formatPlayerDisplay(team2InLobbyTeam1[i], guildId, { includeBattleTag: true })} to Team 2`)
+  }
+  for (let i = minSwaps; i < team1InLobbyTeam2.length; i++) {
+    moves.push(`Move ${formatPlayerDisplay(team1InLobbyTeam2[i], guildId, { includeBattleTag: true })} to Team 1`)
+  }
+
+  // Missing or extra players
+  const missingFromLobby = [...team1, ...team2].filter(
+    p => !matchesScanList(p, lobbyTeam1Ids) && !matchesScanList(p, lobbyTeam2Ids)
+  )
+  const extraInLobby = [...lobbyTeam1Ids, ...lobbyTeam2Ids].filter(
+    id => !team1.some(p => matchesScanList(p, [id])) && !team2.some(p => matchesScanList(p, [id]))
+  )
+
+  const matches =
+    mismatchedInTeam1.length === 0 &&
+    mismatchedInTeam2.length === 0 &&
+    missingFromLobby.length === 0 &&
+    extraInLobby.length === 0 &&
+    unregisteredInLobby.length === 0
+
+  let formattedReport = ''
+  if (matches) {
+    formattedReport = '✅ Teams match the lobby screenshot!'
+  } else {
+    const sections: string[] = []
+    if (swaps.length > 0) {
+      sections.push('**Swaps needed:**\n' + swaps.map(s => `- ${s}`).join('\n'))
+    }
+    if (moves.length > 0) {
+      sections.push('**Moves needed:**\n' + moves.map(m => `- ${m}`).join('\n'))
+    }
+    if (missingFromLobby.length > 0) {
+      sections.push(
+        `**Missing from lobby:** ${missingFromLobby.map(p => formatPlayerDisplay(p, guildId, { includeBattleTag: true })).join(', ')}`
+      )
+    }
+    if (extraInLobby.length > 0) {
+      const extraDisplays = await Promise.all(
+        extraInLobby.map(async id => {
+          const p = await getPlayerByDiscordId(id, guildId)
+          return p ? formatPlayerDisplay(p, guildId, { includeBattleTag: true }) : `<@${id}>`
+        })
+      )
+      sections.push(`**Extra in lobby:** ${extraDisplays.join(', ')}`)
+    }
+    if (unregisteredInLobby.length > 0) {
+      sections.push(`**Unregistered in lobby:** ${unregisteredInLobby.map(name => `\`${name}\``).join(', ')}`)
+    }
+    formattedReport = sections.join('\n\n')
+  }
+
+  return {
+    matches,
+    swaps,
+    moves,
+    missingFromLobby,
+    extraInLobby,
+    unregisteredInLobby,
+    formattedReport,
+  }
+}
+
 /**
  * Generate the message to show who is on what team
  * if publish it true, the message will be posted publicly, no ephemeral message is made
@@ -270,15 +382,28 @@ export async function generateTeamsMessage(
       .setColor('#5865F2')
       .setDescription(
         `**Team 1** (${prediction.team1AvgMMR} avg) vs **Team 2** (${prediction.team2AvgMMR} avg)\n` +
-        `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
-        `${prediction.outlookText}\n` +
-        `${prediction.roleStatusText}\n` +
-        swapsText
+          `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
+          `${prediction.outlookText}\n` +
+          `${prediction.roleStatusText}\n` +
+          swapsText
       )
     outlookEmbedAr.push(outlookEmbed)
   }
 
-  const embeds = [...outlookEmbedAr, team1embed, team2embed, ...spectatorEmbedAr]
+  const lobbySwapsEmbedAr: EmbedBuilder[] = []
+  if (publish && (team1.length > 0 || team2.length > 0)) {
+    const lastScan = await getLastLobbyScan(guildId)
+    if (lastScan && (lastScan.team1DiscordIds.length > 0 || lastScan.team2DiscordIds.length > 0)) {
+      const comparison = await compareTeamsToLobbyScan(guildId, team1, team2, lastScan)
+      const lobbySwapsEmbed = new EmbedBuilder()
+        .setTitle('🔄 In-Game Lobby Swaps for Nor')
+        .setDescription(comparison.formattedReport)
+        .setColor(comparison.matches ? '#57F287' : '#FFA500')
+      lobbySwapsEmbedAr.push(lobbySwapsEmbed)
+    }
+  }
+
+  const embeds = [...lobbySwapsEmbedAr, ...outlookEmbedAr, team1embed, team2embed, ...spectatorEmbedAr]
 
   if (interaction.isButton()) {
     try {
@@ -585,13 +710,6 @@ export async function handleCheckTeamsCommand(
   const publish = interaction.options.getBoolean(CommandIds.PUBLISH, false) ?? false
 
   const screenshot = interaction.options.getAttachment(CommandIds.SCREENSHOT)
-  if (!screenshot) {
-    await safeReply(interaction, {
-      content: 'Please attach a screenshot of the HotS custom game lobby.',
-      flags: MessageFlags.Ephemeral,
-    })
-    return
-  }
 
   // Defer reply: public unless publish flag is false
   if (publish) {
@@ -599,86 +717,37 @@ export async function handleCheckTeamsCommand(
   } else {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral })
   }
+
   try {
-    const response = await fetch(screenshot.url)
-    const arrayBuffer = await response.arrayBuffer()
-    const imageBuffer = Buffer.from(arrayBuffer)
-    const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false, screenshot.name)
+    let scanData: { team1DiscordIds?: string[]; team2DiscordIds?: string[]; unregistered?: string[] } | null = null
+
+    if (screenshot) {
+      const response = await fetch(screenshot.url)
+      const arrayBuffer = await response.arrayBuffer()
+      const imageBuffer = Buffer.from(arrayBuffer)
+      const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false, screenshot.name)
+      await saveLastLobbyScan(guildId, {
+        team1DiscordIds: scanSummary.team1DiscordIds,
+        team2DiscordIds: scanSummary.team2DiscordIds,
+        unregistered: scanSummary.unregistered,
+      })
+      scanData = scanSummary
+    } else {
+      scanData = await getLastLobbyScan(guildId)
+      if (!scanData) {
+        await interaction.editReply({
+          content: '❌ No recent lobby screenshot found. Please attach a screenshot of the HotS custom game lobby.',
+        })
+        return
+      }
+    }
 
     // Bot's stored teams
     const activePlayers = await getSortedActivePlayers(guildId)
     const { team1, team2 } = await getTeams(guildId, activePlayers)
 
-    const lobbyTeam1Ids = scanSummary.team1DiscordIds ?? []
-    const lobbyTeam2Ids = scanSummary.team2DiscordIds ?? []
-
-    // Determine mismatches
-    const mismatchedInTeam1 = team1.filter(p => !matchesScanList(p, lobbyTeam1Ids))
-    const mismatchedInTeam2 = team2.filter(p => !matchesScanList(p, lobbyTeam2Ids))
-
-    // Players that are on the opposite side in the screenshot
-    const team1InLobbyTeam2 = team1.filter(p => matchesScanList(p, lobbyTeam2Ids))
-    const team2InLobbyTeam1 = team2.filter(p => matchesScanList(p, lobbyTeam1Ids))
-
-    // Build swap suggestions
-    const swaps: string[] = []
-    const minSwaps = Math.min(team1InLobbyTeam2.length, team2InLobbyTeam1.length)
-    for (let i = 0; i < minSwaps; i++) {
-      swaps.push(
-        `Swap ${formatPlayerDisplay(team1InLobbyTeam2[i], guildId)} ↔ ${formatPlayerDisplay(team2InLobbyTeam1[i], guildId)}`
-      )
-    }
-
-    const moves: string[] = []
-    for (let i = minSwaps; i < team2InLobbyTeam1.length; i++) {
-      moves.push(`Move ${formatPlayerDisplay(team2InLobbyTeam1[i], guildId)} to Team 2`)
-    }
-    for (let i = minSwaps; i < team1InLobbyTeam2.length; i++) {
-      moves.push(`Move ${formatPlayerDisplay(team1InLobbyTeam2[i], guildId)} to Team 1`)
-    }
-
-    // Missing or extra players
-    const missingFromLobby = [...team1, ...team2].filter(
-      p => !matchesScanList(p, lobbyTeam1Ids) && !matchesScanList(p, lobbyTeam2Ids)
-    )
-    const extraInLobby = [...lobbyTeam1Ids, ...lobbyTeam2Ids].filter(
-      id => !team1.some(p => matchesScanList(p, [id])) && !team2.some(p => matchesScanList(p, [id]))
-    )
-    const unregisteredInLobby = scanSummary.unregistered ?? []
-
-    let reply = ''
-    if (
-      mismatchedInTeam1.length === 0 &&
-      mismatchedInTeam2.length === 0 &&
-      missingFromLobby.length === 0 &&
-      extraInLobby.length === 0 &&
-      unregisteredInLobby.length === 0
-    ) {
-      reply = '✅ Teams match the lobby screenshot!'
-    } else {
-      if (swaps.length > 0) {
-        reply += '**Suggested swaps:**\n' + swaps.map(s => `- ${s}`).join('\n') + '\n\n'
-      }
-      if (moves.length > 0) {
-        reply += '**Suggested moves:**\n' + moves.map(m => `- ${m}`).join('\n') + '\n\n'
-      }
-      if (missingFromLobby.length > 0) {
-        reply += `**Missing from lobby:** ${missingFromLobby.map(p => formatPlayerDisplay(p, guildId)).join(', ')}\n`
-      }
-      if (extraInLobby.length > 0) {
-        const extraDisplays = await Promise.all(
-          extraInLobby.map(async id => {
-            const p = await getPlayerByDiscordId(id, guildId)
-            return p ? formatPlayerDisplay(p, guildId) : `<@${id}>`
-          })
-        )
-        reply += `**Extra in lobby:** ${extraDisplays.join(', ')}\n`
-      }
-      if (unregisteredInLobby.length > 0) {
-        reply += `**Unregistered in lobby:** ${unregisteredInLobby.map(name => `\`${name}\``).join(', ')}\n`
-      }
-    }
-    await interaction.editReply({ content: reply.trim() })
+    const comparison = await compareTeamsToLobbyScan(guildId, team1, team2, scanData)
+    await interaction.editReply({ content: comparison.formattedReport })
   } catch (error) {
     console.error('Error in check_teams command:', error)
     await interaction.editReply({
@@ -821,8 +890,9 @@ export async function handleMoveToTeamsCommand(
     await interaction.editReply({
       content: `Moved ${numberMoved} players to their respective team channels: ${result
         .map(c => `<#${c.channelId}>`)
-        .join(', ')}\nWARNING: **${teams.team1.length + teams.team2.length - numberMoved
-        } players could not be moved.**`,
+        .join(', ')}\nWARNING: **${
+        teams.team1.length + teams.team2.length - numberMoved
+      } players could not be moved.**`,
     })
   } else {
     await interaction.editReply({
@@ -920,4 +990,3 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
     flags: MessageFlags.Ephemeral,
   })
 }
-

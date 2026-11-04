@@ -12,6 +12,7 @@ import {
   getActivePlayersCacheEntry,
   setActivePlayersCacheEntry,
 } from './playerCache'
+import { deleteSetting, getSetting, setSetting } from './settings'
 
 /**
  * Marks all players as inactive in the database for a guild.
@@ -19,6 +20,7 @@ import {
 export async function markAllPlayersInactive(guildId: string): Promise<void> {
   await sql`DELETE FROM lobby_players WHERE guild_id = ${guildId}`
   clearActivePlayersCache(guildId)
+  await clearLastLobbyScan(guildId)
 }
 
 async function resolvePlayerForActive(
@@ -465,4 +467,82 @@ export async function getTeams(
     (t1Captain === resolvedPlayers[0] ? resolvedPlayers[1] : resolvedPlayers[0])
   return { team1, team2, spectators, t1Captain, t2Captain }
 }
+
+export interface StoredLobbyScan {
+  team1DiscordIds: string[]
+  team2DiscordIds: string[]
+  unregistered: string[]
+  scannedAt: string
+}
+
+export const LAST_LOBBY_SCAN_KEY = 'last_lobby_scan'
+
+function isStoredLobbyScan(obj: unknown): obj is StoredLobbyScan {
+  if (typeof obj !== 'object' || obj === null) {
+    return false
+  }
+  return (
+    'team1DiscordIds' in obj &&
+    Array.isArray(obj.team1DiscordIds) &&
+    'team2DiscordIds' in obj &&
+    Array.isArray(obj.team2DiscordIds) &&
+    'scannedAt' in obj &&
+    typeof obj.scannedAt === 'string'
+  )
+}
+
+/**
+ * Saves the latest scanned lobby state (slot assignments and unregistered players)
+ * to PostgreSQL settings for a guild so it can be referenced by /make_teams, /publish, and /check_teams.
+ */
+export async function saveLastLobbyScan(
+  guildId: string,
+  scan: {
+    team1DiscordIds: string[]
+    team2DiscordIds: string[]
+    unregistered?: string[]
+  }
+): Promise<void> {
+  const data: StoredLobbyScan = {
+    team1DiscordIds: scan.team1DiscordIds,
+    team2DiscordIds: scan.team2DiscordIds,
+    unregistered: scan.unregistered ?? [],
+    scannedAt: new Date().toISOString(),
+  }
+  await setSetting(LAST_LOBBY_SCAN_KEY, JSON.stringify(data), guildId)
+}
+
+/**
+ * Retrieves the latest scanned lobby state for a guild.
+ */
+export async function getLastLobbyScan(guildId: string): Promise<StoredLobbyScan | null> {
+  const raw = await getSetting(LAST_LOBBY_SCAN_KEY, guildId)
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (isStoredLobbyScan(parsed)) {
+      const unregistered =
+        'unregistered' in parsed && Array.isArray(parsed.unregistered)
+          ? parsed.unregistered.filter((item): item is string => typeof item === 'string')
+          : []
+      return {
+        team1DiscordIds: parsed.team1DiscordIds.filter((item): item is string => typeof item === 'string'),
+        team2DiscordIds: parsed.team2DiscordIds.filter((item): item is string => typeof item === 'string'),
+        unregistered,
+        scannedAt: parsed.scannedAt,
+      }
+    }
+  } catch (error) {
+    console.error('Failed to parse last_lobby_scan:', error)
+  }
+  return null
+}
+
+/**
+ * Clears the latest scanned lobby state for a guild.
+ */
+export async function clearLastLobbyScan(guildId: string): Promise<void> {
+  await deleteSetting(LAST_LOBBY_SCAN_KEY, guildId)
+}
+
 

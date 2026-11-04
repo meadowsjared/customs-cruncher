@@ -3,6 +3,7 @@ import { CommandIds } from '../constants'
 import {
   getPlayerIdentifier,
   getSortedActivePlayers,
+  saveLastLobbyScan,
   setTeamsFromPlayers,
 } from '../store/player'
 import { Player } from '../types/player'
@@ -152,6 +153,12 @@ export async function processAndApplyLobbyScan(
   const arrayBuffer = await response.arrayBuffer()
   const imageBuffer = Buffer.from(arrayBuffer)
   const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync, screenshot.name)
+
+  await saveLastLobbyScan(guildId, {
+    team1DiscordIds: summary.team1DiscordIds,
+    team2DiscordIds: summary.team2DiscordIds,
+    unregistered: summary.unregistered,
+  })
 
   if (options?.updateLobby) {
     await updateLobbyMessage(guildId, interaction)
