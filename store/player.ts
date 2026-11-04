@@ -579,6 +579,72 @@ export async function getAllPlayers(
   return rows.map<Player>(row => getPlayerFromRow(row, accounts))
 }
 
+export interface NearbyPlayersResult {
+  players: Player[]
+  targetRank: number
+  totalCount: number
+}
+
+/**
+ * Retrieves players sorted by MMR centered on a target player (up to 5 above, target player, up to 5 below).
+ */
+export async function getNearbyPlayersByMmr(
+  targetDiscordId: string,
+  aboveCount = 5,
+  belowCount = 5
+): Promise<NearbyPlayersResult | null> {
+  const rows = await sql<FlatPlayer[]>`
+    SELECT
+      p.*,
+      '' AS hots_battle_tag,
+      FALSE AS active,
+      NULL::int AS team,
+      NULL::int AS lobby_rank,
+      NULL::int AS draft_order,
+      COALESCE(v.mmr, 0) AS mmr,
+      v.custom_games,
+      v.custom_win_rate
+    FROM players p
+    LEFT JOIN v_player_mmr v ON p.discord_id = v.discord_id
+    ORDER BY COALESCE(v.mmr, 0) DESC, p.discord_display_name ASC
+  `
+
+  if (rows.length === 0) {
+    return null
+  }
+
+  const targetIndex = rows.findIndex(r => r.discord_id === targetDiscordId)
+  if (targetIndex === -1) {
+    return null
+  }
+
+  const startIndex = Math.max(0, targetIndex - aboveCount)
+  const endIndex = Math.min(rows.length, targetIndex + 1 + belowCount)
+  const windowRows = rows.slice(startIndex, endIndex)
+
+  const discordIds = windowRows.map(r => r.discord_id).filter((id): id is string => Boolean(id))
+  const accounts =
+    discordIds.length > 0
+      ? await sql<HotsAccountRow[]>`
+          SELECT *
+          FROM hots_accounts
+          WHERE discord_id IN ${sql(discordIds)}
+        `
+      : []
+
+  const players = windowRows.map<Player>((row, idx) => {
+    const p = getPlayerFromRow(row, accounts)
+    p.lobbyRank = startIndex + idx + 1
+    return p
+  })
+
+  return {
+    players,
+    targetRank: targetIndex + 1,
+    totalCount: rows.length,
+  }
+}
+
 /**
  * Triggers a background MMR fetch from Heroes Profile for an account (guest or registered).
  * Updates the database and refreshes the lobby message when finished.

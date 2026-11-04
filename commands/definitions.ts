@@ -914,6 +914,13 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         description: 'Show the response publicly instead of ephemeral (defaults to False)',
         required: false,
       },
+      {
+        name: CommandIds.COUNT,
+        type: ApplicationCommandOptionType.Integer,
+        description: 'Number of players above and below to include in the report (default: 5)',
+        required: false,
+        minValue: 0,
+      },
     ],
   },
   {

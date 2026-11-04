@@ -16,7 +16,9 @@ import { getLobbyMessages } from '../store/channels'
 import { getUnlinkedReplayAccounts } from '../store/hotsReplays'
 import {
   findPlayersByHotSAccount,
+  formatPlayerDisplay,
   getActivePlayers,
+  getNearbyPlayersByMmr,
   getPlayerByDiscordId,
   getPlayerByIdentifier,
   getPlayerIdentifier,
@@ -600,6 +602,37 @@ async function createNewAdminRoleButton(
 }
 
 /**
+ * Generates a report of nearby players sorted by MMR (centered on target player)
+ * to provide context on who they are similar in skill to.
+ */
+export async function generateNearbyPlayersReport(
+  targetDiscordId: string,
+  guildId: string,
+  count = 5
+): Promise<string> {
+  if (count <= 0) {
+    return ''
+  }
+
+  const nearby = await getNearbyPlayersByMmr(targetDiscordId, count, count)
+  if (!nearby || nearby.players.length === 0) {
+    return ''
+  }
+
+  const lines = nearby.players.map(p => {
+    const isTarget = p.discordId === targetDiscordId
+    const formatted = formatPlayerDisplay(p, guildId, {
+      includeBattleTag: true,
+      includeRole: true,
+      includeMMR: true,
+    })
+    return isTarget ? `👉 **${formatted}**` : `   ${formatted}`
+  })
+
+  return `📊 **Nearby Players by MMR (Rank #${nearby.targetRank} of ${nearby.totalCount}):**\n${lines.join('\n')}`
+}
+
+/**
  * Handles the /player-adjust slash command to view or set a player's MMR adjustment.
  * @param interaction The ChatInputCommandInteraction object from Discord
  */
@@ -611,7 +644,11 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
 
   const targetUser = interaction.options.getUser('player', true)
   const amount = interaction.options.getNumber('amount')
-  const publish = interaction.options.getBoolean(CommandIds.PUBLISH) ?? false
+  const publish =
+    interaction.options.getBoolean(CommandIds.PUBLISH) ?? interaction.options.getBoolean('public') ?? false
+  const countOption =
+    interaction.options.getInteger(CommandIds.COUNT) ?? interaction.options.getInteger('count') ?? null
+  const count = countOption !== null ? Math.max(0, Math.min(countOption, 15)) : 5
 
   const player = await getPlayerByDiscordId(targetUser.id, guildId)
   if (!player) {
@@ -629,8 +666,10 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
     const currentAdj = player.adjustment ?? 0
     const adjStr = currentAdj > 0 ? `+${currentAdj}` : `${currentAdj}`
     const mmr = player.mmr
+    const report = await generateNearbyPlayersReport(targetUser.id, guildId, count)
+    const reportText = report ? `\n\n${report}` : ''
     await safeReply(interaction, {
-      content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (MMR: **${mmr}**).`,
+      content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (MMR: **${mmr}**).${reportText}`,
       ...(publish ? {} : { flags: MessageFlags.Ephemeral }),
     })
     return
@@ -651,9 +690,11 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
   const prevAdjStr = prevAdjVal > 0 ? `+${prevAdjVal}` : `${prevAdjVal}`
   const newAdjStr = amount > 0 ? `+${amount}` : `${amount}`
   const newMMR = updatedPlayer.mmr
+  const report = await generateNearbyPlayersReport(targetUser.id, guildId, count)
+  const reportText = report ? `\n\n${report}` : ''
 
   await safeReply(interaction, {
-    content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (MMR: **${newMMR}**).`,
+    content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (MMR: **${newMMR}**).${reportText}`,
     ...(publish ? {} : { flags: MessageFlags.Ephemeral }),
   })
 }
