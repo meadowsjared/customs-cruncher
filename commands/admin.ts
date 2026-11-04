@@ -653,6 +653,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
 
   await safeReply(interaction, {
     content: `Updated MMR adjustment for **${displayName}** from **${prevAdjStr}** to **${newAdjStr}** (MMR: **${newMMR}**).`,
+    flags: MessageFlags.Ephemeral,
   })
 }
 
@@ -742,17 +743,9 @@ export async function handleAdminUnlinkedCommand(
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(currentPage >= totalPages - 1)
 
-  const refreshButton = new ButtonBuilder()
-    .setCustomId(refreshCustomId)
-    .setEmoji('🔄')
-    .setStyle(ButtonStyle.Primary)
+  const refreshButton = new ButtonBuilder().setCustomId(refreshCustomId).setEmoji('🔄').setStyle(ButtonStyle.Primary)
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    prevButton,
-    pageIndicator,
-    nextButton,
-    refreshButton
-  )
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(prevButton, pageIndicator, nextButton, refreshButton)
 
   if (interaction.isButton()) {
     await interaction.update({
@@ -789,4 +782,3 @@ export async function handleAdminUnlinkedButton(interaction: ButtonInteraction<C
 
   await handleAdminUnlinkedCommand(interaction, page, sortBy, minGames, search)
 }
-
