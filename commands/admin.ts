@@ -627,7 +627,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
   if (amount === null) {
     // View current adjustment
     const currentAdj = player.adjustment ?? 0
-    const adjStr = currentAdj >= 0 ? `+${currentAdj}` : `${currentAdj}`
+    const adjStr = currentAdj > 0 ? `+${currentAdj}` : `${currentAdj}`
     const mmr = player.mmr
     await safeReply(interaction, {
       content: `**${displayName}**'s current MMR adjustment is **${adjStr}** (MMR: **${mmr}**).`,
