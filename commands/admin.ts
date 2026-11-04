@@ -648,8 +648,8 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
 
   const { previousAdjustment, updatedPlayer } = result
   const prevAdjVal = previousAdjustment ?? 0
-  const prevAdjStr = prevAdjVal >= 0 ? `+${prevAdjVal}` : `${prevAdjVal}`
-  const newAdjStr = amount >= 0 ? `+${amount}` : `${amount}`
+  const prevAdjStr = prevAdjVal > 0 ? `+${prevAdjVal}` : `${prevAdjVal}`
+  const newAdjStr = amount > 0 ? `+${amount}` : `${amount}`
   const newMMR = updatedPlayer.mmr
 
   await safeReply(interaction, {
