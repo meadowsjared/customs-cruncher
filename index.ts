@@ -135,7 +135,33 @@ client.on('interactionCreate', async interaction => {
   }
 })
 
-client.login(process.env.DISCORD_TOKEN)
+async function startBot(maxRetries = 10, delayMs = 5000): Promise<void> {
+  const token = process.env.DISCORD_TOKEN
+  if (!token) {
+    console.error('No DISCORD_TOKEN provided in environment.')
+    process.exit(1)
+  }
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Connecting to Discord (attempt ${attempt}/${maxRetries})...`)
+      await client.login(token)
+      console.log('Discord client logged in successfully.')
+      return
+    } catch (error) {
+      console.error(`Failed to connect to Discord on attempt ${attempt}/${maxRetries}:`, error)
+      if (attempt < maxRetries) {
+        console.log(`Retrying in ${delayMs / 1000}s...`)
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      } else {
+        console.error('All connection attempts failed. Exiting process so systemd can restart.')
+        process.exit(1)
+      }
+    }
+  }
+}
+
+void startBot()
 
 // Graceful shutdown handler
 const shutdown = async () => {
