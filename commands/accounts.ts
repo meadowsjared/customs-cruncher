@@ -690,8 +690,10 @@ export async function handleAssignAccountAutocomplete(interaction: AutocompleteI
   }
 
   const query = focusedOption.value
+  const subcommand = interaction.options.getSubcommand(false)
   const choices =
-    interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
+    interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR ||
+    (interaction.commandName === CommandIds.SUB && subcommand === 'clear')
       ? await getAssignAccountClearChoices(guildId, query)
       : await getAssignAccountChoices(guildId, query)
 

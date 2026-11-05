@@ -35,7 +35,11 @@ export async function handleDraftAutocomplete(interaction: AutocompleteInteracti
   if (!guildId) return
   let sortedPlayers = await getSortedActivePlayers(guildId)
 
-  if (interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN) {
+  const subcommand = interaction.options.getSubcommand(false)
+  if (
+    interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN ||
+    (interaction.commandName === CommandIds.DRAFT && subcommand === 'assign')
+  ) {
     const selectedTeam = interaction.options.getString('team')
     if (selectedTeam === '1') {
       sortedPlayers = sortedPlayers.filter(p => p.team !== 1)

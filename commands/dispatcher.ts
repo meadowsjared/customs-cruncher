@@ -126,9 +126,10 @@ function wrapSlashOnly(handler: SlashOnlyHandler): InteractionHandler {
 const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.NEW_GAME, handleNewGameCommand],
   [CommandIds.SCAN_LOBBY, handleScanLobbyCommand],
+  [CommandIds.TEAMS, wrapSlashOnly(handleTeamsSubCommand)],
   [CommandIds.SET_TEAMS, handleSetTeamsCommand],
   [CommandIds.MAKE_TEAMS, handleMakeTeamsCommand],
-  [CommandIds.DRAFT, handleDraftCommand],
+  [CommandIds.DRAFT, wrapSlashOnly(handleDraftSubCommand)],
   [CommandIds.DRAFT_CAPTAIN, handleDraftCaptainCommand],
   [CommandIds.DRAFT_TEAM_ASSIGN, handleDraftTeamAssignCommand],
   [CommandIds.DRAFT_MODE, handleDraftModeCommand],
@@ -174,6 +175,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   ['refresh_lobby', handleRefreshLobbyMessage],
   [CommandIds.MOVE, wrapSlashOnly(handleMoveCommand)],
   [CommandIds.DELETE_MESSAGE, handleDeleteMessageCommand],
+  [CommandIds.REPLAYS, wrapSlashOnly(handleReplaysSubCommand)],
   [CommandIds.IMPORT_REPLAYS, handleImportReplaysCommand],
   [CommandIds.REASSIGN_REPLAY_PLAYER, wrapSlashOnly(handleReassignReplayPlayerCommand)],
   [CommandIds.RECENT_REPLAYS, wrapSlashOnly(handleRecentReplaysCommand)],
@@ -186,9 +188,94 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.CANCEL_MAP_VOTE, handleCancelMapVoteCommand],
   [CommandIds.PLAYER_ADJUST, wrapSlashOnly(handlePlayerAdjustCommand)],
   [CommandIds.CHECK_TEAMS, handleCheckTeamsCommand],
+  [CommandIds.SUB, wrapSlashOnly(handleSubSubCommand)],
   [CommandIds.ASSIGN_ACCOUNT, wrapSlashOnly(handleAssignAccountCommand)],
   [CommandIds.ASSIGN_ACCOUNT_CLEAR, wrapSlashOnly(handleAssignAccountClearCommand)],
 ])
+
+/**
+ * Handles subcommands for `/sub <subcommand>`
+ */
+async function handleSubSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  if (subcommand === 'clear') {
+    await handleAssignAccountClearCommand(interaction)
+    return
+  }
+  await handleAssignAccountCommand(interaction)
+}
+
+/**
+ * Handles subcommands for `/teams <subcommand>`
+ */
+async function handleTeamsSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  switch (subcommand) {
+    case 'make':
+      await handleMakeTeamsCommand(interaction)
+      return
+    case 'set':
+      await handleSetTeamsCommand(interaction)
+      return
+    case 'swap':
+      await handleSwapTeamsCommand(interaction)
+      return
+    case 'publish':
+      await handlePublishTeamsCommand(interaction)
+      return
+    case 'check':
+      await handleCheckTeamsCommand(interaction)
+      return
+    case 'show':
+    default:
+      await handleShowTeamsCommand(interaction)
+      return
+  }
+}
+
+/**
+ * Handles subcommands for `/replays <subcommand>`
+ */
+async function handleReplaysSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  switch (subcommand) {
+    case 'import':
+      await handleImportReplaysCommand(interaction)
+      return
+    case 'reassign':
+      await handleReassignReplayPlayerCommand(interaction)
+      return
+    case 'recent':
+    default:
+      await handleRecentReplaysCommand(interaction)
+      return
+  }
+}
+
+/**
+ * Handles subcommands for `/draft <subcommand>`
+ */
+async function handleDraftSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  switch (subcommand) {
+    case 'captain':
+      await handleDraftCaptainCommand(interaction)
+      return
+    case 'mode':
+      await handleDraftModeCommand(interaction)
+      return
+    case 'undo':
+      await handleDraftUndoCommand(interaction)
+      return
+    case 'assign':
+      await handleDraftTeamAssignCommand(interaction)
+      return
+    case 'start':
+    default:
+      await handleDraftCommand(interaction)
+      return
+  }
+}
 
 /**
  * Handles subcommands for `/map <subcommand>`
@@ -457,6 +544,7 @@ export async function dispatchInteraction(interaction: Interaction<CacheType>): 
       return
     }
     if (
+      interaction.commandName === CommandIds.SUB ||
       interaction.commandName === CommandIds.ASSIGN_ACCOUNT ||
       interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
     ) {
@@ -464,6 +552,7 @@ export async function dispatchInteraction(interaction: Interaction<CacheType>): 
       return
     }
     if (
+      interaction.commandName === CommandIds.REPLAYS ||
       interaction.commandName === CommandIds.REASSIGN_REPLAY_PLAYER ||
       interaction.commandName === CommandIds.RECENT_REPLAYS
     ) {
