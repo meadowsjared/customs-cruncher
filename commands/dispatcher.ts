@@ -116,8 +116,7 @@ function wrapSlashOnly(handler: SlashOnlyHandler): InteractionHandler {
  * Registry of exact-match command and button custom ID handlers.
  */
 const exactHandlers = new Map<string, InteractionHandler>([
-  [CommandIds.NEW_GAME, handleNewGameCommand],
-  [CommandIds.SCAN_LOBBY, handleScanLobbyCommand],
+  [CommandIds.LOBBY, wrapSlashOnly(handleLobbySubCommand)],
   [CommandIds.TEAMS, wrapSlashOnly(handleTeamsSubCommand)],
   [CommandIds.DRAFT, wrapSlashOnly(handleDraftSubCommand)],
   [CommandIds.CHANNEL, wrapSlashOnly(handleChannelSubCommand)],
@@ -128,7 +127,6 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.JOIN, handleJoinCommand],
   [CommandIds.REJOIN, handleRejoinCommand],
   [CommandIds.LEAVE, handleLeaveCommand],
-  [CommandIds.CLEAR, handleClearCommand],
   [CommandIds.PLAYERS, async i => {
     if (i.isChatInputCommand()) {
       const mode = i.options.getString('mode')
@@ -146,7 +144,6 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.TWITCH, handleTwitchCommand],
   [CommandIds.REGISTER, handleRegisterCommand],
   [CommandIds.LOOKUP, handleLookupCommand],
-  ['refresh_lobby', handleRefreshLobbyMessage],
   [CommandIds.MOVE, wrapSlashOnly(handleMoveSubCommand)],
   [CommandIds.PLAYER, wrapSlashOnly(handlePlayerSubCommand)],
   [CommandIds.DELETE_MESSAGE, handleDeleteMessageCommand],
@@ -157,6 +154,28 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.MAP, wrapSlashOnly(handleMapSubCommand)],
   [CommandIds.SUB, wrapSlashOnly(handleSubSubCommand)],
 ])
+
+/**
+ * Handles subcommands for `/lobby <subcommand>`
+ */
+async function handleLobbySubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  switch (subcommand) {
+    case 'scan':
+      await handleScanLobbyCommand(interaction)
+      return
+    case 'refresh':
+      await handleRefreshLobbyMessage(interaction)
+      return
+    case 'clear':
+      await handleClearCommand(interaction)
+      return
+    case 'new':
+    default:
+      await handleNewGameCommand(interaction)
+      return
+  }
+}
 
 /**
  * Handles subcommands for `/move <subcommand>`

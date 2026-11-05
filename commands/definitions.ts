@@ -49,6 +49,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.String,
         description: 'The Heroes of the Storm battle tag to add',
         autocomplete: true,
+        required: true,
       },
     ],
   },
@@ -70,40 +71,57 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.NEW_GAME,
-    description: 'Start a new game',
+    name: CommandIds.LOBBY,
+    description: 'Custom game lobby management commands',
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
-        name: CommandIds.SCREENSHOT,
-        type: ApplicationCommandOptionType.Attachment,
-        description: 'Optional HotS lobby screenshot to automatically add players',
-        required: false,
+        name: 'new',
+        description: 'Start a new game lobby session and clear current active players',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.SCREENSHOT,
+            type: ApplicationCommandOptionType.Attachment,
+            description: 'Optional HotS lobby screenshot to automatically add players',
+            required: false,
+          },
+          {
+            name: CommandIds.SYNC,
+            type: ApplicationCommandOptionType.Boolean,
+            description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
+            required: false,
+          },
+        ],
       },
       {
-        name: CommandIds.SYNC,
-        type: ApplicationCommandOptionType.Boolean,
-        description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
-        required: false,
+        name: 'scan',
+        description: 'Scan a HotS custom game lobby screenshot to add players and check who is missing',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.SCREENSHOT,
+            type: ApplicationCommandOptionType.Attachment,
+            description: 'HotS lobby screenshot',
+            required: true,
+          },
+          {
+            name: CommandIds.SYNC,
+            type: ApplicationCommandOptionType.Boolean,
+            description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
+            required: false,
+          },
+        ],
       },
-    ],
-  },
-  {
-    name: CommandIds.SCAN_LOBBY,
-    description: 'Scan a HotS custom game lobby screenshot to add players and check who is missing',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
       {
-        name: CommandIds.SCREENSHOT,
-        type: ApplicationCommandOptionType.Attachment,
-        description: 'HotS lobby screenshot',
-        required: true,
+        name: 'refresh',
+        description: 'Refresh the lobby announcement message',
+        type: ApplicationCommandOptionType.Subcommand,
       },
       {
-        name: CommandIds.SYNC,
-        type: ApplicationCommandOptionType.Boolean,
-        description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
-        required: false,
+        name: 'clear',
+        description: 'Clear the lobby and remove all players',
+        type: ApplicationCommandOptionType.Subcommand,
       },
     ],
   },
@@ -427,11 +445,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Rejoin the lobby with your previous battle tag and role',
   },
   {
-    name: CommandIds.CLEAR,
-    description: 'Clear the lobby and remove all players',
-    defaultMemberPermissions: minimumAdminPermissions,
-  },
-  {
     name: CommandIds.PLAYERS,
     description: 'List players in the lobby or all registered players in the database',
     options: [
@@ -534,35 +547,10 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: 'refresh_lobby',
-    description: 'Refresh the lobby announcement message',
-    defaultMemberPermissions: minimumAdminPermissions,
-  },
-  {
     name: CommandIds.ADMIN,
     description: 'Admin commands to manage players.',
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
-      {
-        name: CommandIds.BATTLE_TAG,
-        description: "Change a player's hots battle tag.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.User,
-            required: true,
-          },
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: "The player's new hots battle tag.",
-            type: ApplicationCommandOptionType.String,
-            autocomplete: true,
-            required: true,
-          },
-        ],
-      },
       {
         name: CommandIds.ROLE,
         description: "Change a player's role.",
