@@ -384,7 +384,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         name: 'user',
         type: ApplicationCommandOptionType.User,
         description: 'The Discord user who hosts custom games (leave blank to view current)',
-        required: true,
+        required: false,
       },
     ],
   },
