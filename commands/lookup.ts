@@ -129,13 +129,13 @@ export async function handlePlayersAllCommand(
     await interaction.deferReply({ flags: safePing(MessageFlags.Ephemeral) })
     // store the reply for later
     if (newInteraction) {
-      storeInteraction(`${playerId}_${CommandIds.PLAYERS_ALL}`, interaction.channelId, interaction)
+      storeInteraction(`${playerId}_players_all`, interaction.channelId, interaction)
     }
   } else {
     if (interaction.isButton()) {
       await safeDeferUpdate(interaction)
     }
-    newInteraction = getStoredInteraction(`${playerId}_${CommandIds.PLAYERS_ALL}`, interaction.channelId)
+    newInteraction = getStoredInteraction(`${playerId}_players_all`, interaction.channelId)
   }
   const pageNumber = parseInt(pageString, 10)
   const players = await getAllPlayers(pageNumber, sort, ascending)
@@ -197,26 +197,6 @@ export async function handlePlayersAllCommand(
       })
     }
   }
-}
-
-export async function handleLookupByDiscordIdCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
-  if (interaction.isButton()) {
-    console.error('Expected chat input command interaction, received button interaction')
-    return
-  }
-  const guildId = await requireGuildId(interaction)
-  if (!guildId) return
-  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true).replace(/[<@>]/g, '')
-  const displayName = interaction.options.getString(CommandIds.DISCORD_DISPLAY_NAME, true)
-  const discordName = interaction.options.getString(CommandIds.DISCORD_NAME, true)
-  const discordData: DiscordUserNames = {
-    discordName: discordName,
-    discordGlobalName: displayName,
-    discordDisplayName: displayName,
-  }
-  return await handleLookupCommandSub(interaction, discordId, discordData, guildId)
 }
 
 export async function handleLookupAutocomplete(interaction: AutocompleteInteraction): Promise<void> {

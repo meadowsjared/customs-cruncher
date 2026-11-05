@@ -61,7 +61,6 @@ import {
   handleDeleteHotsAccountCommand,
   handleDeletePlayerCommand,
   handleLookupAutocomplete,
-  handleLookupByDiscordIdCommand,
   handleLookupCommand,
   handlePlayersAllCommand,
   handlePlayersCommand,
@@ -127,16 +126,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.NEW_GAME, handleNewGameCommand],
   [CommandIds.SCAN_LOBBY, handleScanLobbyCommand],
   [CommandIds.TEAMS, wrapSlashOnly(handleTeamsSubCommand)],
-  [CommandIds.SET_TEAMS, handleSetTeamsCommand],
-  [CommandIds.MAKE_TEAMS, handleMakeTeamsCommand],
   [CommandIds.DRAFT, wrapSlashOnly(handleDraftSubCommand)],
-  [CommandIds.DRAFT_CAPTAIN, handleDraftCaptainCommand],
-  [CommandIds.DRAFT_TEAM_ASSIGN, handleDraftTeamAssignCommand],
-  [CommandIds.DRAFT_MODE, handleDraftModeCommand],
-  [CommandIds.DRAFT_UNDO, handleDraftUndoCommand],
-  [CommandIds.SWAP_PLAYERS, handleSwapTeamsCommand],
-  [CommandIds.PUBLISH_TEAMS, handlePublishTeamsCommand],
-  [CommandIds.SHOW_TEAMS, handleShowTeamsCommand],
   [CommandIds.SET_CHANNEL_TEAM_ID, handleSetChannelTeamIdCommand],
   [CommandIds.SET_LOBBY_CHANNEL, handleSetLobbyChannelCommand],
   [CommandIds.SET_BOT_CHANNEL, handleSetBotChannelCommand],
@@ -162,13 +152,10 @@ const exactHandlers = new Map<string, InteractionHandler>([
     }
     return handlePlayersCommand(i)
   }],
-  [CommandIds.PLAYERS_RAW, async i => handlePlayersCommand(i, true)],
-  [CommandIds.PLAYERS_ALL, async i => handlePlayersAllCommand(i)],
   [CommandIds.ADD_ACCOUNT, handleAddHotsAccountCommand],
   [CommandIds.ROLE, handleEditRoleCommand],
   [CommandIds.TWITCH, handleTwitchCommand],
   [CommandIds.REGISTER, handleRegisterCommand],
-  [`${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`, handleLookupByDiscordIdCommand],
   [CommandIds.LOOKUP, handleLookupCommand],
   [CommandIds.DELETE_PLAYER, handleDeletePlayerCommand],
   [CommandIds.DELETE_HOTS_ACCOUNT, handleDeleteHotsAccountCommand],
@@ -177,21 +164,11 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.PLAYER, wrapSlashOnly(handlePlayerSubCommand)],
   [CommandIds.DELETE_MESSAGE, handleDeleteMessageCommand],
   [CommandIds.REPLAYS, wrapSlashOnly(handleReplaysSubCommand)],
-  [CommandIds.IMPORT_REPLAYS, handleImportReplaysCommand],
-  [CommandIds.REASSIGN_REPLAY_PLAYER, wrapSlashOnly(handleReassignReplayPlayerCommand)],
-  [CommandIds.RECENT_REPLAYS, wrapSlashOnly(handleRecentReplaysCommand)],
   [CommandIds.CHANNEL_COMMAND, wrapSlashOnly(handleChannelCommand)],
   [CommandIds.ADMIN, wrapSlashOnly(handleAdminSubCommand)],
   [`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`, async i => updateAdminActiveButtons(i, false, true)],
   [CommandIds.MAP, wrapSlashOnly(handleMapSubCommand)],
-  [CommandIds.MAP_VOTE, wrapSlashOnly(handleMapVoteCommand)],
-  [CommandIds.END_MAP_VOTE, handleEndMapVoteCommand],
-  [CommandIds.CANCEL_MAP_VOTE, handleCancelMapVoteCommand],
-  [CommandIds.PLAYER_ADJUST, wrapSlashOnly(handlePlayerAdjustCommand)],
-  [CommandIds.CHECK_TEAMS, handleCheckTeamsCommand],
   [CommandIds.SUB, wrapSlashOnly(handleSubSubCommand)],
-  [CommandIds.ASSIGN_ACCOUNT, wrapSlashOnly(handleAssignAccountCommand)],
-  [CommandIds.ASSIGN_ACCOUNT_CLEAR, wrapSlashOnly(handleAssignAccountClearCommand)],
 ])
 
 /**
@@ -429,7 +406,7 @@ async function handlePatternCommand(
     await handleVoteRemoveButtonClick(interaction, parts[1])
     return
   }
-  if (parts[0] === CommandIds.END_MAP_VOTE && interaction.isButton()) {
+  if (parts[0] === 'end-map-vote' && interaction.isButton()) {
     await handleEndMapVoteCommand(interaction, parts[1])
     return
   }
@@ -556,11 +533,7 @@ async function handlePatternCommand(
  */
 export async function dispatchInteraction(interaction: Interaction<CacheType>): Promise<void> {
   if (interaction.isAutocomplete()) {
-    if (
-      interaction.commandName === CommandIds.DRAFT ||
-      interaction.commandName === CommandIds.DRAFT_CAPTAIN ||
-      interaction.commandName === CommandIds.DRAFT_TEAM_ASSIGN
-    ) {
+    if (interaction.commandName === CommandIds.DRAFT) {
       await handleDraftAutocomplete(interaction)
       return
     }
@@ -572,19 +545,11 @@ export async function dispatchInteraction(interaction: Interaction<CacheType>): 
       await handleLookupAutocomplete(interaction)
       return
     }
-    if (
-      interaction.commandName === CommandIds.SUB ||
-      interaction.commandName === CommandIds.ASSIGN_ACCOUNT ||
-      interaction.commandName === CommandIds.ASSIGN_ACCOUNT_CLEAR
-    ) {
+    if (interaction.commandName === CommandIds.SUB) {
       await handleAssignAccountAutocomplete(interaction)
       return
     }
-    if (
-      interaction.commandName === CommandIds.REPLAYS ||
-      interaction.commandName === CommandIds.REASSIGN_REPLAY_PLAYER ||
-      interaction.commandName === CommandIds.RECENT_REPLAYS
-    ) {
+    if (interaction.commandName === CommandIds.REPLAYS) {
       await handleReassignReplayPlayerAutocomplete(interaction)
       return
     }
