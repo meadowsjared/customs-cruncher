@@ -149,7 +149,18 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.REJOIN, handleRejoinCommand],
   [CommandIds.LEAVE, handleLeaveCommand],
   [CommandIds.CLEAR, handleClearCommand],
-  [CommandIds.PLAYERS, async i => handlePlayersCommand(i)],
+  [CommandIds.PLAYERS, async i => {
+    if (i.isChatInputCommand()) {
+      const mode = i.options.getString('mode')
+      if (mode === 'raw') {
+        return handlePlayersCommand(i, true)
+      }
+      if (mode === 'all') {
+        return handlePlayersAllCommand(i)
+      }
+    }
+    return handlePlayersCommand(i)
+  }],
   [CommandIds.PLAYERS_RAW, async i => handlePlayersCommand(i, true)],
   [CommandIds.PLAYERS_ALL, async i => handlePlayersAllCommand(i)],
   [CommandIds.ADD_ACCOUNT, handleAddHotsAccountCommand],

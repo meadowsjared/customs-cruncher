@@ -430,16 +430,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   },
   {
     name: CommandIds.PLAYERS,
-    description: 'List all players in the lobby',
-  },
-  {
-    name: CommandIds.PLAYERS_RAW,
-    description: 'List all players in the lobby with raw data',
-    defaultMemberPermissions: minimumAdminPermissions,
-  },
-  {
-    name: CommandIds.PLAYERS_ALL,
-    description: 'List all players in the database with their battle tags and roles',
+    description: 'List players in the lobby or all registered players in the database',
+    options: [
+      {
+        name: 'mode',
+        description: 'View mode: raw lobby mentions, or all registered players (defaults to active lobby)',
+        type: ApplicationCommandOptionType.String,
+        required: false,
+        choices: [
+          { name: 'raw', value: 'raw' },
+          { name: 'all', value: 'all' },
+        ],
+      },
+    ],
   },
   {
     name: CommandIds.TWITCH,
@@ -497,63 +500,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: false,
         minValue: 1,
         maxValue: 100,
-      },
-      {
-        name: CommandIds.MIN_HERO_GAMES,
-        type: ApplicationCommandOptionType.Integer,
-        description: 'Minimum games required for Best Heroes (default: 5)',
-        required: false,
-        minValue: 0,
-      },
-      {
-        name: CommandIds.NUM_HEROES,
-        type: ApplicationCommandOptionType.Integer,
-        description: 'Number of heroes to show for Top Played and Best Heroes (default: 3)',
-        required: false,
-        minValue: 1,
-        maxValue: 100,
-      },
-      {
-        name: CommandIds.PUBLISH,
-        type: ApplicationCommandOptionType.String,
-        description: 'Post the lookup results publicly instead of ephemeral',
-        required: false,
-        choices: [
-          {
-            name: 'true',
-            value: 'true',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    name: `${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`,
-    description: "Import a player's Discord information",
-    options: [
-      {
-        name: CommandIds.DISCORD_ID,
-        type: ApplicationCommandOptionType.String,
-        description: 'The Discord ID of the player to lookup',
-        required: true,
-      },
-      {
-        name: CommandIds.BATTLE_TAG,
-        type: ApplicationCommandOptionType.String,
-        description: 'The Heroes of the Storm battle tag of the player (including the # and number)',
-        required: true,
-      },
-      {
-        name: CommandIds.DISCORD_DISPLAY_NAME,
-        type: ApplicationCommandOptionType.String,
-        description: 'The Discord display name of the player (e.g. Name#1234)',
-        required: true,
-      },
-      {
-        name: CommandIds.DISCORD_NAME,
-        type: ApplicationCommandOptionType.String,
-        description: 'The Discord username of the player (e.g. Name)',
-        required: true,
       },
       {
         name: CommandIds.MIN_HERO_GAMES,
