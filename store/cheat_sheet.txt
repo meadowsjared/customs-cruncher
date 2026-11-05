@@ -289,3 +289,10 @@ bun run import:csv
 
 # Discord Bot slash command to re-import replays:
 # /import-replays start_date_or_count:08/05/2020 end_date:8/17/2024
+
+# WARNING: This will overwrite your local PRODUCTION database
+# copy dev-to-prod database: (don't do this, unless you're SURE)
+bun run db:dev-to-prod
+
+# copy prod-to-dev database: (this should be safe, if you want to test out what's going on with prod in a dev environment)
+bun run db:prod-to-dev
