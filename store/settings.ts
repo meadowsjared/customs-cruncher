@@ -1,5 +1,7 @@
+import type { Guild } from 'discord.js'
 import { DraftCoinState, SETTINGS_TABLE_SCHEMA_SQL, SettingRow } from '../types/settings'
 import { sql } from './db'
+import { CommandIds } from '../constants'
 
 /**
  * Initializes the `settings` table in PostgreSQL.
@@ -106,4 +108,54 @@ export async function setDraftCoinState(guildId: string, state: DraftCoinState):
  */
 export async function resetDraftCoinState(guildId: string): Promise<boolean> {
   return await deleteSetting('draft_coin_state', guildId)
+}
+
+/**
+ * Retrieves the configured game host user ID for a guild.
+ */
+export async function getGameHostId(guildId: string): Promise<string | null> {
+  const hostId = await getSetting(CommandIds.GAME_HOST_ID, guildId)
+  return hostId ?? null
+}
+
+/**
+ * Saves the configured game host user ID for a guild.
+ */
+export async function setGameHostId(guildId: string, hostId: string): Promise<boolean> {
+  return await setSetting(CommandIds.GAME_HOST_ID, hostId, guildId)
+}
+
+/**
+ * Clears the configured game host user ID for a guild.
+ */
+export async function clearGameHostId(guildId: string): Promise<boolean> {
+  return await deleteSetting(CommandIds.GAME_HOST_ID, guildId)
+}
+
+/**
+ * Resolves the game host user ID and display name for a guild,
+ * falling back to the server owner if none is explicitly configured.
+ */
+export async function resolveGameHost(
+  guildId: string,
+  guild?: Guild | null
+): Promise<{ id: string | null; displayName: string }> {
+  const configuredId = await getGameHostId(guildId)
+  const effectiveId = configuredId ?? guild?.ownerId ?? null
+  if (effectiveId && guild) {
+    const member = guild.members.cache.get(effectiveId)
+    if (member) {
+      return { id: effectiveId, displayName: member.displayName }
+    }
+  }
+  return { id: effectiveId, displayName: 'Host' }
+}
+
+/**
+ * Returns a Discord user mention string (<@userId>) for the server's game host,
+ * or an empty string if neither host nor server owner can be resolved.
+ */
+export async function getGameHostPing(guildId: string, guild?: Guild | null): Promise<string> {
+  const hostInfo = await resolveGameHost(guildId, guild)
+  return hostInfo.id ? `<@${hostInfo.id}>` : ''
 }

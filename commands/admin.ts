@@ -11,7 +11,7 @@ import {
   Message,
   MessageFlags,
 } from 'discord.js'
-import { adminUserIds, chatOrButtonOrModal, CommandIds, joinBtn, roleMap } from '../constants'
+import { chatOrButtonOrModal, CommandIds, joinBtn, roleMap } from '../constants'
 import { getLobbyMessages } from '../store/channels'
 import { getUnlinkedReplayAccounts } from '../store/hotsReplays'
 import {
@@ -33,6 +33,7 @@ import { Player } from '../types/player'
 import { requireGuildId, safeDeferUpdate, safeReply, safeUpdate } from '../utils/interaction'
 import { updateLobbyMessage } from './lobby'
 import {
+  checkIsAdmin,
   createButtonRows,
   createEditRoleButtonDisabled,
   createEditRoleButtonEnabled,
@@ -546,7 +547,7 @@ export async function updateAdminActiveButtons(
     const storedMsgId = adminActiveMessageIds.get(interaction.channelId)
 
     if (!storedInteraction) {
-      if (adminUserIds.includes(interaction.user.id)) {
+      if (await checkIsAdmin(interaction)) {
         if (interaction.isChatInputCommand() || interaction.isButton()) {
           await createNewAdminRoleButton(interaction, buttons, followUp)
         }

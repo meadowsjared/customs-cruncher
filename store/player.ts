@@ -79,12 +79,20 @@ import {
   setTeamsFromPlayers,
   type StoredLobbyScan,
 } from './lobby'
+import {
+  clearGameHostId,
+  getGameHostId,
+  getGameHostPing,
+  resolveGameHost,
+  setGameHostId,
+} from './settings'
 
 export {
   assignPlayerToTeam,
   changeTeams,
   clearAccountSubstitutions,
   clearActivePlayersCache,
+  clearGameHostId,
   clearLastLobbyScan,
   clearResolvedAccountCache,
   clearTeams,
@@ -95,6 +103,8 @@ export {
   getAssignAccountChoices,
   getAssignAccountClearChoices,
   getDraftPickedCount,
+  getGameHostId,
+  getGameHostPing,
   getLastLobbyScan,
   getNextDraftOrder,
   getOrCreateSubstituteAccount,
@@ -114,8 +124,10 @@ export {
   relinkAccountSubstitutions,
   removeInteraction,
   resetActivePlayerTeams,
+  resolveGameHost,
   saveLastLobbyScan,
   setAccountSubstitution,
+  setGameHostId,
   setPlayerActive,
   setTeamsFromPlayers,
   storeInteraction,

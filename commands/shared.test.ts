@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { ButtonBuilder, ButtonStyle, ChatInputCommandInteraction } from 'discord.js'
+import { ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, PermissionsBitField } from 'discord.js'
 import {
+  checkIsAdmin,
   createButtonRows,
   extractDiscordIdFromInteraction,
   formatDateToMMDDYYYY,
   getDiscordId,
 } from './shared'
+import { adminUserIds, chatOrButtonOrModal } from '../constants'
 
 describe('commands.shared.formatDateToMMDDYYYY', () => {
   it('formats single-digit months and days with leading zeros', () => {
@@ -135,4 +137,72 @@ describe('commands.shared.getDiscordId', () => {
     expect(getDiscordId(interaction, 'guild_1', '<@!123456789>')).toBe('123456789')
   })
 })
+
+describe('commands.shared.checkIsAdmin', () => {
+  it('returns true for super-admin in adminUserIds', async () => {
+    const superAdminId = adminUserIds[0] ?? '243668219712372736'
+    if (!adminUserIds.includes(superAdminId)) {
+      adminUserIds.push(superAdminId)
+    }
+    const interaction: chatOrButtonOrModal = Object.assign(
+      Object.create(ChatInputCommandInteraction.prototype),
+      {
+        user: { id: superAdminId },
+        guildId: 'guild_1',
+      }
+    )
+    expect(await checkIsAdmin(interaction)).toBe(true)
+  })
+
+  it('returns true for server owner', async () => {
+    const interaction: chatOrButtonOrModal = Object.assign(
+      Object.create(ChatInputCommandInteraction.prototype),
+      {
+        user: { id: 'owner_user_id' },
+        guildId: 'guild_1',
+      }
+    )
+    Object.defineProperty(interaction, 'guild', {
+      value: { ownerId: 'owner_user_id' },
+    })
+    expect(await checkIsAdmin(interaction)).toBe(true)
+  })
+
+  it('returns true for member with MoveMembers permission', async () => {
+    const permissions = new PermissionsBitField([PermissionsBitField.Flags.MoveMembers])
+    const interaction: chatOrButtonOrModal = Object.assign(
+      Object.create(ChatInputCommandInteraction.prototype),
+      {
+        user: { id: 'moderator_user_id' },
+        guildId: 'guild_1',
+      }
+    )
+    Object.defineProperty(interaction, 'guild', {
+      value: { ownerId: 'other_owner_id' },
+    })
+    Object.defineProperty(interaction, 'member', {
+      value: { permissions },
+    })
+    expect(await checkIsAdmin(interaction)).toBe(true)
+  })
+
+  it('returns false for regular user without permissions', async () => {
+    const permissions = new PermissionsBitField([])
+    const interaction: chatOrButtonOrModal = Object.assign(
+      Object.create(ChatInputCommandInteraction.prototype),
+      {
+        user: { id: 'regular_user_id' },
+        guildId: 'guild_test_none',
+      }
+    )
+    Object.defineProperty(interaction, 'guild', {
+      value: { ownerId: 'other_owner_id' },
+    })
+    Object.defineProperty(interaction, 'member', {
+      value: { permissions },
+    })
+    expect(await checkIsAdmin(interaction)).toBe(false)
+  })
+})
+
 

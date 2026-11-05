@@ -10,18 +10,12 @@ process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error)
 })
 
-import {
-  ActivityType,
-  ChannelType,
-  Client,
-  GatewayIntentBits,
-  PresenceUpdateStatus,
-} from 'discord.js'
+import { ActivityType, ChannelType, Client, GatewayIntentBits, PresenceUpdateStatus } from 'discord.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { dispatchInteraction } from './commands/dispatcher'
 import { slashCommands } from './commands/definitions'
-import { botChannelName, norsServerId } from './constants'
+import { botChannelName, CommandIds } from './constants'
 import { setSetting } from './store/settings'
 import { getBotChannel } from './utils/channel'
 
@@ -57,7 +51,7 @@ client.on('guildCreate', async guild => {
           },
         ],
       })
-      await setSetting('bot_channel_id', channel.id, guild.id)
+      await setSetting(CommandIds.BOT_CHANNEL_ID, channel.id, guild.id)
       console.log(`Joined new guild: ${guild.name} (ID: ${guild.id}) - Created bot channel.`)
     } catch (err) {
       console.error(`Could not create channel in guild ${guild.name}:`, err)
@@ -104,9 +98,9 @@ client.once('clientReady', async () => {
     console.log(`Guild: ${guild.name} (ID: ${guild.id}) - Bot Channel: ${channelName}`)
   })
 
-  // List all commands in Nor's server for debugging
+  // List all commands in first server for debugging
   client.guilds.cache
-    .get(norsServerId)
+    .first()
     ?.commands.fetch()
     .then(commands => {
       console.log('--- Commands in Guild ---')

@@ -12,7 +12,7 @@ import {
   MessageFlags,
   TextBasedChannel,
 } from 'discord.js'
-import { adminUserIds } from '../constants'
+import { checkIsAdmin } from './shared'
 import {
   castMapVote,
   deleteMapVoteSession,
@@ -79,8 +79,11 @@ function createMapAttachment(mapDef: MapDefinition): AttachmentBuilder | null {
   return null
 }
 
-function isSessionAdminOrCreator(session: MapVoteSession, userId: string): boolean {
-  return adminUserIds.includes(userId) || session.createdBy === userId
+async function isSessionAdminOrCreator(
+  session: MapVoteSession,
+  interaction: ButtonInteraction<CacheType> | ChatInputCommandInteraction<CacheType>
+): Promise<boolean> {
+  return session.createdBy === interaction.user.id || (await checkIsAdmin(interaction))
 }
 
 /**
@@ -509,7 +512,7 @@ export async function handleEndMapVoteCommand(
   }
 
   // Permission check: Admin or creator
-  if (!isSessionAdminOrCreator(session, interaction.user.id)) {
+  if (!(await isSessionAdminOrCreator(session, interaction))) {
     await safeReply(interaction, {
       content: 'Only admins or the user who started the vote can end it.',
       flags: MessageFlags.Ephemeral,
@@ -646,7 +649,7 @@ export async function handleCancelMapVoteCommand(
   }
 
   // Permission check: Admin or creator
-  if (!isSessionAdminOrCreator(session, interaction.user.id)) {
+  if (!(await isSessionAdminOrCreator(session, interaction))) {
     if (!interaction.isButton()) {
       await safeReply(interaction, {
         content: 'Only admins or the user who started the vote can cancel it.',

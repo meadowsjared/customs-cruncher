@@ -376,6 +376,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
+    name: CommandIds.SET_GAME_HOST,
+    description: 'Set or view the game host / lobby administrator for this server',
+    defaultMemberPermissions: minimumAdminPermissions,
+    options: [
+      {
+        name: 'user',
+        type: ApplicationCommandOptionType.User,
+        description: 'The Discord user who hosts custom games (leave blank to view current)',
+        required: true,
+      },
+    ],
+  },
+  {
     name: CommandIds.RENAME_BOT_CHANNEL,
     description: 'Rename the bot interaction and announcement text channel',
     defaultMemberPermissions: minimumAdminPermissions,

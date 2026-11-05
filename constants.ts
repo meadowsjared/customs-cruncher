@@ -1,3 +1,4 @@
+import dotenv from 'dotenv'
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -8,15 +9,25 @@ import {
   ModalSubmitInteraction,
 } from 'discord.js'
 
+dotenv.config()
+
 export const botChannelName = '🫠-customs-cruncher'
 
-export const norDiscordId = '192116769870184448' // Nor's Discord ID
-export const norsServerId = '706998529582956654' // Nor's Server ID
+function parseAdminUserIds(): string[] {
+  const envCandidates = [
+    ...(process.env.ADMIN_USER_IDS ? process.env.ADMIN_USER_IDS.split(',').map(id => id.trim()) : []),
+    process.env.ADMIN_USER_ID?.trim(),
+  ]
+  const validIds: string[] = []
+  for (const id of envCandidates) {
+    if (id && id.length > 0 && !validIds.includes(id)) {
+      validIds.push(id)
+    }
+  }
+  return validIds
+}
 
-export const adminUserIds = [
-  '243668219712372736', // Bandayd
-  norDiscordId, // Nor
-]
+export const adminUserIds: string[] = parseAdminUserIds()
 
 // create an enum for the commands
 export const enum CommandIds {
@@ -26,6 +37,8 @@ export const enum CommandIds {
   SYNC = 'sync',
   MAKE_TEAMS = 'make_teams',
   SET_TEAMS = 'set_teams',
+  SET_GAME_HOST = 'set_game_host',
+  GAME_HOST_ID = 'game_host_id',
   DRAFT = 'draft',
   DRAFT_CAPTAIN = 'draft_captain',
   DRAFT_MODE = 'draft_mode',
@@ -97,6 +110,7 @@ export const enum CommandIds {
   END_DATE = 'end_date',
   CHANNEL_COMMAND = 'channel-command',
   CHANNEL = 'channel',
+  BOT_CHANNEL_ID = 'bot_channel_id',
   COMMAND = 'command',
   MESSAGE_ID = 'message-id',
   FIELD1 = 'field1',
@@ -161,4 +175,6 @@ export const imPlayingBtn = new ButtonBuilder()
   .setStyle(ButtonStyle.Primary)
 
 export type chatOrButtonOrModal =
-  ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType> | ModalSubmitInteraction<CacheType>
+  | ChatInputCommandInteraction<CacheType>
+  | ButtonInteraction<CacheType>
+  | ModalSubmitInteraction<CacheType>

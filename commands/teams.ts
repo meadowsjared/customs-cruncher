@@ -6,22 +6,25 @@ import {
   CacheType,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  Guild,
   Interaction,
   MessageFlags,
   VoiceChannel,
 } from 'discord.js'
-import { CommandIds, norDiscordId } from '../constants'
+import { CommandIds } from '../constants'
 import { deleteLobbyMessages, getChannels, getLobbyMessages, saveLobbyMessage } from '../store/channels'
 import {
   changeTeams,
   formatPlayerDisplay,
   getActivePlayers,
+  getGameHostPing,
   getLastLobbyScan,
   getPlayerByDiscordId,
   getPlayerIdentifier,
   getSortedActivePlayers,
   getStoredInteraction,
   getTeams,
+  resolveGameHost,
   saveLastLobbyScan,
   setTeamsFromPlayers,
   storeInteraction,
@@ -390,13 +393,24 @@ export async function generateTeamsMessage(
     outlookEmbedAr.push(outlookEmbed)
   }
 
+  let interactionGuild: Guild | null = null
+  try {
+    interactionGuild = interaction.guild
+  } catch {
+    interactionGuild = null
+  }
+
+  const hostPing = await getGameHostPing(guildId, interactionGuild)
+  const hostInfo = await resolveGameHost(guildId, interactionGuild)
+
   const lobbySwapsEmbedAr: EmbedBuilder[] = []
   if (publish && (team1.length > 0 || team2.length > 0)) {
     const lastScan = await getLastLobbyScan(guildId)
     if (lastScan && (lastScan.team1DiscordIds.length > 0 || lastScan.team2DiscordIds.length > 0)) {
       const comparison = await compareTeamsToLobbyScan(guildId, team1, team2, lastScan)
+      const hostLabel = hostInfo.displayName && hostInfo.displayName !== 'the Host' ? `${hostInfo.displayName}` : ''
       const lobbySwapsEmbed = new EmbedBuilder()
-        .setTitle('🔄 In-Game Lobby Swaps for Nor')
+        .setTitle(`🔄 In-Game Lobby Swaps for ${hostLabel}`)
         .setDescription(comparison.formattedReport)
         .setColor(comparison.matches ? '#57F287' : '#FFA500')
       lobbySwapsEmbedAr.push(lobbySwapsEmbed)
@@ -409,13 +423,13 @@ export async function generateTeamsMessage(
     try {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
-          content: `<@${norDiscordId}>`,
+          content: hostPing,
           embeds,
           components,
         })
       } else {
         await interaction.update({
-          content: `<@${norDiscordId}>`,
+          content: hostPing,
           embeds,
           components,
         })
@@ -448,7 +462,7 @@ export async function generateTeamsMessage(
   if (publish) {
     // if we're publishing it, then we know the ephemeral messages got deleted above, so just post a new message
     const message = await safeReply(interaction, {
-      content: `<@${norDiscordId}>`,
+      content: hostPing,
       embeds,
       flags: safePing(undefined),
     })
@@ -461,7 +475,7 @@ export async function generateTeamsMessage(
   if (isDraft) {
     // else then it's a ephemeral
     const message = await safeReply(interaction, {
-      content: `<@${norDiscordId}>`,
+      content: hostPing,
       embeds,
       components,
       flags: safePing(MessageFlags.Ephemeral),
@@ -492,13 +506,13 @@ export async function generateTeamsMessage(
           try {
             if ('webhook' in prevInteraction && prevInteraction.webhook) {
               await prevInteraction.webhook.editMessage(msg.messageId, {
-                content: `<@${norDiscordId}>`,
+                content: hostPing,
                 embeds,
                 components,
               })
             } else {
               await prevInteraction.editReply({
-                content: `<@${norDiscordId}>`,
+                content: hostPing,
                 embeds,
                 components,
               })
@@ -507,7 +521,7 @@ export async function generateTeamsMessage(
           } catch {
             try {
               await prevInteraction.editReply({
-                content: `<@${norDiscordId}>`,
+                content: hostPing,
                 embeds,
                 components,
               })
@@ -522,7 +536,7 @@ export async function generateTeamsMessage(
         const previousMessage = await channel.messages.fetch(msg.messageId)
         if (!previousMessage) continue
         const message = await previousMessage.edit({
-          content: `<@${norDiscordId}>`,
+          content: hostPing,
           embeds,
           components,
         })

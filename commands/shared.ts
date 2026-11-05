@@ -12,6 +12,7 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
+  PermissionsBitField,
   TextBasedChannel,
   TextInputBuilder,
   TextInputStyle,
@@ -19,7 +20,7 @@ import {
 } from 'discord.js'
 import { adminUserIds, chatOrButtonOrModal, CommandIds, roleMap } from '../constants'
 import { deleteLobbyMessagesById } from '../store/channels'
-import { getPlayerByDiscordId } from '../store/player'
+import { getGameHostId, getPlayerByDiscordId } from '../store/player'
 import { DiscordUserNames } from '../types/player'
 import { safePing } from '../utils/announce'
 import { safeReply } from '../utils/interaction'
@@ -124,12 +125,56 @@ export async function getMemberFromInteraction(
 }
 
 /**
+ * Checks if the user has administrative privileges for the current server without sending a reply.
+ * Admin users include:
+ * - Super-admins configured in adminUserIds
+ * - The server owner
+ * - The configured game host for this server (via /set_game_host)
+ * - Any member with MoveMembers, ManageGuild, or Administrator permissions
+ */
+export async function checkIsAdmin(interaction: chatOrButtonOrModal): Promise<boolean> {
+  if (adminUserIds.includes(interaction.user.id)) {
+    return true
+  }
+  try {
+    if (interaction.guild?.ownerId === interaction.user.id) {
+      return true
+    }
+  } catch {
+    // Ignore error if interaction.guild cannot be accessed
+  }
+  if (interaction.guildId) {
+    const hostId = await getGameHostId(interaction.guildId)
+    if (hostId && hostId === interaction.user.id) {
+      return true
+    }
+  }
+  if ('member' in interaction && interaction.member) {
+    const member = interaction.member
+    if ('permissions' in member && member.permissions) {
+      const perms =
+        typeof member.permissions === 'string'
+          ? new PermissionsBitField(BigInt(member.permissions))
+          : member.permissions
+      if (
+        perms.has(PermissionsBitField.Flags.Administrator) ||
+        perms.has(PermissionsBitField.Flags.MoveMembers) ||
+        perms.has(PermissionsBitField.Flags.ManageGuild)
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/**
  * Checks if the user is an admin based on their Discord ID.
  * If the user is an admin, it returns true; otherwise, it replies with a message
  * indicating they do not have permission and returns false.
  */
 export async function userIsAdmin(interaction: chatOrButtonOrModal): Promise<boolean> {
-  const isAdmin = adminUserIds.includes(interaction.user.id)
+  const isAdmin = await checkIsAdmin(interaction)
   if (isAdmin) {
     return true
   }

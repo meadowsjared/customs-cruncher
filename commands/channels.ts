@@ -1,8 +1,16 @@
-import { ButtonInteraction, CacheType, ChannelType, ChatInputCommandInteraction, MessageFlags, VoiceChannel } from 'discord.js'
+import {
+  ButtonInteraction,
+  CacheType,
+  ChannelType,
+  ChatInputCommandInteraction,
+  MessageFlags,
+  VoiceChannel,
+} from 'discord.js'
 import { getChannels, saveChannel } from '../store/channels'
-import { setSetting } from '../store/settings'
+import { getGameHostId, setGameHostId, setSetting } from '../store/settings'
 import { getBotChannel } from '../utils/channel'
 import { requireGuildId, safeReply } from '../utils/interaction'
+import { CommandIds } from '../constants'
 
 export async function handleSetChannelTeamIdCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
@@ -80,7 +88,7 @@ export async function handleSetBotChannelCommand(
     })
   }
 
-  await setSetting('bot_channel_id', channel.id, guildId)
+  await setSetting(CommandIds.BOT_CHANNEL_ID, channel.id, guildId)
 
   return await safeReply(interaction, {
     content: `Bot channel set to <#${channel.id}>.`,
@@ -154,3 +162,37 @@ export async function handleGetChannelsCommand(
   })
 }
 
+export async function handleSetGameHostCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+) {
+  if (!interaction.isChatInputCommand()) {
+    console.error('Interaction is not a chat input command')
+    return
+  }
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const targetUser = interaction.options.getUser('user')
+  if (!targetUser) {
+    const currentHostId = await getGameHostId(guildId)
+    if (currentHostId) {
+      return await safeReply(interaction, {
+        content: `Current game host for this server is <@${currentHostId}>.`,
+        flags: MessageFlags.Ephemeral,
+      })
+    } else {
+      const ownerId = interaction.guild?.ownerId
+      const ownerText = ownerId ? ` (defaults to server owner <@${ownerId}>)` : ''
+      return await safeReply(interaction, {
+        content: `No game host is currently configured for this server${ownerText}. Run \`/set_game_host user:@username\` to assign one.`,
+        flags: MessageFlags.Ephemeral,
+      })
+    }
+  }
+
+  await setGameHostId(guildId, targetUser.id)
+  return await safeReply(interaction, {
+    content: `✅ Game host for this server set to <@${targetUser.id}>.`,
+    flags: MessageFlags.Ephemeral,
+  })
+}

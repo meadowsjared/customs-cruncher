@@ -9,7 +9,6 @@ import {
 } from 'discord.js'
 import {
   addAccountBtn,
-  adminUserIds,
   chatOrButtonOrModal,
   CommandIds,
   imPlayingBtn,
@@ -39,7 +38,7 @@ import { handleEditRoleCommand } from './accounts'
 import { updateAdminActiveButtons } from './admin'
 import { syncRecentReplays } from './replays'
 import { processAndApplyLobbyScan } from './scanLobby'
-import { fetchDiscordNames, handleUserNameModalSubmit } from './shared'
+import { checkIsAdmin, fetchDiscordNames, handleUserNameModalSubmit } from './shared'
 
 /**
  * Generates the current lobby status message with active players
@@ -214,7 +213,7 @@ export async function handleNewGameCommand(
   }
 
   // Send the admin buttons via followUp (or reply if run outside bot channel without defer)
-  if (adminUserIds.includes(interaction.user.id)) {
+  if (await checkIsAdmin(interaction)) {
     const isFollowUp = screenshot ? true : isBotChannel
     await updateAdminActiveButtons(interaction, previousPlayersList, true, isFollowUp)
   } else if (!isBotChannel && screenshot) {

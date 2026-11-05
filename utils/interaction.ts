@@ -35,13 +35,10 @@ export async function safeReply(
   options: string | MessagePayload | InteractionReplyOptions
 ) {
   if (!interaction) {
-    if (!process.env.NOR_DISCORD_ID) {
-      console.error('No NOR_DISCORD_ID environment variable set.')
-      return
-    }
-    const guild = client.guilds.cache.get(process.env.NOR_DISCORD_ID)
+    const fallbackGuildId = process.env.DISCORD_GUILD_ID ?? process.env.NOR_DISCORD_ID
+    const guild = (fallbackGuildId ? client.guilds.cache.get(fallbackGuildId) : null) ?? client.guilds.cache.first()
     if (!guild) {
-      console.error(`Guild with ID ${process.env.NOR_DISCORD_ID} not found.`)
+      console.error('No guild found in cache for safeReply.')
       return
     }
     const channel = await getBotChannel(guild)

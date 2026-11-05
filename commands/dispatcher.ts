@@ -34,6 +34,7 @@ import {
   handleRenameBotChannelCommand,
   handleSetBotChannelCommand,
   handleSetChannelTeamIdCommand,
+  handleSetGameHostCommand,
   handleSetLobbyChannelCommand,
 } from './channels'
 import {
@@ -137,6 +138,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.SET_CHANNEL_TEAM_ID, handleSetChannelTeamIdCommand],
   [CommandIds.SET_LOBBY_CHANNEL, handleSetLobbyChannelCommand],
   [CommandIds.SET_BOT_CHANNEL, handleSetBotChannelCommand],
+  [CommandIds.SET_GAME_HOST, handleSetGameHostCommand],
   [CommandIds.RENAME_BOT_CHANNEL, handleRenameBotChannelCommand],
   [CommandIds.MOVE_TO_LOBBY, handleMoveToLobbyCommand],
   [CommandIds.MOVE_TO_TEAMS, handleMoveToTeamsCommand],
