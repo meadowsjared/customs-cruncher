@@ -851,32 +851,39 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.MAP_VOTE,
-    description: 'Start a vote for the next map',
+    name: CommandIds.MAP,
+    description: 'Map voting commands',
     options: [
       {
-        name: 'title',
-        description: 'Custom title for the map vote (optional)',
-        type: ApplicationCommandOptionType.String,
-        required: false,
+        name: 'vote',
+        description: 'Start a vote for the next map',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'title',
+            description: 'Custom title for the map vote (optional)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'game-number',
+            description: 'The game number (optional)',
+            type: ApplicationCommandOptionType.Number,
+            required: false,
+          },
+        ],
       },
       {
-        name: 'game-number',
-        description: 'The game number (optional)',
-        type: ApplicationCommandOptionType.Number,
-        required: false,
+        name: 'end',
+        description: 'End the active map vote and declare the winning map',
+        type: ApplicationCommandOptionType.Subcommand,
+      },
+      {
+        name: 'cancel',
+        description: 'Cancel the active map vote session and delete its message',
+        type: ApplicationCommandOptionType.Subcommand,
       },
     ],
-  },
-  {
-    name: CommandIds.END_MAP_VOTE,
-    description: 'End the active map vote and declare the winning map',
-    defaultMemberPermissions: minimumAdminPermissions,
-  },
-  {
-    name: CommandIds.CANCEL_MAP_VOTE,
-    description: 'Cancel the active map vote session and delete its message',
-    defaultMemberPermissions: minimumAdminPermissions,
   },
   {
     name: CommandIds.PLAYER_ADJUST,

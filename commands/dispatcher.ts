@@ -180,6 +180,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.CHANNEL_COMMAND, wrapSlashOnly(handleChannelCommand)],
   [CommandIds.ADMIN, wrapSlashOnly(handleAdminSubCommand)],
   [`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`, async i => updateAdminActiveButtons(i, false, true)],
+  [CommandIds.MAP, wrapSlashOnly(handleMapSubCommand)],
   [CommandIds.MAP_VOTE, wrapSlashOnly(handleMapVoteCommand)],
   [CommandIds.END_MAP_VOTE, handleEndMapVoteCommand],
   [CommandIds.CANCEL_MAP_VOTE, handleCancelMapVoteCommand],
@@ -188,6 +189,22 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.ASSIGN_ACCOUNT, wrapSlashOnly(handleAssignAccountCommand)],
   [CommandIds.ASSIGN_ACCOUNT_CLEAR, wrapSlashOnly(handleAssignAccountClearCommand)],
 ])
+
+/**
+ * Handles subcommands for `/map <subcommand>`
+ */
+async function handleMapSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand()
+  if (subcommand === 'end') {
+    await handleEndMapVoteCommand(interaction)
+    return
+  }
+  if (subcommand === 'cancel') {
+    await handleCancelMapVoteCommand(interaction)
+    return
+  }
+  await handleMapVoteCommand(interaction)
+}
 
 /**
  * Handles subcommands for `/admin <subcommand>`

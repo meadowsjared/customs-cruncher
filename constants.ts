@@ -116,6 +116,7 @@ export const enum CommandIds {
   MESSAGE_ID = 'message-id',
   FIELD1 = 'field1',
   DELETE_ACCOUNT = 'delete-account',
+  MAP = 'map',
   MAP_VOTE = 'map-vote',
   END_MAP_VOTE = 'end-map-vote',
   CANCEL_MAP_VOTE = 'cancel-map-vote',
