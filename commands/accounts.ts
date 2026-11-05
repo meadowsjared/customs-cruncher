@@ -84,20 +84,6 @@ export async function handleAddHotsAccountCommand(
   await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag)
 }
 
-export async function handleAdminAddHotsAccountByDiscordIdCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
-  if (interaction.isButton()) {
-    console.error('Interaction is not a command or button interaction')
-    return
-  }
-  const guildId = await requireGuildId(interaction)
-  if (!guildId) return
-  const discordId = interaction.options.getString(CommandIds.DISCORD_ID, true).replace(/[<@>]/g, '')
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG)
-  await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag)
-}
-
 export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
   if (!discordId) {

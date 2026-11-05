@@ -21,8 +21,12 @@ export async function handleSetChannelTeamIdCommand(
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const channel = interaction.options.getChannel('channel_id', false)
-  const teamId = interaction.options.getString('team_number', false)
+  const channel =
+    interaction.options.getChannel('channel', false) ??
+    interaction.options.getChannel('channel_id', false)
+  const teamId =
+    interaction.options.getString('team', false) ??
+    interaction.options.getString('team_number', false)
   if (!channel || !teamId) {
     await handleGetChannelsCommand(interaction)
     return
@@ -50,7 +54,9 @@ export async function handleSetLobbyChannelCommand(
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const channel = interaction.options.getChannel('channel_id', false)
+  const channel =
+    interaction.options.getChannel('channel', false) ??
+    interaction.options.getChannel('channel_id', false)
   if (channel === null) {
     await handleGetChannelsCommand(interaction)
     return
@@ -111,7 +117,7 @@ export async function handleRenameBotChannelCommand(
 
   if (!channel) {
     return await safeReply(interaction, {
-      content: 'Bot channel is not set or not found. Use `/set_bot_channel` first.',
+      content: 'Bot channel is not set or not found. Use `/channel bot` first.',
       flags: MessageFlags.Ephemeral,
     })
   }
@@ -144,20 +150,20 @@ export async function handleGetChannelsCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   const channels = await getChannels(guildId, ['lobby', 'team1', 'team2'])
-  if (!channels || channels.length === 0) {
-    await safeReply(interaction, {
-      content: 'No channels set. Please set a lobby channel and team channels first.',
-      flags: MessageFlags.Ephemeral,
-    })
-    return
-  }
-  const lobbyChannel = channels.find(c => c.channelType === 'lobby')
-  const team1Channel = channels.find(c => c.channelType === 'team1')
-  const team2Channel = channels.find(c => c.channelType === 'team2')
+  const lobbyChannel = channels?.find(c => c.channelType === 'lobby')
+  const team1Channel = channels?.find(c => c.channelType === 'team1')
+  const team2Channel = channels?.find(c => c.channelType === 'team2')
+  const botChannel = await getBotChannel(interaction.guild)
+  const hostId = await getGameHostId(guildId)
+
   await safeReply(interaction, {
-    content: `Current channels:\nLobby: ${lobbyChannel ? `<#${lobbyChannel.channelId}>` : 'Not set'}\nTeam 1: ${
-      team1Channel ? `<#${team1Channel.channelId}>` : 'Not set'
-    }\nTeam 2: ${team2Channel ? `<#${team2Channel.channelId}>` : 'Not set'}`,
+    content: `**Server Configuration:**\n- Lobby: ${
+      lobbyChannel ? `<#${lobbyChannel.channelId}>` : '*Not set*'
+    }\n- Team 1: ${team1Channel ? `<#${team1Channel.channelId}>` : '*Not set*'}\n- Team 2: ${
+      team2Channel ? `<#${team2Channel.channelId}>` : '*Not set*'
+    }\n- Bot Channel: ${botChannel ? `<#${botChannel.id}>` : '*Not set*'}\n- Game Host: ${
+      hostId ? `<@${hostId}>` : '*Not set*'
+    }`,
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -184,7 +190,7 @@ export async function handleSetGameHostCommand(
       const ownerId = interaction.guild?.ownerId
       const ownerText = ownerId ? ` (defaults to server owner <@${ownerId}>)` : ''
       return await safeReply(interaction, {
-        content: `No game host is currently configured for this server${ownerText}. Run \`/set_game_host user:@username\` to assign one.`,
+        content: `No game host is currently configured for this server${ownerText}. Run \`/channel host user:@username\` to assign one.`,
         flags: MessageFlags.Ephemeral,
       })
     }
@@ -195,4 +201,31 @@ export async function handleSetGameHostCommand(
     content: `✅ Game host for this server set to <@${targetUser.id}>.`,
     flags: MessageFlags.Ephemeral,
   })
+}
+
+export async function handleChannelSubCommand(
+  interaction: ChatInputCommandInteraction<CacheType>
+) {
+  const subcommand = interaction.options.getSubcommand(false)
+  switch (subcommand) {
+    case 'lobby':
+      await handleSetLobbyChannelCommand(interaction)
+      return
+    case 'team':
+      await handleSetChannelTeamIdCommand(interaction)
+      return
+    case 'bot':
+      await handleSetBotChannelCommand(interaction)
+      return
+    case 'rename-bot':
+      await handleRenameBotChannelCommand(interaction)
+      return
+    case 'host':
+      await handleSetGameHostCommand(interaction)
+      return
+    case 'show':
+    default:
+      await handleGetChannelsCommand(interaction)
+      return
+  }
 }

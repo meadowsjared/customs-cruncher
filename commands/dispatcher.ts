@@ -9,7 +9,6 @@ import { CommandIds, roleMap } from '../constants'
 import { safeReply } from '../utils/interaction'
 import {
   handleAdminAddHotsAccountButton,
-  handleAdminAddHotsAccountByDiscordIdCommand,
   handleAdminAddHotsAccountCommand,
   handleAdminDeleteHotsAccountCommand,
   handleAdminPrimaryCommand,
@@ -30,13 +29,7 @@ import {
   handlePlayerAdjustCommand,
   updateAdminActiveButtons,
 } from './admin'
-import {
-  handleRenameBotChannelCommand,
-  handleSetBotChannelCommand,
-  handleSetChannelTeamIdCommand,
-  handleSetGameHostCommand,
-  handleSetLobbyChannelCommand,
-} from './channels'
+import { handleChannelSubCommand } from './channels'
 import {
   handleDraftAutocomplete,
   handleDraftCaptainCommand,
@@ -127,11 +120,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.SCAN_LOBBY, handleScanLobbyCommand],
   [CommandIds.TEAMS, wrapSlashOnly(handleTeamsSubCommand)],
   [CommandIds.DRAFT, wrapSlashOnly(handleDraftSubCommand)],
-  [CommandIds.SET_CHANNEL_TEAM_ID, handleSetChannelTeamIdCommand],
-  [CommandIds.SET_LOBBY_CHANNEL, handleSetLobbyChannelCommand],
-  [CommandIds.SET_BOT_CHANNEL, handleSetBotChannelCommand],
-  [CommandIds.SET_GAME_HOST, handleSetGameHostCommand],
-  [CommandIds.RENAME_BOT_CHANNEL, handleRenameBotChannelCommand],
+  [CommandIds.CHANNEL, wrapSlashOnly(handleChannelSubCommand)],
   [CommandIds.MOVE_TO_LOBBY, handleMoveToLobbyCommand],
   [CommandIds.MOVE_TO_TEAMS, handleMoveToTeamsCommand],
   [CommandIds.HELP, handleGuideCommand],
@@ -157,8 +146,6 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.TWITCH, handleTwitchCommand],
   [CommandIds.REGISTER, handleRegisterCommand],
   [CommandIds.LOOKUP, handleLookupCommand],
-  [CommandIds.DELETE_PLAYER, handleDeletePlayerCommand],
-  [CommandIds.DELETE_HOTS_ACCOUNT, handleDeleteHotsAccountCommand],
   ['refresh_lobby', handleRefreshLobbyMessage],
   [CommandIds.MOVE, wrapSlashOnly(handleMoveSubCommand)],
   [CommandIds.PLAYER, wrapSlashOnly(handlePlayerSubCommand)],
@@ -192,11 +179,24 @@ async function handleMoveSubCommand(interaction: ChatInputCommandInteraction<Cac
  */
 async function handlePlayerSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const subcommand = interaction.options.getSubcommand(false)
-  if (subcommand === 'adjust') {
-    await handlePlayerAdjustCommand(interaction)
-    return
+  switch (subcommand) {
+    case 'adjust':
+      await handlePlayerAdjustCommand(interaction)
+      return
+    case 'active':
+      await handleAdminSetActiveCommand(interaction)
+      return
+    case 'delete':
+      await handleDeletePlayerCommand(interaction)
+      return
+    case 'delete-account':
+      await handleDeleteHotsAccountCommand(interaction)
+      return
+    case 'move':
+    default:
+      await handleMoveCommand(interaction)
+      return
   }
-  await handleMoveCommand(interaction)
 }
 
 /**
@@ -307,12 +307,6 @@ async function handleAdminSubCommand(interaction: ChatInputCommandInteraction<Ca
   switch (subCommand) {
     case CommandIds.ROLE:
       await handleAdminSetRoleCommand(interaction)
-      break
-    case CommandIds.ACTIVE:
-      await handleAdminSetActiveCommand(interaction)
-      break
-    case `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`:
-      await handleAdminAddHotsAccountByDiscordIdCommand(interaction)
       break
     case CommandIds.ADD_ACCOUNT:
       await handleAdminAddHotsAccountCommand(interaction)

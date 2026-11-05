@@ -41,19 +41,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: 'Leave the lobby',
   },
   {
-    name: CommandIds.BATTLE_TAG,
-    description: 'Set your hots battle tag',
-    options: [
-      {
-        name: CommandIds.BATTLE_TAG,
-        type: ApplicationCommandOptionType.String,
-        description: 'Your hots battle tag (e.g. Name#1234)',
-        autocomplete: true,
-        required: true,
-      },
-    ],
-  },
-  {
     name: CommandIds.ADD_ACCOUNT,
     description: 'Add a Heroes of the Storm account to your profile',
     options: [
@@ -338,80 +325,92 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.SET_CHANNEL_TEAM_ID,
-    description: 'Set the channel team ID',
+    name: CommandIds.CHANNEL,
+    description: 'Channel and server configuration commands',
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
-        name: 'team_number',
-        type: ApplicationCommandOptionType.String,
-        description: 'The team number to set the channel for',
-        required: false,
-        choices: [
-          { name: 'Team 1', value: 'team1' },
-          { name: 'Filthy Team 2', value: 'team2' },
+        name: 'show',
+        description: 'View currently configured voice channels, bot channel, and game host',
+        type: ApplicationCommandOptionType.Subcommand,
+      },
+      {
+        name: 'lobby',
+        description: 'Set or view the custom game lobby voice channel',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'channel',
+            type: ApplicationCommandOptionType.Channel,
+            description: 'The voice channel to set as the lobby (leave blank to view current)',
+            required: false,
+            channelTypes: [ChannelType.GuildVoice],
+          },
         ],
       },
       {
-        name: 'channel_id',
-        type: ApplicationCommandOptionType.Channel,
-        description: 'The channel ID to set as the lobby channel',
-        required: false,
-        channelTypes: [ChannelType.GuildVoice],
+        name: 'team',
+        description: 'Set or view a team voice channel',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'team',
+            type: ApplicationCommandOptionType.String,
+            description: 'The team number to set the channel for',
+            required: false,
+            choices: [
+              { name: 'Team 1', value: 'team1' },
+              { name: 'Filthy Team 2', value: 'team2' },
+            ],
+          },
+          {
+            name: 'channel',
+            type: ApplicationCommandOptionType.Channel,
+            description: 'The voice channel to set for the team (leave blank to view current)',
+            required: false,
+            channelTypes: [ChannelType.GuildVoice],
+          },
+        ],
       },
-    ],
-  },
-  {
-    name: CommandIds.SET_LOBBY_CHANNEL,
-    description: 'Set the lobby channel',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
       {
-        name: 'channel_id',
-        type: ApplicationCommandOptionType.Channel,
-        description: 'The channel ID to set as the lobby channel',
-        required: false,
-        channelTypes: [ChannelType.GuildVoice],
+        name: 'bot',
+        description: 'Set the bot interaction and announcement text channel',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'channel',
+            type: ApplicationCommandOptionType.Channel,
+            description: 'The text channel to set for the bot',
+            required: true,
+            channelTypes: [ChannelType.GuildText],
+          },
+        ],
       },
-    ],
-  },
-  {
-    name: CommandIds.SET_BOT_CHANNEL,
-    description: 'Set the bot interaction and announcement text channel',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
       {
-        name: 'channel',
-        type: ApplicationCommandOptionType.Channel,
-        description: 'The text channel to set for the bot',
-        required: true,
-        channelTypes: [ChannelType.GuildText],
+        name: 'rename-bot',
+        description: 'Rename the bot interaction and announcement text channel',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'name',
+            type: ApplicationCommandOptionType.String,
+            description: 'The new name for the bot channel',
+            required: true,
+          },
+        ],
       },
-    ],
-  },
-  {
-    name: CommandIds.SET_GAME_HOST,
-    description: 'Set or view the game host / lobby administrator for this server',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
       {
-        name: 'user',
-        type: ApplicationCommandOptionType.User,
-        description: 'The Discord user who hosts custom games (leave blank to view current)',
-        required: false,
-      },
-    ],
-  },
-  {
-    name: CommandIds.RENAME_BOT_CHANNEL,
-    description: 'Rename the bot interaction and announcement text channel',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
-      {
-        name: 'name',
-        type: ApplicationCommandOptionType.String,
-        description: 'The new name for the bot channel',
-        required: true,
+        name: 'host',
+        description: 'Set or view the game host / lobby administrator for this server',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'user',
+            type: ApplicationCommandOptionType.User,
+            description: 'The Discord user who hosts custom games (leave blank to view current)',
+            required: false,
+          },
+        ],
       },
     ],
   },
@@ -535,33 +534,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.DELETE_PLAYER,
-    description: "Delete a player's information",
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
-      {
-        name: CommandIds.DISCORD_ID,
-        type: ApplicationCommandOptionType.User,
-        description: 'The user to delete.',
-        required: true,
-      },
-    ],
-  },
-  {
-    name: CommandIds.DELETE_HOTS_ACCOUNT,
-    description: "Delete a player's Heroes of the Storm account",
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
-      {
-        name: CommandIds.BATTLE_TAG,
-        type: ApplicationCommandOptionType.String,
-        description: 'The battle tag of the account to delete (including the # and number).',
-        autocomplete: true,
-        required: true,
-      },
-    ],
-  },
-  {
     name: 'refresh_lobby',
     description: 'Refresh the lobby announcement message',
     defaultMemberPermissions: minimumAdminPermissions,
@@ -611,52 +583,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
               name: label,
               value: key,
             })),
-          },
-        ],
-      },
-      {
-        name: CommandIds.ACTIVE,
-        description: 'Change if a player is active in the lobby.',
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.User,
-            required: false,
-          },
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'HotS BattleTag or account name',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-            autocomplete: true,
-          },
-          {
-            name: CommandIds.ACTIVE,
-            description: 'Set the player as active (true) or inactive (false).',
-            type: ApplicationCommandOptionType.Boolean,
-            required: false,
-          },
-        ],
-      },
-      {
-        name: `${CommandIds.ADD_ACCOUNT}_${CommandIds.DISCORD_ID}`,
-        description: "Add a Heroes of the Storm account to a player's profile.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
-            type: ApplicationCommandOptionType.String,
-            autocomplete: true,
-            required: true,
-          },
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.String,
-            required: true,
           },
         ],
       },
@@ -922,6 +848,59 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             description: 'Number of players above and below to include in the report (default: 5)',
             required: false,
             minValue: 0,
+          },
+        ],
+      },
+      {
+        name: 'active',
+        description: 'Change if a player is active in the lobby',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'user',
+            description: 'The user to modify',
+            type: ApplicationCommandOptionType.User,
+            required: false,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'HotS BattleTag or account name',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+            autocomplete: true,
+          },
+          {
+            name: CommandIds.ACTIVE,
+            description: 'Set the player as active (true) or inactive (false)',
+            type: ApplicationCommandOptionType.Boolean,
+            required: false,
+          },
+        ],
+      },
+      {
+        name: 'delete',
+        description: "Delete a player's profile and linked HotS accounts from the database",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'user',
+            type: ApplicationCommandOptionType.User,
+            description: 'The player to delete',
+            required: true,
+          },
+        ],
+      },
+      {
+        name: 'delete-account',
+        description: "Delete a specific HotS account from a player's profile",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.BATTLE_TAG,
+            type: ApplicationCommandOptionType.String,
+            description: 'The battle tag of the account to delete (including the # and number)',
+            autocomplete: true,
+            required: true,
           },
         ],
       },

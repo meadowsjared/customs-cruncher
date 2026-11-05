@@ -33,7 +33,6 @@ import {
   handleAddHotsAccount,
   savePlayer,
   setPlayerDiscordNames,
-  setPlayerName,
   setPlayerRole,
   storeInteraction,
 } from '../store/player'
@@ -41,7 +40,6 @@ import { DiscordUserNames } from '../types/player'
 import { announce, safePing } from '../utils/announce'
 import { getBotChannel } from '../utils/channel'
 import { requireGuildId, safeDeferUpdate, safeReply } from '../utils/interaction'
-import { handleAddHotsAccountCommandSub } from './accounts'
 import { updateLobbyMessage } from './lobby'
 import { extractDiscordIdFromInteraction, fetchDiscordNames, formatDateToMMDDYYYY } from './shared'
 
@@ -82,7 +80,7 @@ export async function handlePlayersCommand(
         return onlyRaw
           ? `<@${discordId}>`
           : `@${user?.displayName ?? usernames.discordDisplayName}` +
-          `${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
+              `${tagSuffix} \`${getPlayerRolesFormatted(role)}\``
       })
       .join('\n') || 'No players in the lobby'
   const rawPlayerList = Object.values(players)
@@ -172,7 +170,8 @@ export async function handlePlayersAllCommand(
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)
     const sortAlphbetically = new ButtonBuilder()
       .setCustomId(
-        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${sort === 'alphabetical' ? !ascending : ascending
+        `${CommandIds.PLAYERS_ALL_PAGE_SORT}_alphabetical_${
+          sort === 'alphabetical' ? !ascending : ascending
         }_${pageNumber}`
       )
       .setEmoji('🔤')
@@ -412,7 +411,7 @@ export async function handleLookupCommand(
       discordData.discordGlobalName = player.usernames.discordGlobalName
     }
 
-    return await handleLookupCommandSub(interaction, targetDiscordId, discordData, guildId, false)
+    return await handleLookupCommandSub(interaction, targetDiscordId, discordData, guildId)
   }
 
   // 2. If HotS BattleTag or account name was provided (without discord-id)
@@ -441,7 +440,9 @@ export async function handleLookupCommand(
             { name: 'Replay Games', value: String(exactUnlinked.gameCount), inline: true },
             {
               name: 'Last Seen',
-              value: exactUnlinked.lastSeenDate ? formatDateToMMDDYYYY(new Date(exactUnlinked.lastSeenDate)) : 'Unknown',
+              value: exactUnlinked.lastSeenDate
+                ? formatDateToMMDDYYYY(new Date(exactUnlinked.lastSeenDate))
+                : 'Unknown',
               inline: true,
             }
           )
@@ -487,8 +488,8 @@ export async function handleLookupCommand(
               name: 'Games Played',
               value: String(
                 (matchedAccounts[0]?.hpQmGames ?? 0) +
-                (matchedAccounts[0]?.hpSlGames ?? 0) +
-                (matchedAccounts[0]?.hpArGames ?? 0)
+                  (matchedAccounts[0]?.hpSlGames ?? 0) +
+                  (matchedAccounts[0]?.hpArGames ?? 0)
               ),
               inline: true,
             }
@@ -515,7 +516,6 @@ export async function handleLookupCommand(
         discordId,
         discordData,
         guildId,
-        false,
         matchedAccounts[0]?.hotsBattleTag
       )
     }
@@ -579,7 +579,6 @@ async function handleLookupCommandSub(
   discordId: string,
   discordData: DiscordUserNames,
   guildId: string,
-  allowAccountMutation: boolean = true,
   matchedHotSTag?: string
 ) {
   const hotsBattleTag = matchedHotSTag ?? interaction.options.getString(CommandIds.BATTLE_TAG, false) ?? ''
@@ -842,10 +841,10 @@ async function handleLookupCommandSub(
         const dateStr =
           matchDate && !isNaN(matchDate.getTime())
             ? matchDate.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })
             : 'Unknown date'
 
         const winLoss = m.win ? '🟩 Win' : '🟥 Loss'
@@ -901,7 +900,9 @@ export async function handleDeletePlayerCommand(
     console.error('Expected chat input command interaction, received button interaction')
     return
   }
-  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+  const discordId =
+    extractDiscordIdFromInteraction(interaction, 'user') ??
+    extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
   if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to delete.',
@@ -915,8 +916,9 @@ export async function handleDeletePlayerCommand(
   await updateLobbyMessage(guildId, interaction)
   // reply with the number of players and accounts deleted
   await safeReply(interaction, {
-    content: `Deleted ${playersDeleted} player${playersDeleted === 1 ? '' : 's'
-      } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
+    content: `Deleted ${playersDeleted} player${
+      playersDeleted === 1 ? '' : 's'
+    } and ${hotsAccountsDeleted} HotS account${hotsAccountsDeleted === 1 ? '' : 's'} for Discord ID: <@${discordId}>.`,
     flags: MessageFlags.Ephemeral,
   })
 }
@@ -935,4 +937,3 @@ export async function handleDeleteHotsAccountCommand(
     flags: MessageFlags.Ephemeral,
   })
 }
-

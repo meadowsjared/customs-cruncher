@@ -201,7 +201,9 @@ export async function handleAdminSetActiveCommand(
   let matchedBattleTag: string | undefined = undefined
 
   if (interaction.isChatInputCommand()) {
-    const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+    const targetDiscordId =
+      extractDiscordIdFromInteraction(interaction, 'user') ??
+      extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
     const battleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim()
 
     if (battleTag) {
