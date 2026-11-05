@@ -969,8 +969,22 @@ async function moveTeamMembersToChannel(
  * @returns <void>
  */
 export async function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID)
-  if (!member || 'user' in member === false) {
+  const member =
+    interaction.options.getMember('user') ??
+    interaction.options.getMember('player') ??
+    interaction.options.getMember(CommandIds.DISCORD_ID)
+  const user =
+    interaction.options.getUser('user') ??
+    interaction.options.getUser('player') ??
+    interaction.options.getUser(CommandIds.DISCORD_ID)
+
+  const memberToMove = member && 'user' in member
+    ? member
+    : user
+      ? interaction.guild?.members.cache.get(user.id) ?? (await interaction.guild?.members.fetch(user.id).catch(() => null))
+      : null
+
+  if (!memberToMove || 'user' in memberToMove === false) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to move.',
       flags: MessageFlags.Ephemeral,
@@ -986,21 +1000,20 @@ export async function handleMoveCommand(interaction: ChatInputCommandInteraction
     return
   }
   // Move the member to the specified voice channel
-  const memberToMove = interaction.guild?.members.cache.get(member.user.id)
-  if (memberToMove?.voice.channel) {
+  if (memberToMove.voice.channel) {
     try {
       await memberToMove.voice.setChannel(channel)
     } catch (error) {
       console.error('Error moving member:', error)
       await safeReply(interaction, {
-        content: `Failed to move <@${member.user.id}> to <@${channel.id}>`,
+        content: `Failed to move <@${memberToMove.user.id}> to <@${channel.id}>`,
         flags: MessageFlags.Ephemeral,
       })
       return
     }
   }
   await safeReply(interaction, {
-    content: `Moved ${member.user.username} to ${channel.name}.`,
+    content: `Moved ${memberToMove.user.username} to ${channel.name}.`,
     flags: MessageFlags.Ephemeral,
   })
 }

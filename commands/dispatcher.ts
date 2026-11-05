@@ -173,7 +173,8 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.DELETE_PLAYER, handleDeletePlayerCommand],
   [CommandIds.DELETE_HOTS_ACCOUNT, handleDeleteHotsAccountCommand],
   ['refresh_lobby', handleRefreshLobbyMessage],
-  [CommandIds.MOVE, wrapSlashOnly(handleMoveCommand)],
+  [CommandIds.MOVE, wrapSlashOnly(handleMoveSubCommand)],
+  [CommandIds.PLAYER, wrapSlashOnly(handlePlayerSubCommand)],
   [CommandIds.DELETE_MESSAGE, handleDeleteMessageCommand],
   [CommandIds.REPLAYS, wrapSlashOnly(handleReplaysSubCommand)],
   [CommandIds.IMPORT_REPLAYS, handleImportReplaysCommand],
@@ -192,6 +193,34 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.ASSIGN_ACCOUNT, wrapSlashOnly(handleAssignAccountCommand)],
   [CommandIds.ASSIGN_ACCOUNT_CLEAR, wrapSlashOnly(handleAssignAccountClearCommand)],
 ])
+
+/**
+ * Handles subcommands for `/move <subcommand>`
+ */
+async function handleMoveSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  if (subcommand === 'lobby') {
+    await handleMoveToLobbyCommand(interaction)
+    return
+  }
+  if (subcommand === 'teams') {
+    await handleMoveToTeamsCommand(interaction)
+    return
+  }
+  await handleMoveCommand(interaction)
+}
+
+/**
+ * Handles subcommands for `/player <subcommand>`
+ */
+async function handlePlayerSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommand = interaction.options.getSubcommand(false)
+  if (subcommand === 'adjust') {
+    await handlePlayerAdjustCommand(interaction)
+    return
+  }
+  await handleMoveCommand(interaction)
+}
 
 /**
  * Handles subcommands for `/sub <subcommand>`

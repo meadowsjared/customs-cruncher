@@ -78,6 +78,7 @@ export const enum CommandIds {
   INACTIVE = 'inactive',
   LEAVE = 'leave',
   CLEAR = 'clear',
+  PLAYER = 'player',
   PLAYERS = 'players',
   PLAYERS_RAW = 'players-raw',
   PLAYERS_ALL = 'players-all',
