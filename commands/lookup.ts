@@ -30,9 +30,11 @@ import {
   getPlayerByDiscordId,
   getPlayerRolesFormatted,
   getStoredInteraction,
+  handleAddHotsAccount,
   savePlayer,
   setPlayerDiscordNames,
   setPlayerName,
+  setPlayerRole,
   storeInteraction,
 } from '../store/player'
 import { DiscordUserNames } from '../types/player'
@@ -316,6 +318,57 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   await interaction.respond(choices)
 }
 
+/**
+ * Handles the /register command interaction, which registers a player's Discord profile and HotS BattleTag into the database.
+ */
+export async function handleRegisterCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+): Promise<void> {
+  if (interaction.isButton()) {
+    console.error('Expected chat input command interaction, received button interaction')
+    return
+  }
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID) || interaction.user.id
+  const userOption = interaction.options.getUser(CommandIds.DISCORD_ID)
+  const resolvedUser = userOption && userOption.id === targetDiscordId ? userOption : interaction.user
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true).trim()
+  const role = interaction.options.getString(CommandIds.ROLE)
+
+  const discordData = fetchDiscordNames(interaction, targetDiscordId, resolvedUser)
+  const existingPlayer = await getPlayerByDiscordId(targetDiscordId, guildId)
+
+  if (!existingPlayer) {
+    await savePlayer(
+      interaction,
+      targetDiscordId,
+      {
+        discordId: targetDiscordId,
+        usernames: discordData,
+        role: role ?? undefined,
+        active: false,
+        team: null,
+        lobbyRank: NaN,
+        draftOrder: NaN,
+        adjustment: null,
+        mmr: 0,
+        lastActive: new Date(),
+      },
+      hotsBattleTag
+    )
+    return
+  }
+
+  // If player already exists in the database
+  if (role) {
+    await setPlayerRole(targetDiscordId, guildId, role)
+  }
+  await setPlayerDiscordNames(targetDiscordId, guildId, discordData)
+  await handleAddHotsAccount(interaction, targetDiscordId, hotsBattleTag)
+}
+
 export async function handleLookupCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -328,10 +381,13 @@ export async function handleLookupCommand(
 
   const member = interaction.options.getMember(CommandIds.DISCORD_ID)
   const userOption = interaction.options.getUser(CommandIds.DISCORD_ID)
-  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+  const extractedId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim()
 
-  // 1. If a Discord member or ID was provided
+  // Default to self if neither a specific user nor a BattleTag was provided
+  const targetDiscordId = extractedId || (!hotsBattleTag ? interaction.user.id : undefined)
+
+  // 1. If a Discord member or ID was provided (or defaulted to self)
   if (targetDiscordId) {
     let resolvedUser: User | null = null
     if (userOption && userOption.id === targetDiscordId) {
@@ -353,29 +409,30 @@ export async function handleLookupCommand(
 
     const player = await getPlayerByDiscordId(targetDiscordId, guildId)
 
-    // If neither Discord nor our database has a record of this user
-    if (!resolvedUser && !player) {
+    if (!player) {
+      const isSelf = targetDiscordId === interaction.user.id
+      const notFoundMessage = isSelf
+        ? 'You are not registered in the database yet. Use `/register` to add your BattleTag!'
+        : `<@${targetDiscordId}> is not registered in the database yet. Use \`/register\` to add them.`
       await safeReply(interaction, {
-        content: 'Please provide a valid Discord member to look up.',
+        content: notFoundMessage,
         flags: MessageFlags.Ephemeral,
       })
       return
     }
 
     const discordData = fetchDiscordNames(interaction, targetDiscordId, resolvedUser)
-    if (player) {
-      if (discordData.discordDisplayName === 'N/A') {
-        discordData.discordDisplayName = player.usernames.discordDisplayName
-      }
-      if (discordData.discordName === 'N/A') {
-        discordData.discordName = player.usernames.discordName
-      }
-      if (discordData.discordGlobalName === 'N/A') {
-        discordData.discordGlobalName = player.usernames.discordGlobalName
-      }
+    if (discordData.discordDisplayName === 'N/A') {
+      discordData.discordDisplayName = player.usernames.discordDisplayName
+    }
+    if (discordData.discordName === 'N/A') {
+      discordData.discordName = player.usernames.discordName
+    }
+    if (discordData.discordGlobalName === 'N/A') {
+      discordData.discordGlobalName = player.usernames.discordGlobalName
     }
 
-    return await handleLookupCommandSub(interaction, targetDiscordId, discordData, guildId, true)
+    return await handleLookupCommandSub(interaction, targetDiscordId, discordData, guildId, false)
   }
 
   // 2. If HotS BattleTag or account name was provided (without discord-id)
@@ -415,7 +472,7 @@ export async function handleLookupCommand(
           })
         }
         embed.setFooter({
-          text: `To link this account, run: /admin add-account battle-tag:${exactUnlinked.hotsBattleTag} discord-id:`,
+          text: `To link this account, run: /register battle-tag:${exactUnlinked.hotsBattleTag} user:@User`,
         })
 
         if (publish) {
@@ -456,7 +513,7 @@ export async function handleLookupCommand(
               inline: true,
             }
           )
-          .setFooter({ text: 'To link this account to a Discord user, run /lookup user:@User and add this BattleTag.' })
+          .setFooter({ text: 'To link this account to a Discord user, run /register with this BattleTag.' })
 
         if (publish) {
           await announce(interaction, { embeds: [embed] })
@@ -854,42 +911,6 @@ async function handleLookupCommandSub(
         flags: safePing(MessageFlags.Ephemeral),
       })
     }
-  }
-  if (!allowAccountMutation) {
-    return
-  }
-  // save the player to the database if they are not already there
-  if (!player) {
-    await savePlayer(
-      interaction,
-      discordId,
-      {
-        discordId,
-        usernames: {
-          ...discordData,
-        },
-        active: false,
-        team: null,
-        lobbyRank: NaN,
-        draftOrder: NaN,
-        adjustment: null,
-        mmr: 0,
-        lastActive: new Date(),
-      },
-      hotsBattleTag
-    )
-    return
-  }
-  // update the player's Discord data in the database
-  await setPlayerDiscordNames(discordId, guildId, discordData)
-  // If a hotsBattleTag is provided, and does this player already have this specific battle tag?
-  if (
-    hotsBattleTag &&
-    player.usernames.accounts?.some(a => a.hotsBattleTag.toLowerCase() === hotsBattleTag.toLowerCase())
-  ) {
-    await setPlayerName(interaction, guildId, discordId, hotsBattleTag) // Update the player's Heroes of the Storm name in the database
-  } else if (hotsBattleTag) {
-    await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag) // Add the new battle tag to the player's accounts in the database
   }
 }
 

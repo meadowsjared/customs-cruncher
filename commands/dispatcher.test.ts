@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { dispatchInteraction } from './dispatcher'
+import { slashCommands } from './definitions'
+import { CommandIds } from '../constants'
 import { ChatInputCommandInteraction } from 'discord.js'
 
 /**
@@ -58,5 +60,43 @@ describe('commands.dispatcher timing & routing', () => {
 
     // Should complete swiftly in a test environment
     expect(elapsed).toBeLessThan(50)
+  })
+
+  it('defines /register and /lookup with expected options', () => {
+    type NamedCommand = { name: string; options?: Array<{ name: string; required?: boolean }> }
+
+    const namedCommands: NamedCommand[] = []
+    for (const cmd of slashCommands) {
+      if (typeof cmd === 'object' && cmd !== null && 'name' in cmd) {
+        const rawOptions = 'options' in cmd && Array.isArray(cmd.options) ? cmd.options : undefined
+        const validOptions: Array<{ name: string; required?: boolean }> = []
+        if (rawOptions) {
+          for (const opt of rawOptions) {
+            if (typeof opt === 'object' && opt !== null && 'name' in opt) {
+              validOptions.push({
+                name: String(opt.name),
+                required: 'required' in opt ? Boolean(opt.required) : undefined,
+              })
+            }
+          }
+        }
+        namedCommands.push({
+          name: String(cmd.name),
+          options: validOptions,
+        })
+      }
+    }
+
+    const registerCmd = namedCommands.find(cmd => cmd.name === CommandIds.REGISTER)
+    expect(registerCmd).toBeDefined()
+    const battleTagOption = registerCmd?.options?.find(opt => opt.name === CommandIds.BATTLE_TAG)
+    expect(battleTagOption).toBeDefined()
+    expect(battleTagOption?.required).toBe(true)
+
+    const lookupCmd = namedCommands.find(cmd => cmd.name === CommandIds.LOOKUP)
+    expect(lookupCmd).toBeDefined()
+    const publishOption = lookupCmd?.options?.find(opt => opt.name === CommandIds.PUBLISH)
+    expect(publishOption).toBeDefined()
+    expect(publishOption?.required).toBeFalsy()
   })
 })

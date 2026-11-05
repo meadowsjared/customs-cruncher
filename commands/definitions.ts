@@ -446,6 +446,34 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: "Show Norator's Twitch channel",
   },
   {
+    name: CommandIds.REGISTER,
+    description: 'Register a player and their HotS BattleTag into the bot database',
+    options: [
+      {
+        name: CommandIds.BATTLE_TAG,
+        type: ApplicationCommandOptionType.String,
+        description: 'Heroes of the Storm BattleTag (e.g. Name#1234)',
+        required: true,
+      },
+      {
+        name: CommandIds.DISCORD_ID,
+        type: ApplicationCommandOptionType.User,
+        description: 'The Discord member to register (defaults to yourself)',
+        required: false,
+      },
+      {
+        name: CommandIds.ROLE,
+        type: ApplicationCommandOptionType.String,
+        description: 'Preferred player role',
+        required: false,
+        choices: Object.entries(roleMap).map(([key, label]) => ({
+          name: label,
+          value: key,
+        })),
+      },
+    ],
+  },
+  {
     name: CommandIds.LOOKUP,
     description: "Look up a player's Discord information, HotS accounts, and stats",
     options: [

@@ -65,6 +65,7 @@ import {
   handleLookupCommand,
   handlePlayersAllCommand,
   handlePlayersCommand,
+  handleRegisterCommand,
 } from './lookup'
 import {
   handleCancelMapVoteCommand,
@@ -154,6 +155,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.ADD_ACCOUNT, handleAddHotsAccountCommand],
   [CommandIds.ROLE, handleEditRoleCommand],
   [CommandIds.TWITCH, handleTwitchCommand],
+  [CommandIds.REGISTER, handleRegisterCommand],
   [`${CommandIds.LOOKUP}_${CommandIds.DISCORD_ID}`, handleLookupByDiscordIdCommand],
   [CommandIds.LOOKUP, handleLookupCommand],
   [CommandIds.DELETE_PLAYER, handleDeletePlayerCommand],
