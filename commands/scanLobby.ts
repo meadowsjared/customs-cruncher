@@ -28,6 +28,13 @@ export function formatScanSummaryMessage(summary: ScanLobbySummary): string {
         .join(', ')}`
     )
   }
+  const spectatorItems = [
+    ...(summary.spectators ?? []).map(p => `@${p.name} (\`${p.hotsBattleTag.replace(/#.*$/, '')}\`)`),
+    ...(summary.unregisteredSpectators ?? []).map(u => `\`${u}\` *(unregistered)*`),
+  ]
+  if (spectatorItems.length > 0) {
+    lines.push(`👁️ **Spectators (${spectatorItems.length}):** ${spectatorItems.join(', ')}`)
+  }
   if (summary.removed.length > 0) {
     lines.push(
       `🔴 **Removed from Lobby (${summary.removed.length}):** ${summary.removed.map(p => `@${p.name}`).join(', ')}`
@@ -61,7 +68,9 @@ export function formatScanSummaryMessage(summary: ScanLobbySummary): string {
       lines.push(`👑 **Captains:** ${captains.join(' | ')}`)
     }
   }
-  lines.push(`\n**Total Lobby:** ${summary.totalLobbyCount} / 10 players`)
+  const specSuffix =
+    spectatorItems.length > 0 ? ` (+ ${spectatorItems.length} spectator${spectatorItems.length === 1 ? '' : 's'})` : ''
+  lines.push(`\n**Total Lobby:** ${summary.totalLobbyCount} / 10 players${specSuffix}`)
   return lines.join('\n')
 }
 
@@ -157,6 +166,7 @@ export async function processAndApplyLobbyScan(
   await saveLastLobbyScan(guildId, {
     team1DiscordIds: summary.team1DiscordIds,
     team2DiscordIds: summary.team2DiscordIds,
+    spectatorDiscordIds: summary.spectatorDiscordIds,
     unregistered: summary.unregistered,
   })
 

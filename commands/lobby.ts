@@ -56,7 +56,11 @@ async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?
   const previousPlayersList = pPreviousPlayersList ?? previousPlayersMessage ?? ''
   const activePlayers = await getActivePlayers(guildId)
   activePlayers.sort((a, b) => (a.lastActive?.getTime?.() || 0) - (b.lastActive?.getTime?.() || 0)) // sort by last_active ascending
-  const lobbyPlayers = activePlayers.map((p, index) => {
+
+  const playingPlayers = activePlayers.filter(p => p.team !== 0)
+  const spectatorPlayers = activePlayers.filter(p => p.team === 0)
+
+  const formatPlayerRow = (p: Player, index: number) => {
     const subAccount = p.usernames.accounts?.find(a => a.ownerDiscordId)
     const primaryAccount = subAccount ?? p.usernames.accounts?.find(a => a.isPrimary)
     let accountDisplay = primaryAccount
@@ -73,7 +77,10 @@ async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?
     return `${index + 1}: @${p.usernames.discordDisplayName}: (${accountDisplay}) \`${getPlayerRolesFormatted(p.role)}\`${
       isLoading ? ' loading MMR...' : ''
     }`
-  })
+  }
+
+  const lobbyPlayers = playingPlayers.map(formatPlayerRow)
+  const spectatorRows = spectatorPlayers.map(formatPlayerRow)
 
   // combine the lobbyPlayers and previousPlayersList, into one string, labeling each section, but skip a section if there are no players in that section
   const playerListWithLabels = []
@@ -81,6 +88,9 @@ async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?
   playerListWithLabels.push(
     `__**Players in the lobby**__: (${lobbyPlayers.length})\n${lobbyPlayers.join('\n') || 'The lobby is empty.'}`
   )
+  if (spectatorRows.length > 0) {
+    playerListWithLabels.push(`__**Spectators**__: (${spectatorRows.length})\n${spectatorRows.join('\n')}`)
+  }
   if (playerListWithLabels.length === 0) {
     playerListWithLabels.push(`**No Active Players**`)
   }

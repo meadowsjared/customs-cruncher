@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 import { createWorker, Worker } from 'tesseract.js'
 import {
+  changeTeams,
   getActivePlayers,
   getAllRegisteredHotSAccounts,
   getPlayerIdentifier,
@@ -22,6 +23,9 @@ export interface ScanLobbySummary {
   totalLobbyCount: number
   team1DiscordIds: string[]
   team2DiscordIds: string[]
+  spectatorDiscordIds?: string[]
+  spectators?: { discordId: string | null; name: string; hotsBattleTag: string }[]
+  unregisteredSpectators?: string[]
   team1CaptainDiscordId?: string
   team2CaptainDiscordId?: string
 }
@@ -114,6 +118,27 @@ function calculateSlotCoordinates(imageWidth: number, imageHeight: number): Slot
   for (let i = 0; i < 5; i++) {
     const baseLeft = activeLeft + Math.round(activeWidth * 0.535)
     const top = activeTop + Math.round(activeHeight * (0.252 + i * 0.0485))
+    const height = Math.round(activeHeight * 0.042)
+    crops.push({
+      nameCoord: {
+        left: baseLeft,
+        top,
+        width: Math.round(activeWidth * 0.22),
+        height,
+      },
+      badgeCoord: {
+        left: baseLeft + Math.round(activeWidth * 0.215),
+        top,
+        width: Math.round(activeWidth * 0.095),
+        height,
+      },
+    })
+  }
+
+  // Observer slots (6 slots)
+  for (let i = 0; i < 6; i++) {
+    const baseLeft = activeLeft + Math.round(activeWidth * 0.16)
+    const top = activeTop + Math.round(activeHeight * (0.55 + i * 0.0485))
     const height = Math.round(activeHeight * 0.042)
     crops.push({
       nameCoord: {
@@ -393,6 +418,13 @@ export async function scanLobbyScreenshot(
     hotsBattleTag: string
   }[] = []
   const unregistered: string[] = []
+  const unregisteredSpectators: string[] = []
+  const spectators: {
+    discordId: string | null
+    name: string
+    hotsBattleTag: string
+  }[] = []
+  const spectatorDiscordIds: string[] = []
   const processedPlayerIds = new Set<string>()
   const team1DiscordIds: string[] = []
   const team2DiscordIds: string[] = []
@@ -400,6 +432,7 @@ export async function scanLobbyScreenshot(
   let team2CaptainDiscordId: string | undefined
 
   for (const detected of detectedSlots) {
+    const isSpectatorSlot = detected.slotIndex >= 10
     const matched = findBestAccountMatch(detected.text, registeredAccounts)
     if (matched) {
       const playerId = matched.discordId ?? `${PlayerIdPrefix.HOTS_ROW_ID}${matched.id}`
@@ -409,6 +442,10 @@ export async function scanLobbyScreenshot(
       processedPlayerIds.add(playerId)
 
       const { updated } = await setPlayerActive(playerId, true, guildId, matched.hotsBattleTag)
+      if (isSpectatorSlot) {
+        await changeTeams(guildId, [{ discordId: playerId, newTeam: 0 }])
+      }
+
       let displayTag = matched.hotsBattleTag
       if (matched.ownerDiscordId) {
         displayTag += getSubstitutedAccountOwnerTag(matched.ownerDiscordId, guildId)
@@ -431,14 +468,21 @@ export async function scanLobbyScreenshot(
         if (detected.isCaptain && !team1CaptainDiscordId) {
           team1CaptainDiscordId = playerId
         }
-      } else {
+      } else if (detected.slotIndex < 10) {
         team2DiscordIds.push(playerId)
         if (detected.isCaptain && !team2CaptainDiscordId) {
           team2CaptainDiscordId = playerId
         }
+      } else {
+        spectatorDiscordIds.push(playerId)
+        spectators.push(info)
       }
     } else {
-      unregistered.push(detected.text)
+      if (isSpectatorSlot) {
+        unregisteredSpectators.push(detected.text)
+      } else {
+        unregistered.push(detected.text)
+      }
     }
   }
 
@@ -466,7 +510,7 @@ export async function scanLobbyScreenshot(
     }
   }
 
-  const finalActiveCount = sync ? currentActive.length - removed.length : currentActive.length
+  const teamPlayersCount = team1DiscordIds.length + team2DiscordIds.length
 
   return {
     newlyAdded,
@@ -474,9 +518,12 @@ export async function scanLobbyScreenshot(
     unregistered,
     missingFromScreenshot,
     removed,
-    totalLobbyCount: finalActiveCount,
+    totalLobbyCount: teamPlayersCount,
     team1DiscordIds,
     team2DiscordIds,
+    spectatorDiscordIds,
+    spectators,
+    unregisteredSpectators,
     team1CaptainDiscordId,
     team2CaptainDiscordId,
   }
