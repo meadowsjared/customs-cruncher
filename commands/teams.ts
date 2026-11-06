@@ -376,48 +376,6 @@ export async function generateTeamsMessage(
       ? [new EmbedBuilder().setTitle('Spectators').setDescription(spectatorList).setColor(`#909000`)]
       : []
 
-  const outlookEmbedAr: EmbedBuilder[] = []
-  const components: ActionRowBuilder<ButtonBuilder>[] = []
-
-  if (!publish && team1.length > 0 && team2.length > 0) {
-    const prediction = calculateMatchupPrediction(team1, team2)
-    const suggestedSwaps = findSuggestedFairSwaps(team1, team2, 3)
-
-    let swapsText = ''
-    if (suggestedSwaps.length > 0) {
-      swapsText = '\n💡 **Suggested Fair Swaps:**\n'
-      suggestedSwaps.forEach((s, idx) => {
-        const name1 = s.player1.usernames?.discordDisplayName ?? `Player ${s.player1.lobbyRank}`
-        const name2 = s.player2.usernames?.discordDisplayName ?? `Player ${s.player2.lobbyRank}`
-        swapsText += `**${idx + 1}.** Swap **#${s.player1.lobbyRank} ${name1}** ↔ **#${s.player2.lobbyRank} ${name2}**\n   └ *${s.reason}*\n`
-      })
-
-      const row = new ActionRowBuilder<ButtonBuilder>()
-      suggestedSwaps.forEach(s => {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`fair_swap:${s.player1.lobbyRank}:${s.player2.lobbyRank}`)
-            .setLabel(`Swap #${s.player1.lobbyRank} ↔ #${s.player2.lobbyRank}`)
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('🔄')
-        )
-      })
-      components.push(row)
-    }
-
-    const outlookEmbed = new EmbedBuilder()
-      .setTitle('📊 Matchup Outlook & Win Prediction')
-      .setColor('#5865F2')
-      .setDescription(
-        `**Team 1** (${prediction.team1AvgMMR} avg) vs **Team 2** (${prediction.team2AvgMMR} avg)\n` +
-          `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
-          `${prediction.outlookText}\n` +
-          `${prediction.roleStatusText}\n` +
-          swapsText
-      )
-    outlookEmbedAr.push(outlookEmbed)
-  }
-
   let interactionGuild: Guild | null = null
   try {
     interactionGuild = interaction.guild
@@ -428,23 +386,69 @@ export async function generateTeamsMessage(
   const hostPing = await getGameHostPing(guildId, interactionGuild)
   const hostInfo = await resolveGameHost(guildId, interactionGuild)
 
-  const lobbySwapsEmbedAr: EmbedBuilder[] = []
-  if (publish && (team1.length > 0 || team2.length > 0)) {
-    const lastScan = await getLastLobbyScan(guildId)
-    if (lastScan && (lastScan.team1DiscordIds.length > 0 || lastScan.team2DiscordIds.length > 0)) {
-      const comparison = await compareTeamsToLobbyScan(guildId, team1, team2, lastScan, spectators)
-      const hostLabel = hostInfo.displayName && hostInfo.displayName !== 'the Host' ? `${hostInfo.displayName}` : ''
-      const lobbySwapsEmbed = new EmbedBuilder()
-        .setTitle(`🔄 In-Game Lobby Swaps for ${hostLabel}`)
-        .setDescription(comparison.formattedReport)
-        .setColor(comparison.matches ? '#57F287' : '#FFA500')
-      lobbySwapsEmbedAr.push(lobbySwapsEmbed)
+  const buildPayload = async (isPub: boolean) => {
+    const outlookEmbedAr: EmbedBuilder[] = []
+    const components: ActionRowBuilder<ButtonBuilder>[] = []
+
+    if (!isPub && team1.length > 0 && team2.length > 0) {
+      const prediction = calculateMatchupPrediction(team1, team2)
+      const suggestedSwaps = findSuggestedFairSwaps(team1, team2, 3)
+
+      let swapsText = ''
+      if (suggestedSwaps.length > 0) {
+        swapsText = '\n💡 **Suggested Fair Swaps:**\n'
+        suggestedSwaps.forEach((s, idx) => {
+          const name1 = s.player1.usernames?.discordDisplayName ?? `Player ${s.player1.lobbyRank}`
+          const name2 = s.player2.usernames?.discordDisplayName ?? `Player ${s.player2.lobbyRank}`
+          swapsText += `**${idx + 1}.** Swap **#${s.player1.lobbyRank} ${name1}** ↔ **#${s.player2.lobbyRank} ${name2}**\n   └ *${s.reason}*\n`
+        })
+
+        const row = new ActionRowBuilder<ButtonBuilder>()
+        suggestedSwaps.forEach(s => {
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`fair_swap:${s.player1.lobbyRank}:${s.player2.lobbyRank}`)
+              .setLabel(`Swap #${s.player1.lobbyRank} ↔ #${s.player2.lobbyRank}`)
+              .setStyle(ButtonStyle.Secondary)
+              .setEmoji('🔄')
+          )
+        })
+        components.push(row)
+      }
+
+      const outlookEmbed = new EmbedBuilder()
+        .setTitle('📊 Matchup Outlook & Win Prediction')
+        .setColor('#5865F2')
+        .setDescription(
+          `**Team 1** (${prediction.team1AvgMMR} avg) vs **Team 2** (${prediction.team2AvgMMR} avg)\n` +
+            `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
+            `${prediction.outlookText}\n` +
+            `${prediction.roleStatusText}\n` +
+            swapsText
+        )
+      outlookEmbedAr.push(outlookEmbed)
     }
+
+    const lobbySwapsEmbedAr: EmbedBuilder[] = []
+    if (isPub && (team1.length > 0 || team2.length > 0)) {
+      const lastScan = await getLastLobbyScan(guildId)
+      if (lastScan && (lastScan.team1DiscordIds.length > 0 || lastScan.team2DiscordIds.length > 0)) {
+        const comparison = await compareTeamsToLobbyScan(guildId, team1, team2, lastScan, spectators)
+        const hostLabel = hostInfo.displayName && hostInfo.displayName !== 'the Host' ? `${hostInfo.displayName}` : ''
+        const lobbySwapsEmbed = new EmbedBuilder()
+          .setTitle(`🔄 In-Game Lobby Swaps for ${hostLabel}`)
+          .setDescription(comparison.formattedReport)
+          .setColor(comparison.matches ? '#57F287' : '#FFA500')
+        lobbySwapsEmbedAr.push(lobbySwapsEmbed)
+      }
+    }
+
+    const embeds = [...lobbySwapsEmbedAr, ...outlookEmbedAr, team1embed, team2embed, ...spectatorEmbedAr]
+    return { embeds, components }
   }
 
-  const embeds = [...lobbySwapsEmbedAr, ...outlookEmbedAr, team1embed, team2embed, ...spectatorEmbedAr]
-
   if (interaction.isButton()) {
+    const { embeds, components } = await buildPayload(false)
     try {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
@@ -485,6 +489,7 @@ export async function generateTeamsMessage(
   }
 
   if (publish) {
+    const { embeds } = await buildPayload(true)
     // if we're publishing it, then we know the ephemeral messages got deleted above, so just post a new message
     const message = await safeReply(interaction, {
       content: hostPing,
@@ -498,6 +503,7 @@ export async function generateTeamsMessage(
     return // no need to update anything
   }
   if (isDraft) {
+    const { embeds, components } = await buildPayload(false)
     // else then it's a ephemeral
     const message = await safeReply(interaction, {
       content: hostPing,
@@ -523,6 +529,7 @@ export async function generateTeamsMessage(
       if (!channel?.isTextBased()) continue
       try {
         if (msg.messageType === CommandIds.TEAMS_EPHEMERAL) {
+          const { embeds, components } = await buildPayload(false)
           const prevInteraction = getStoredInteraction(msg.messageId, msg.channelId)
           if (!prevInteraction) {
             await deleteLobbyMessages(guildId, [msg.messageType])
@@ -557,13 +564,14 @@ export async function generateTeamsMessage(
             }
           }
         }
-        // so it's not an ephemeral message, so:
+        // so it's not an ephemeral message (it is CommandIds.TEAMS, the published message)
+        const { embeds } = await buildPayload(true)
         const previousMessage = await channel.messages.fetch(msg.messageId)
         if (!previousMessage) continue
         const message = await previousMessage.edit({
           content: hostPing,
           embeds,
-          components,
+          components: [],
         })
         // only save the message if we successfully edited it
         const fetchedMessage = await message.fetch()
