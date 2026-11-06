@@ -269,6 +269,10 @@ HAVING COUNT(*) >= 5
 ORDER BY (COUNT(*) FILTER (WHERE s.win)::numeric / COUNT(*)) DESC
 LIMIT 20;
 
+# Clean up a test supstitution
+DELETE FROM account_substitutions WHERE substitute_discord_id = '1376465976551542845';
+DELETE FROM hots_accounts WHERE discord_id = '1376465976551542845';
+DELETE FROM players WHERE discord_id = '1376465976551542845';
 
 # ==============================================================================
 # 6. SCRIPTS & MIGRATION COMMANDS
