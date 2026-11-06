@@ -89,7 +89,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           {
             name: CommandIds.SYNC,
             type: ApplicationCommandOptionType.Boolean,
-            description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
+            description:
+              'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
             required: false,
           },
         ],
@@ -108,7 +109,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           {
             name: CommandIds.SYNC,
             type: ApplicationCommandOptionType.Boolean,
-            description: 'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
+            description:
+              'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
             required: false,
           },
         ],
@@ -169,7 +171,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'teams_data',
+            name: 'teams-data',
             type: ApplicationCommandOptionType.String,
             description: 'The team data (e.g. "1 4 5 6 10" or "1 3 5 7 9, 2 4 6 8 10")',
             required: true,
@@ -232,14 +234,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'team1_captain',
+            name: 'team1-captain',
             type: ApplicationCommandOptionType.String,
             description: 'Team 1 Captain (active lobby players)',
             required: false,
             autocomplete: true,
           },
           {
-            name: 'team2_captain',
+            name: 'team2-captain',
             type: ApplicationCommandOptionType.String,
             description: 'Team 2 Captain (active lobby players)',
             required: false,
@@ -263,14 +265,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'team1_captain',
+            name: 'team1-captain',
             type: ApplicationCommandOptionType.String,
             description: 'Team 1 Captain (active lobby players)',
             required: false,
             autocomplete: true,
           },
           {
-            name: 'team2_captain',
+            name: 'team2-captain',
             type: ApplicationCommandOptionType.String,
             description: 'Team 2 Captain (active lobby players)',
             required: false,
@@ -332,7 +334,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             ],
           },
           {
-            name: 'player',
+            name: CommandIds.USER,
             type: ApplicationCommandOptionType.String,
             description: 'The player to assign to a team',
             required: true,
@@ -423,7 +425,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'user',
+            name: CommandIds.USER,
             type: ApplicationCommandOptionType.User,
             description: 'The Discord user who hosts custom games (leave blank to view current)',
             required: false,
@@ -475,7 +477,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         required: true,
       },
       {
-        name: CommandIds.DISCORD_ID,
+        name: CommandIds.USER,
         type: ApplicationCommandOptionType.User,
         description: 'The Discord member to register (defaults to yourself)',
         required: false,
@@ -497,7 +499,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     description: "Look up a player's Discord information, HotS accounts, and stats",
     options: [
       {
-        name: CommandIds.DISCORD_ID,
+        name: CommandIds.USER,
         type: ApplicationCommandOptionType.User,
         description: 'The Discord user of the player to lookup',
         required: false,
@@ -541,157 +543,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           {
             name: 'true',
             value: 'true',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    name: CommandIds.ADMIN,
-    description: 'Admin commands to manage players.',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
-      {
-        name: CommandIds.ROLE,
-        description: "Change a player's role.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.User,
-            required: true,
-          },
-          {
-            name: CommandIds.ROLE,
-            description: "The player's new role.",
-            type: ApplicationCommandOptionType.String,
-            required: false,
-            choices: Object.entries(roleMap).map(([key, label]) => ({
-              name: label,
-              value: key,
-            })),
-          },
-        ],
-      },
-      {
-        name: CommandIds.ADD_ACCOUNT,
-        description: "Add a Heroes of the Storm account to a player's profile.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
-            type: ApplicationCommandOptionType.String,
-            autocomplete: true,
-            required: true,
-          },
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.User,
-            required: true,
-          },
-        ],
-      },
-      {
-        name: CommandIds.DELETE_ACCOUNT,
-        description: "Delete a player's Heroes of the Storm account.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.User,
-            required: true,
-          },
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'The Heroes of the Storm battle tag to delete (including the # and number)',
-            type: ApplicationCommandOptionType.String,
-            autocomplete: true,
-            required: false,
-          },
-        ],
-      },
-      {
-        name: CommandIds.PRIMARY,
-        description: "Set a player's primary Heroes of the Storm account.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The user to modify.',
-            type: ApplicationCommandOptionType.User,
-            required: true,
-          },
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: "The player's Heroes of the Storm battle tag to set as primary (including the # and number).",
-            type: ApplicationCommandOptionType.String,
-            autocomplete: true,
-            required: false,
-          },
-        ],
-      },
-      {
-        name: CommandIds.REAL_ID_NAME,
-        description: "Set, view, or clear a player's Battle.net Real ID name.",
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.BATTLE_TAG,
-            description: 'The Heroes of the Storm battle tag (e.g. Name#1234).',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-            autocomplete: true,
-          },
-          {
-            name: CommandIds.DISCORD_ID,
-            description: 'The Discord user (defaults to primary account if battle-tag omitted).',
-            type: ApplicationCommandOptionType.User,
-            required: false,
-          },
-          {
-            name: 'name',
-            description: 'The Real ID name to set (leave blank to view or clear).',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-          },
-          {
-            name: 'clear',
-            description: 'Set to true to clear the Real ID name.',
-            type: ApplicationCommandOptionType.Boolean,
-            required: false,
-          },
-        ],
-      },
-      {
-        name: CommandIds.UNLINKED,
-        description: 'List unlinked HotS accounts found in custom match replays.',
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.MIN_GAMES,
-            description: 'Minimum number of games played (default: 1).',
-            type: ApplicationCommandOptionType.Integer,
-            required: false,
-          },
-          {
-            name: CommandIds.SEARCH,
-            description: 'Filter by player name or BattleTag.',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-          },
-          {
-            name: CommandIds.SORT,
-            description: 'Sort by most recent game or total games played (default: recent).',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-            choices: [
-              { name: 'Most Recent', value: 'recent' },
-              { name: 'Most Games', value: 'games' },
-            ],
           },
         ],
       },
@@ -793,7 +644,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'user',
+            name: CommandIds.USER,
             type: ApplicationCommandOptionType.User,
             description: 'The player to move',
             required: true,
@@ -813,7 +664,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'player',
+            name: CommandIds.USER,
             type: ApplicationCommandOptionType.User,
             description: 'The player to check or adjust MMR for',
             required: true,
@@ -845,7 +696,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'user',
+            name: CommandIds.USER,
             description: 'The user to modify',
             type: ApplicationCommandOptionType.User,
             required: false,
@@ -866,12 +717,107 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         ],
       },
       {
+        name: 'role',
+        description: "Change a player's role",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.USER,
+            description: 'The user to modify',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.ROLE,
+            description: "The player's new role",
+            type: ApplicationCommandOptionType.String,
+            required: false,
+            choices: Object.entries(roleMap).map(([key, label]) => ({
+              name: label,
+              value: key,
+            })),
+          },
+        ],
+      },
+      {
+        name: 'add-account',
+        description: "Add a Heroes of the Storm account to a player's profile",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.USER,
+            description: 'The user to modify',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag to add (including the # and number)',
+            type: ApplicationCommandOptionType.String,
+            autocomplete: true,
+            required: true,
+          },
+        ],
+      },
+      {
+        name: 'primary',
+        description: "Set a player's primary Heroes of the Storm account",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.USER,
+            description: 'The user to modify',
+            type: ApplicationCommandOptionType.User,
+            required: true,
+          },
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: "The player's Heroes of the Storm battle tag to set as primary (including the # and number)",
+            type: ApplicationCommandOptionType.String,
+            autocomplete: true,
+            required: false,
+          },
+        ],
+      },
+      {
+        name: 'real-id',
+        description: "Set, view, or clear a player's Battle.net Real ID name",
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.BATTLE_TAG,
+            description: 'The Heroes of the Storm battle tag (e.g. Name#1234)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+            autocomplete: true,
+          },
+          {
+            name: CommandIds.USER,
+            description: 'The Discord user (defaults to primary account if battle-tag omitted)',
+            type: ApplicationCommandOptionType.User,
+            required: false,
+          },
+          {
+            name: 'name',
+            description: 'The Real ID name to set (leave blank to view or clear)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'clear',
+            description: 'Set to true to clear the Real ID name',
+            type: ApplicationCommandOptionType.Boolean,
+            required: false,
+          },
+        ],
+      },
+      {
         name: 'delete',
         description: "Delete a player's profile and linked HotS accounts from the database",
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
-            name: 'user',
+            name: CommandIds.USER,
             type: ApplicationCommandOptionType.User,
             description: 'The player to delete',
             required: true,
@@ -889,6 +835,35 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             description: 'The battle tag of the account to delete (including the # and number)',
             autocomplete: true,
             required: true,
+          },
+        ],
+      },
+      {
+        name: 'unlinked',
+        description: 'List unlinked HotS accounts found in custom match replays',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.MIN_GAMES,
+            description: 'Minimum number of games played (default: 1)',
+            type: ApplicationCommandOptionType.Integer,
+            required: false,
+          },
+          {
+            name: CommandIds.SEARCH,
+            description: 'Filter by player name or BattleTag',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: CommandIds.SORT,
+            description: 'Sort by most recent game or total games played (default: recent)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+            choices: [
+              { name: 'Most Recent', value: 'recent' },
+              { name: 'Most Games', value: 'games' },
+            ],
           },
         ],
       },

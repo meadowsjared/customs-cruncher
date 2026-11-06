@@ -201,9 +201,7 @@ export async function handleAdminSetActiveCommand(
   let matchedBattleTag: string | undefined = undefined
 
   if (interaction.isChatInputCommand()) {
-    const targetDiscordId =
-      extractDiscordIdFromInteraction(interaction, 'user') ??
-      extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+    const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
     const battleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim()
 
     if (battleTag) {
@@ -645,7 +643,7 @@ export async function handlePlayerAdjustCommand(interaction: ChatInputCommandInt
     return
   }
 
-  const targetUser = interaction.options.getUser('player', true)
+  const targetUser = interaction.options.getUser(CommandIds.USER, true)
   const amount = interaction.options.getNumber('amount')
   const publish =
     interaction.options.getBoolean(CommandIds.PUBLISH) ?? interaction.options.getBoolean('public') ?? false
@@ -710,7 +708,8 @@ export async function handleAdminUnlinkedCommand(
   search = ''
 ) {
   if (interaction.isChatInputCommand()) {
-    const rawMinGames = interaction.options.getInteger(CommandIds.MIN_GAMES)
+    const rawMinGames =
+      interaction.options.getInteger(CommandIds.MIN_GAMES) ?? interaction.options.getInteger('min_games')
     if (rawMinGames !== null && rawMinGames !== undefined) {
       minGames = Math.max(1, rawMinGames)
     }

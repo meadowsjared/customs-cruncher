@@ -1,16 +1,9 @@
-import {
-  ButtonInteraction,
-  CacheType,
-  ChatInputCommandInteraction,
-  Interaction,
-  MessageFlags,
-} from 'discord.js'
+import { ButtonInteraction, CacheType, ChatInputCommandInteraction, Interaction, MessageFlags } from 'discord.js'
 import { CommandIds, roleMap } from '../constants'
 import { safeReply } from '../utils/interaction'
 import {
   handleAdminAddHotsAccountButton,
   handleAdminAddHotsAccountCommand,
-  handleAdminDeleteHotsAccountCommand,
   handleAdminPrimaryCommand,
   handleAdminRealIdNameCommand,
   handleAddHotsAccountCommand,
@@ -74,12 +67,7 @@ import {
   handleRecentReplaysCommand,
 } from './replays'
 import { handleScanLobbyCommand } from './scanLobby'
-import {
-  handleChannelCommand,
-  handleDeleteMessageCommand,
-  handleGuideCommand,
-  handleTwitchCommand,
-} from './shared'
+import { handleChannelCommand, handleDeleteMessageCommand, handleGuideCommand, handleTwitchCommand } from './shared'
 import {
   handleCheckTeamsCommand,
   handleFairSwapButton,
@@ -127,18 +115,21 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.JOIN, handleJoinCommand],
   [CommandIds.REJOIN, handleRejoinCommand],
   [CommandIds.LEAVE, handleLeaveCommand],
-  [CommandIds.PLAYERS, async i => {
-    if (i.isChatInputCommand()) {
-      const mode = i.options.getString('mode')
-      if (mode === 'raw') {
-        return handlePlayersCommand(i, true)
+  [
+    CommandIds.PLAYERS,
+    async i => {
+      if (i.isChatInputCommand()) {
+        const mode = i.options.getString('mode')
+        if (mode === 'raw') {
+          return handlePlayersCommand(i, true)
+        }
+        if (mode === 'all') {
+          return handlePlayersAllCommand(i)
+        }
       }
-      if (mode === 'all') {
-        return handlePlayersAllCommand(i)
-      }
-    }
-    return handlePlayersCommand(i)
-  }],
+      return handlePlayersCommand(i)
+    },
+  ],
   [CommandIds.ADD_ACCOUNT, handleAddHotsAccountCommand],
   [CommandIds.ROLE, handleEditRoleCommand],
   [CommandIds.TWITCH, handleTwitchCommand],
@@ -149,8 +140,10 @@ const exactHandlers = new Map<string, InteractionHandler>([
   [CommandIds.DELETE_MESSAGE, handleDeleteMessageCommand],
   [CommandIds.REPLAYS, wrapSlashOnly(handleReplaysSubCommand)],
   [CommandIds.CHANNEL_COMMAND, wrapSlashOnly(handleChannelCommand)],
-  [CommandIds.ADMIN, wrapSlashOnly(handleAdminSubCommand)],
-  [`${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`, async i => updateAdminActiveButtons(i, false, true)],
+  [
+    `${CommandIds.ADMIN}_${CommandIds.ACTIVE}_${CommandIds.REFRESH}`,
+    async i => updateAdminActiveButtons(i, false, true),
+  ],
   [CommandIds.MAP, wrapSlashOnly(handleMapSubCommand)],
   [CommandIds.SUB, wrapSlashOnly(handleSubSubCommand)],
 ])
@@ -205,11 +198,27 @@ async function handlePlayerSubCommand(interaction: ChatInputCommandInteraction<C
     case 'active':
       await handleAdminSetActiveCommand(interaction)
       return
+    case 'role':
+      await handleAdminSetRoleCommand(interaction)
+      return
+    case 'add-account':
+      await handleAdminAddHotsAccountCommand(interaction)
+      return
+    case 'primary':
+      await handleAdminPrimaryCommand(interaction)
+      return
+    case 'real-id':
+    case 'real-id-name':
+      await handleAdminRealIdNameCommand(interaction)
+      return
     case 'delete':
       await handleDeletePlayerCommand(interaction)
       return
     case 'delete-account':
       await handleDeleteHotsAccountCommand(interaction)
+      return
+    case 'unlinked':
+      await handleAdminUnlinkedCommand(interaction)
       return
     case 'move':
     default:
@@ -316,33 +325,6 @@ async function handleMapSubCommand(interaction: ChatInputCommandInteraction<Cach
     return
   }
   await handleMapVoteCommand(interaction)
-}
-
-/**
- * Handles subcommands for `/admin <subcommand>`
- */
-async function handleAdminSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const subCommand = interaction.options.getSubcommand(true)
-  switch (subCommand) {
-    case CommandIds.ROLE:
-      await handleAdminSetRoleCommand(interaction)
-      break
-    case CommandIds.ADD_ACCOUNT:
-      await handleAdminAddHotsAccountCommand(interaction)
-      break
-    case CommandIds.DELETE_ACCOUNT:
-      await handleAdminDeleteHotsAccountCommand(interaction)
-      break
-    case CommandIds.PRIMARY:
-      await handleAdminPrimaryCommand(interaction)
-      break
-    case CommandIds.REAL_ID_NAME:
-      await handleAdminRealIdNameCommand(interaction)
-      break
-    case CommandIds.UNLINKED:
-      await handleAdminUnlinkedCommand(interaction)
-      break
-  }
 }
 
 function getCommandName(

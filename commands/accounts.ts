@@ -19,7 +19,6 @@ import {
   getPlayerByDiscordId,
   getPlayerRolesFormatted,
   handleAddHotsAccount,
-  handleDeleteHotsAccount,
   setAccountSubstitution,
   setHotsAccountRealIdName,
   setPlayerActive,
@@ -29,7 +28,7 @@ import {
 } from '../store/player'
 import { Player } from '../types/player'
 import { requireGuildId, safeReply, safeUpdate } from '../utils/interaction'
-import { handleRefreshLobbyMessage, updateLobbyMessage } from './lobby'
+import { updateLobbyMessage } from './lobby'
 import {
   createEditRoleButtonDisabled,
   createEditRoleButtonEnabled,
@@ -85,7 +84,7 @@ export async function handleAddHotsAccountCommand(
 }
 
 export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
   if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to look up.',
@@ -98,21 +97,6 @@ export async function handleAdminAddHotsAccountCommand(interaction: ChatInputCom
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG)
   // check if the battleTag is valid, it should be in the format of Name#1234
   await handleAddHotsAccountCommandSub(interaction, guildId, discordId, hotsBattleTag)
-}
-
-export async function handleAdminDeleteHotsAccountCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
-  if (!discordId) {
-    await safeReply(interaction, {
-      content: 'Please provide a valid Discord member to look up.',
-      flags: MessageFlags.Ephemeral,
-    })
-    return
-  }
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)
-  // check if the battleTag is valid, it should be in the format of Name#1234
-  await handleDeleteHotsAccountCommandSub(interaction, discordId, hotsBattleTag)
-  await handleRefreshLobbyMessage(interaction, false)
 }
 
 export async function handleAdminPrimaryCommand(
@@ -392,15 +376,6 @@ export async function handleAddHotsAccountCommandSub(
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
 }
 
-async function handleDeleteHotsAccountCommandSub(
-  interaction: ChatInputCommandInteraction<CacheType>,
-  discordId: string,
-  hotsBattleTag: string | null
-) {
-  await handleDeleteHotsAccount(interaction, discordId, hotsBattleTag)
-  await handleRefreshLobbyMessage(interaction, false)
-}
-
 /**
  * Handles the edit role command interaction, shows buttons to edit the user's role
  * @param interaction The interaction object from Discord, either a ChatInputCommandInteraction or ButtonInteraction.
@@ -601,9 +576,7 @@ async function showReplaceButtons(
   })
 }
 
-export async function handleAssignAccountCommand(
-  interaction: ChatInputCommandInteraction<CacheType>
-): Promise<void> {
+export async function handleAssignAccountCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
   if (!(await userIsAdmin(interaction))) {
     return
   }
@@ -684,4 +657,3 @@ export async function handleAssignAccountAutocomplete(interaction: AutocompleteI
 
   await interaction.respond(choices)
 }
-

@@ -213,7 +213,7 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   const query = focusedOption.value.trim().toLowerCase()
   const registeredAccounts = await getAllRegisteredHotSAccounts(guildId)
 
-  const rawDiscordId = interaction.options.get(CommandIds.DISCORD_ID)?.value
+  const rawDiscordId = interaction.options.get(CommandIds.USER)?.value
   const targetDiscordId =
     typeof rawDiscordId === 'string' && rawDiscordId.trim().length > 0
       ? rawDiscordId.replace(/[<@!>]/g, '').trim()
@@ -310,8 +310,8 @@ export async function handleRegisterCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
 
-  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID) || interaction.user.id
-  const userOption = interaction.options.getUser(CommandIds.DISCORD_ID)
+  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER) || interaction.user.id
+  const userOption = interaction.options.getUser(CommandIds.USER)
   const resolvedUser = userOption && userOption.id === targetDiscordId ? userOption : interaction.user
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true).trim()
   const role = interaction.options.getString(CommandIds.ROLE)
@@ -358,9 +358,9 @@ export async function handleLookupCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
 
-  const member = interaction.options.getMember(CommandIds.DISCORD_ID)
-  const userOption = interaction.options.getUser(CommandIds.DISCORD_ID)
-  const extractedId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+  const member = interaction.options.getMember(CommandIds.USER)
+  const userOption = interaction.options.getUser(CommandIds.USER)
+  const extractedId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
   const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, false)?.trim()
 
   // Default to self if neither a specific user nor a BattleTag was provided
@@ -900,9 +900,7 @@ export async function handleDeletePlayerCommand(
     console.error('Expected chat input command interaction, received button interaction')
     return
   }
-  const discordId =
-    extractDiscordIdFromInteraction(interaction, 'user') ??
-    extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+  const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
   if (!discordId) {
     await safeReply(interaction, {
       content: 'Please provide a valid Discord member to delete.',

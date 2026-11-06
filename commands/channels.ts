@@ -178,7 +178,7 @@ export async function handleSetGameHostCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
 
-  const targetUser = interaction.options.getUser('user')
+  const targetUser = interaction.options.getUser(CommandIds.USER)
   if (!targetUser) {
     const currentHostId = await getGameHostId(guildId)
     if (currentHostId) {

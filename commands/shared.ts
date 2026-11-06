@@ -36,19 +36,23 @@ export function formatDateToMMDDYYYY(d: Date): string {
 
 export function extractDiscordIdFromInteraction(
   interaction: ChatInputCommandInteraction<CacheType>,
-  optionName: string = CommandIds.DISCORD_ID
+  optionName: string = CommandIds.USER
 ): string | undefined {
-  const member = interaction.options.getMember(optionName)
-  if (member && 'user' in member) {
-    return member.user.id
-  }
-  const userOption = interaction.options.getUser(optionName)
-  if (userOption) {
-    return userOption.id
-  }
-  const rawDiscordId = interaction.options.get(optionName)?.value
-  if (typeof rawDiscordId === 'string' && rawDiscordId.trim().length > 0) {
-    return rawDiscordId.replace(/[<@!>]/g, '').trim()
+  const namesToCheck = optionName === CommandIds.USER ? [CommandIds.USER] : [optionName]
+
+  for (const name of namesToCheck) {
+    const member = interaction.options.getMember(name)
+    if (member && 'user' in member) {
+      return member.user.id
+    }
+    const userOption = interaction.options.getUser(name)
+    if (userOption) {
+      return userOption.id
+    }
+    const rawDiscordId = interaction.options.get(name)?.value
+    if (typeof rawDiscordId === 'string' && rawDiscordId.trim().length > 0) {
+      return rawDiscordId.replace(/[<@!>]/g, '').trim()
+    }
   }
   return undefined
 }
@@ -64,7 +68,7 @@ export function getDiscordId(
   if (!interaction.isChatInputCommand()) {
     return undefined
   }
-  return extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+  return extractDiscordIdFromInteraction(interaction, CommandIds.USER)
 }
 
 export function getBattleTag(
@@ -108,7 +112,7 @@ export async function getMemberFromInteraction(
   pId?: string
 ): Promise<string | null> {
   if (interaction.isChatInputCommand()) {
-    const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.DISCORD_ID)
+    const discordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
     if (discordId) {
       return discordId
     }
@@ -522,4 +526,3 @@ export async function handleChannelCommand(
     })
   }
 }
-

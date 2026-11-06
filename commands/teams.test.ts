@@ -36,22 +36,14 @@ const actualPlayer = await import('../store/player')
 mock.module('../store/player', () => ({
   ...actualPlayer,
   getSortedActivePlayers: async () => mockActivePlayers,
-  setTeamsFromPlayers: async (
-    guildId: string,
-    team1: Player[],
-    team2: Player[],
-    spectators: Player[]
-  ) => {
+  setTeamsFromPlayers: async (guildId: string, team1: Player[], team2: Player[], spectators: Player[]) => {
     capturedSetTeams = { guildId, team1, team2, spectators }
   },
 }))
 
 mock.module('../utils/interaction', () => ({
   requireGuildId: async () => 'test_guild',
-  safeReply: async (
-    _interaction: unknown,
-    options: string | { content?: string; flags?: MessageFlags }
-  ) => {
+  safeReply: async (_interaction: unknown, options: string | { content?: string; flags?: MessageFlags }) => {
     if (typeof options === 'string') {
       repliedContent = options
     } else {
@@ -83,7 +75,7 @@ function createMockInteraction(teamsData: string, isButton = false): ChatInputCo
     channelId: 'test_channel',
     isButton: () => isButton,
     options: {
-      getString: (name: string) => (name === 'teams_data' ? teamsData : null),
+      getString: (name: string) => (name === 'teams-data' ? teamsData : null),
     },
     isRepliable: () => true,
     replied: false,
@@ -101,9 +93,7 @@ function createMockInteraction(teamsData: string, isButton = false): ChatInputCo
 
 describe('commands.teams.handleSetTeamsCommand', () => {
   it('correctly sets teams when given single-team 1-based ranks (e.g. "1 4 5 6 10")', async () => {
-    mockActivePlayers = Array.from({ length: 10 }, (_, i) =>
-      makeMockPlayer(i + 1, 3200 - i * 100)
-    )
+    mockActivePlayers = Array.from({ length: 10 }, (_, i) => makeMockPlayer(i + 1, 3200 - i * 100))
 
     const interaction = createMockInteraction('1 4 5 6 10')
     await handleSetTeamsCommand(interaction)
@@ -121,9 +111,7 @@ describe('commands.teams.handleSetTeamsCommand', () => {
   })
 
   it('correctly sets teams when both teams are provided with comma (e.g. "1 3 5 7 9, 2 4 6 8 10")', async () => {
-    mockActivePlayers = Array.from({ length: 10 }, (_, i) =>
-      makeMockPlayer(i + 1, 3200 - i * 100)
-    )
+    mockActivePlayers = Array.from({ length: 10 }, (_, i) => makeMockPlayer(i + 1, 3200 - i * 100))
 
     const interaction = createMockInteraction('1 3 5 7 9, 2 4 6 8 10')
     await handleSetTeamsCommand(interaction)
@@ -141,9 +129,7 @@ describe('commands.teams.handleSetTeamsCommand', () => {
   })
 
   it('puts excess players beyond 10 into spectators', async () => {
-    mockActivePlayers = Array.from({ length: 12 }, (_, i) =>
-      makeMockPlayer(i + 1, 3200 - i * 100)
-    )
+    mockActivePlayers = Array.from({ length: 12 }, (_, i) => makeMockPlayer(i + 1, 3200 - i * 100))
 
     const interaction = createMockInteraction('1 4 5 6 10')
     await handleSetTeamsCommand(interaction)
@@ -157,9 +143,7 @@ describe('commands.teams.handleSetTeamsCommand', () => {
   })
 
   it('returns an ephemeral error message if duplicate player numbers are provided', async () => {
-    mockActivePlayers = Array.from({ length: 10 }, (_, i) =>
-      makeMockPlayer(i + 1, 3200 - i * 100)
-    )
+    mockActivePlayers = Array.from({ length: 10 }, (_, i) => makeMockPlayer(i + 1, 3200 - i * 100))
 
     const interaction = createMockInteraction('1 4 4 6 10')
     await handleSetTeamsCommand(interaction)
@@ -170,9 +154,7 @@ describe('commands.teams.handleSetTeamsCommand', () => {
   })
 
   it('returns an ephemeral error message if too many players are specified', async () => {
-    mockActivePlayers = Array.from({ length: 3 }, (_, i) =>
-      makeMockPlayer(i + 1, 3200 - i * 100)
-    )
+    mockActivePlayers = Array.from({ length: 3 }, (_, i) => makeMockPlayer(i + 1, 3200 - i * 100))
 
     const interaction = createMockInteraction('1 2 3 4 5')
     await handleSetTeamsCommand(interaction)
@@ -183,9 +165,7 @@ describe('commands.teams.handleSetTeamsCommand', () => {
   })
 
   it('ignores button interactions safely', async () => {
-    mockActivePlayers = Array.from({ length: 10 }, (_, i) =>
-      makeMockPlayer(i + 1, 3200 - i * 100)
-    )
+    mockActivePlayers = Array.from({ length: 10 }, (_, i) => makeMockPlayer(i + 1, 3200 - i * 100))
 
     const interaction = createMockInteraction('1 4 5 6 10', true)
     await handleSetTeamsCommand(interaction)

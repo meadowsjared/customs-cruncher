@@ -159,13 +159,13 @@ function isReplayInFilterRange(
       if (!isNaN(d.getTime())) {
         fileTime = d.getTime()
       }
-    } catch { }
+    } catch {}
   }
 
   if (fileTime === null) {
     try {
       fileTime = fs.statSync(file).mtime.getTime()
-    } catch { }
+    } catch {}
   }
 
   if (fileTime === null) {
@@ -209,14 +209,14 @@ export async function buildReplayOverviewEmbed(
   const r: RecentReplaySummary =
     typeof replayOrId === 'number'
       ? ((await getReplaySummary(replayOrId)) ?? {
-        id: replayOrId,
-        map: 'Unknown Map',
-        date: '',
-        length: null,
-        winner: null,
-        team0Takedowns: null,
-        team1Takedowns: null,
-      })
+          id: replayOrId,
+          map: 'Unknown Map',
+          date: '',
+          length: null,
+          winner: null,
+          team0Takedowns: null,
+          team1Takedowns: null,
+        })
       : replayOrId
 
   const durationMin = r.length ? Math.floor(r.length / 60) : 0
@@ -391,9 +391,7 @@ export async function syncRecentReplays(
   }
 
   const unimportedFiles =
-    firstImportedIndex === -1
-      ? sortedFiles.slice().reverse()
-      : sortedFiles.slice(0, firstImportedIndex).reverse()
+    firstImportedIndex === -1 ? sortedFiles.slice().reverse() : sortedFiles.slice(0, firstImportedIndex).reverse()
 
   const importedEntries: SavedCustomReplay[] = []
   let importedCount = 0
@@ -404,7 +402,10 @@ export async function syncRecentReplays(
       if (data && data.mode === -1) {
         importedCount++
         importedSet.add(path.basename(file))
-        const saved = await saveAndCopyCustomReplay(file, data, guildId, { refreshStats: false, linkSubstitutions: false })
+        const saved = await saveAndCopyCustomReplay(file, data, guildId, {
+          refreshStats: false,
+          linkSubstitutions: false,
+        })
         importedEntries.push(saved)
       }
       if (onProgress && Date.now() - lastProgressUpdate >= 10000) {
@@ -415,7 +416,10 @@ export async function syncRecentReplays(
   })
 
   if (importedCount > 0) {
-    await linkActiveSubstitutionsForReplays(guildId, importedEntries.map(e => e.replayId))
+    await linkActiveSubstitutionsForReplays(
+      guildId,
+      importedEntries.map(e => e.replayId)
+    )
     await optimizeDb()
   }
 
@@ -454,35 +458,43 @@ export async function handleImportReplaysCommand(
   let limitNoticeSent = false
 
   if (!rawStartInput && !rawEndInput) {
-    await interaction.editReply({
-      content: '🔍 **Checking for new unimported custom replays...**',
-    }).catch(() => { })
+    await interaction
+      .editReply({
+        content: '🔍 **Checking for new unimported custom replays...**',
+      })
+      .catch(() => {})
 
     const result = await syncRecentReplays(guildId, async (processed, total, imported) => {
       const now = Date.now()
       if (now - startTime >= MAX_INTERACTION_SAFE_MS && !limitNoticeSent) {
         limitNoticeSent = true
-        await interaction.editReply({
-          content:
-            `⏳ **Large Replay Import in Progress...**\n` +
-            `📊 **Status:** Scanned ${processed.toLocaleString()}/${total.toLocaleString()} files (${imported.toLocaleString()} imported so far).\n` +
-            `⏱️ **Notice:** Approaching Discord's 15-minute interaction limit. The import will continue running in the background to completion! Run \`/recent-replays\` when done to view matches.`,
-        }).catch(() => { })
+        await interaction
+          .editReply({
+            content:
+              `⏳ **Large Replay Import in Progress...**\n` +
+              `📊 **Status:** Scanned ${processed.toLocaleString()}/${total.toLocaleString()} files (${imported.toLocaleString()} imported so far).\n` +
+              `⏱️ **Notice:** Approaching Discord's 15-minute interaction limit. The import will continue running in the background to completion! Run \`/recent-replays\` when done to view matches.`,
+          })
+          .catch(() => {})
         return
       }
 
       if (!limitNoticeSent) {
-        await interaction.editReply({
-          content: formatImportProgress('Syncing Recent Replays', processed, total, imported, startTime),
-        }).catch(() => { })
+        await interaction
+          .editReply({
+            content: formatImportProgress('Syncing Recent Replays', processed, total, imported, startTime),
+          })
+          .catch(() => {})
       }
     })
 
     if (result.importedCount === 0) {
       if (!limitNoticeSent) {
-        await interaction.editReply({
-          content: 'No new custom replays found to import (all recent replays are already in the database).',
-        }).catch(() => { })
+        await interaction
+          .editReply({
+            content: 'No new custom replays found to import (all recent replays are already in the database).',
+          })
+          .catch(() => {})
       }
       return
     }
@@ -524,9 +536,11 @@ export async function handleImportReplaysCommand(
     })
     .map(entry => entry.file)
 
-  await interaction.editReply({
-    content: `🔍 **Starting replay import...**\nFound **${filteredFiles.length.toLocaleString()}** files matching the date criteria.\nChecking database for already-imported files...`,
-  }).catch(() => { })
+  await interaction
+    .editReply({
+      content: `🔍 **Starting replay import...**\nFound **${filteredFiles.length.toLocaleString()}** files matching the date criteria.\nChecking database for already-imported files...`,
+    })
+    .catch(() => {})
 
   const importedSet = await getImportedReplayFilenames()
   const unimportedFiles = filteredFiles.filter(file => !importedSet.has(path.basename(file)))
@@ -539,13 +553,15 @@ export async function handleImportReplaysCommand(
     return
   }
 
-  await interaction.editReply({
-    content:
-      `🔍 **Starting parallel replay import...**\n` +
-      `📁 Total files in range: **${filteredFiles.length.toLocaleString()}** ` +
-      `(*${alreadyImportedCount.toLocaleString()} already imported*)\n` +
-      `⚡ Parsing **${unimportedFiles.length.toLocaleString()}** remaining files with multi-core workers (updates every 10 seconds)...`,
-  }).catch(() => { })
+  await interaction
+    .editReply({
+      content:
+        `🔍 **Starting parallel replay import...**\n` +
+        `📁 Total files in range: **${filteredFiles.length.toLocaleString()}** ` +
+        `(*${alreadyImportedCount.toLocaleString()} already imported*)\n` +
+        `⚡ Parsing **${unimportedFiles.length.toLocaleString()}** remaining files with multi-core workers (updates every 10 seconds)...`,
+    })
+    .catch(() => {})
 
   let count = 0
   const importedEntries: SavedCustomReplay[] = []
@@ -562,35 +578,51 @@ export async function handleImportReplaysCommand(
       ) {
         count++
         importedSet.add(path.basename(file))
-        const saved = await saveAndCopyCustomReplay(file, data, guildId, { refreshStats: false, linkSubstitutions: false })
+        const saved = await saveAndCopyCustomReplay(file, data, guildId, {
+          refreshStats: false,
+          linkSubstitutions: false,
+        })
         importedEntries.push(saved)
       }
 
       const now = Date.now()
       if (now - startTime >= MAX_INTERACTION_SAFE_MS && !limitNoticeSent) {
         limitNoticeSent = true
-        await interaction.editReply({
-          content:
-            `⏳ **Large Replay Import in Progress...**\n` +
-            `📊 **Status:** Scanned ${processedCount.toLocaleString()}/${totalCount.toLocaleString()} files (${count.toLocaleString()} imported so far).\n` +
-            `⏱️ **Notice:** Approaching Discord's 15-minute interaction limit. The import will continue running in the background to completion! Run \`/recent-replays\` when done to view matches.`,
-        }).catch(() => { })
+        await interaction
+          .editReply({
+            content:
+              `⏳ **Large Replay Import in Progress...**\n` +
+              `📊 **Status:** Scanned ${processedCount.toLocaleString()}/${totalCount.toLocaleString()} files (${count.toLocaleString()} imported so far).\n` +
+              `⏱️ **Notice:** Approaching Discord's 15-minute interaction limit. The import will continue running in the background to completion! Run \`/recent-replays\` when done to view matches.`,
+          })
+          .catch(() => {})
         return
       }
 
       if (now - lastProgressUpdate >= PROGRESS_INTERVAL_MS && !limitNoticeSent) {
         lastProgressUpdate = now
-        await interaction.editReply({
-          content: formatImportProgress('Importing Replays in Progress', processedCount, totalCount, count, startTime),
-        }).catch(err => {
-          console.error('Failed to update replay import progress in Discord:', err)
-        })
+        await interaction
+          .editReply({
+            content: formatImportProgress(
+              'Importing Replays in Progress',
+              processedCount,
+              totalCount,
+              count,
+              startTime
+            ),
+          })
+          .catch(err => {
+            console.error('Failed to update replay import progress in Discord:', err)
+          })
       }
     },
   })
 
   if (count > 0) {
-    await linkActiveSubstitutionsForReplays(guildId, importedEntries.map(e => e.replayId))
+    await linkActiveSubstitutionsForReplays(
+      guildId,
+      importedEntries.map(e => e.replayId)
+    )
     await optimizeDb()
     if (!limitNoticeSent) {
       const recentEntries = importedEntries.slice(-10)
@@ -612,18 +644,18 @@ export async function handleImportReplaysCommand(
         await interaction.editReply({
           content: `No new custom .StormReplay games matched the criteria in the selected range. (${alreadyImportedCount.toLocaleString()} files were already imported previously)`,
         })
-      } catch { }
+      } catch {}
     }
   }
 }
 
-export async function handleReassignReplayPlayerAutocomplete(
-  interaction: AutocompleteInteraction
-): Promise<void> {
+export async function handleReassignReplayPlayerAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   const focusedOption = interaction.options.getFocused(true)
 
   if (focusedOption.name === CommandIds.REPLAY) {
-    const query = String(focusedOption.value || '').trim().toLowerCase()
+    const query = String(focusedOption.value || '')
+      .trim()
+      .toLowerCase()
     const recents = await getRecentReplays(20)
 
     const choices: { name: string; value: number }[] = []
@@ -650,7 +682,9 @@ export async function handleReassignReplayPlayerAutocomplete(
   }
 
   if (focusedOption.name === CommandIds.ACCOUNT) {
-    const query = String(focusedOption.value || '').trim().toLowerCase()
+    const query = String(focusedOption.value || '')
+      .trim()
+      .toLowerCase()
     const replayIdOption = interaction.options.getInteger(CommandIds.REPLAY)
 
     const choices: { name: string; value: string }[] = []
@@ -731,9 +765,7 @@ export async function handleReassignReplayPlayerCommand(
   }
 }
 
-export async function handleRecentReplaysCommand(
-  interaction: ChatInputCommandInteraction<CacheType>
-): Promise<void> {
+export async function handleRecentReplaysCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
   const replayIdOption = interaction.options.getInteger(CommandIds.REPLAY)
   const count = interaction.options.getInteger(CommandIds.COUNT) ?? 5
   const clampedCount = Math.max(1, count)
@@ -773,9 +805,7 @@ export async function handleRecentReplaysCommand(
   )
 }
 
-export async function handleLookupReplaySelect(
-  interaction: StringSelectMenuInteraction
-): Promise<void> {
+export async function handleLookupReplaySelect(interaction: StringSelectMenuInteraction): Promise<void> {
   const selectedValue = interaction.values[0]
   if (!selectedValue) return
 
@@ -798,4 +828,3 @@ export async function handleLookupReplaySelect(
     embeds: [embed],
   })
 }
-

@@ -120,10 +120,10 @@ export async function handleDraftCommand(
   await resetActivePlayerTeams(guildId)
 
   let t1CaptainId = interaction.isChatInputCommand()
-    ? (interaction.options.getString('team1_captain') ?? undefined)
+    ? (interaction.options.getString('team1-captain') ?? undefined)
     : undefined
   let t2CaptainId = interaction.isChatInputCommand()
-    ? (interaction.options.getString('team2_captain') ?? undefined)
+    ? (interaction.options.getString('team2-captain') ?? undefined)
     : undefined
 
   if (!t1CaptainId && activeSortedPlayers[0]) {
@@ -627,8 +627,8 @@ export async function handleDraftCaptainCommand(
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const t1CaptainId = interaction.options.getString('team1_captain')
-  const t2CaptainId = interaction.options.getString('team2_captain')
+  const t1CaptainId = interaction.options.getString('team1-captain')
+  const t2CaptainId = interaction.options.getString('team2-captain')
 
   if (!t1CaptainId && !t2CaptainId) {
     await safeReply(interaction, {
@@ -881,7 +881,7 @@ export async function handleDraftTeamAssignCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
   const targetTeamOption = interaction.options.getString('team', true)
-  const playerDiscordId = interaction.options.getString('player', true)
+  const playerDiscordId = interaction.options.getString(CommandIds.USER, true)
 
   const activePlayers = await getSortedActivePlayers(guildId, true)
   const player =
@@ -992,4 +992,3 @@ export async function handleDraftModeCommand(
     flags: MessageFlags.Ephemeral,
   })
 }
-

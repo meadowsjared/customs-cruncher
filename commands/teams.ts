@@ -58,7 +58,7 @@ export async function handleSetTeamsCommand(
   }
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
-  const originalTeamsData = interaction.options.getString('teams_data', true)
+  const originalTeamsData = interaction.options.getString('teams-data', true)
   const splitResult = originalTeamsData.split(',')
   const team1Input: number[] | null = splitResult[0]
     ?.split(/\W/)
@@ -969,20 +969,16 @@ async function moveTeamMembersToChannel(
  * @returns <void>
  */
 export async function handleMoveCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const member =
-    interaction.options.getMember('user') ??
-    interaction.options.getMember('player') ??
-    interaction.options.getMember(CommandIds.DISCORD_ID)
-  const user =
-    interaction.options.getUser('user') ??
-    interaction.options.getUser('player') ??
-    interaction.options.getUser(CommandIds.DISCORD_ID)
+  const member = interaction.options.getMember(CommandIds.USER)
+  const user = interaction.options.getUser(CommandIds.USER)
 
-  const memberToMove = member && 'user' in member
-    ? member
-    : user
-      ? interaction.guild?.members.cache.get(user.id) ?? (await interaction.guild?.members.fetch(user.id).catch(() => null))
-      : null
+  const memberToMove =
+    member && 'user' in member
+      ? member
+      : user
+        ? (interaction.guild?.members.cache.get(user.id) ??
+          (await interaction.guild?.members.fetch(user.id).catch(() => null)))
+        : null
 
   if (!memberToMove || 'user' in memberToMove === false) {
     await safeReply(interaction, {
