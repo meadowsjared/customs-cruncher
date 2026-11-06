@@ -52,10 +52,15 @@ export async function getAssignAccountClearChoices(
     LIMIT 25
   `
 
-  return rows.map(r => ({
-    name: `${r.hots_battle_tag} (loaned from ${r.lender_name} to ${r.borrower_name})`.slice(0, 100),
-    value: r.hots_battle_tag,
-  }))
+  return rows.map(r => {
+    const isPending = !r.hots_battle_tag.includes('#')
+    const note = isPending ? ' ⏳' : ''
+    const ownerInfo = r.lender_name && r.lender_name !== r.borrower_name ? ` (sub: @${r.borrower_name}, orig: @${r.lender_name})` : ` (sub: @${r.borrower_name})`
+    return {
+      name: `${r.hots_battle_tag}${note}${ownerInfo}`.slice(0, 100),
+      value: r.hots_battle_tag,
+    }
+  })
 }
 
 /**
@@ -92,13 +97,23 @@ export async function getAssignAccountChoices(
     LIMIT 25
   `
 
-  return rows.map(r => {
+  const choices = rows.map(r => {
     const prefix = r.in_lobby ? '🎮 ' : ''
     return {
       name: `${prefix}${r.hots_battle_tag} (@${r.display_name})`.slice(0, 100),
       value: r.hots_battle_tag,
     }
   })
+
+  // If user typed a custom name without '#' and it doesn't match an existing choice, offer it as a display name override
+  if (trimmed.length >= 2 && !rows.some(r => r.hots_battle_tag.toLowerCase() === trimmed.toLowerCase())) {
+    choices.unshift({
+      name: `✏️ Name: "${trimmed}" (auto-detect #tag from replay)`,
+      value: trimmed,
+    })
+  }
+
+  return choices.slice(0, 25)
 }
 
 const activeSubsCache = new Map<string, { subs: AccountSubstitution[]; timestamp: number }>()
@@ -239,6 +254,35 @@ export async function getSubstitutionForAccount(
 }
 
 /**
+ * Ensures a player row exists in the players table so foreign keys (e.g. hots_accounts.discord_id) do not fail.
+ */
+export async function ensurePlayerExists(
+  discordId: string,
+  usernames?: {
+    discordName?: string
+    discordGlobalName?: string
+    discordDisplayName?: string
+  }
+): Promise<void> {
+  const dName = usernames?.discordName || 'Unknown'
+  const gName = usernames?.discordGlobalName || dName
+  const dispName = usernames?.discordDisplayName || gName
+
+  await sql`
+    INSERT INTO players (discord_id, discord_name, discord_global_name, discord_display_name)
+    VALUES (${discordId}, ${dName}, ${gName}, ${dispName})
+    ON CONFLICT (discord_id) DO UPDATE SET
+      discord_name = CASE WHEN players.discord_name = 'Unknown' AND EXCLUDED.discord_name != 'Unknown' THEN EXCLUDED.discord_name ELSE players.discord_name END,
+      discord_global_name = CASE WHEN players.discord_global_name = 'Unknown' AND EXCLUDED.discord_global_name != 'Unknown' THEN EXCLUDED.discord_global_name ELSE players.discord_global_name END,
+      discord_display_name = CASE WHEN players.discord_display_name = 'Unknown' AND EXCLUDED.discord_display_name != 'Unknown' THEN EXCLUDED.discord_display_name ELSE players.discord_display_name END,
+      last_active = NOW()
+  `
+  if (dispName !== 'Unknown' || gName !== 'Unknown' || dName !== 'Unknown') {
+    cachePlayerDisplayName(discordId, dispName, gName, dName)
+  }
+}
+
+/**
  * Sets a temporary account substitution: assigns an account normally owned by originalDiscordId to substituteDiscordId.
  * Creates a duplicate row in hots_accounts for the substitute user with owner_discord_id set.
  */
@@ -246,31 +290,46 @@ export async function setAccountSubstitution(
   guildId: string,
   battleTag: string,
   substituteDiscordId: string,
-  originalDiscordId?: string
+  originalDiscordId?: string,
+  substituteNames?: {
+    discordName?: string
+    discordGlobalName?: string
+    discordDisplayName?: string
+  }
 ): Promise<{ success: boolean; accountId: number; originalDiscordId: string; hotsBattleTag: string }> {
+  await ensurePlayerExists(substituteDiscordId, substituteNames)
+  if (originalDiscordId && originalDiscordId !== substituteDiscordId) {
+    await ensurePlayerExists(originalDiscordId)
+  }
   let ownerId = originalDiscordId
-  let fullBattleTag = battleTag
-  const hashPrefixPattern = `${battleTag}#%`
+  const trimmed = battleTag.trim()
+  const isNameOnly = !trimmed.includes('#')
+  let fullBattleTag = trimmed
+  const hashPrefixPattern = `${trimmed}#%`
 
   if (!ownerId) {
     const existingRows = await sql<Array<{ discord_id: string; hots_battle_tag: string }>>`
       SELECT discord_id, hots_battle_tag
       FROM hots_accounts
-      WHERE (LOWER(hots_battle_tag) = LOWER(${battleTag}) OR hots_battle_tag ILIKE ${hashPrefixPattern})
+      WHERE (LOWER(hots_battle_tag) = LOWER(${trimmed}) OR hots_battle_tag ILIKE ${hashPrefixPattern})
         AND owner_discord_id IS NULL
         AND discord_id IS NOT NULL
-      ORDER BY CASE WHEN LOWER(hots_battle_tag) = LOWER(${battleTag}) THEN 0 ELSE 1 END
+      ORDER BY CASE WHEN LOWER(hots_battle_tag) = LOWER(${trimmed}) THEN 0 ELSE 1 END
       LIMIT 1
     `
     const existing = existingRows[0]
     if (existing) {
       ownerId = existing.discord_id
-      fullBattleTag = existing.hots_battle_tag
+      if (!isNameOnly) {
+        fullBattleTag = existing.hots_battle_tag
+      }
+    } else {
+      ownerId = substituteDiscordId
     }
   }
 
   if (!ownerId) {
-    return { success: false, accountId: 0, originalDiscordId: '', hotsBattleTag: '' }
+    ownerId = substituteDiscordId
   }
 
   const ownerPlayerRows = await sql<
@@ -294,7 +353,11 @@ export async function setAccountSubstitution(
     UPDATE account_substitutions
     SET is_active = FALSE
     WHERE guild_id = ${guildId}
-      AND LOWER(hots_battle_tag) = LOWER(${fullBattleTag})
+      AND (
+        LOWER(hots_battle_tag) = LOWER(${fullBattleTag})
+        OR hots_battle_tag ILIKE ${fullBattleTag + '#%'}
+        OR LOWER(${fullBattleTag}) LIKE LOWER(hots_battle_tag || '#%')
+      )
       AND is_active = TRUE
   `
 
@@ -325,6 +388,10 @@ export async function getOrCreateSubstituteAccount(
   fullBattleTag: string,
   ownerId: string
 ): Promise<number> {
+  await ensurePlayerExists(substituteDiscordId)
+  if (ownerId && ownerId !== substituteDiscordId) {
+    await ensurePlayerExists(ownerId)
+  }
   const existingRows = await sql<Array<{ id: number }>>`
     SELECT id
     FROM hots_accounts
@@ -388,6 +455,24 @@ export async function getAccountWithSubstitution(
 ): Promise<ResolvedHotsAccount> {
   const sub = await getSubstitutionForAccount(battleTag, guildId, replayId)
   if (sub) {
+    // If the active substitution was name-only without '#', update it to the discovered full tag!
+    if (!sub.hotsBattleTag.includes('#') && battleTag.includes('#')) {
+      await sql`
+        UPDATE account_substitutions
+        SET hots_battle_tag = ${battleTag}
+        WHERE id = ${sub.id}
+      `
+      await sql`
+        UPDATE hots_accounts
+        SET hots_battle_tag = ${battleTag}
+        WHERE discord_id = ${sub.substituteDiscordId}
+          AND LOWER(hots_battle_tag) = LOWER(${sub.hotsBattleTag})
+      `
+      clearActiveSubstitutionsCache(guildId)
+      clearActivePlayersCache(guildId)
+      clearResolvedAccountCache()
+    }
+
     const hotsAccountId = await getOrCreateSubstituteAccount(sub.substituteDiscordId, battleTag, sub.originalDiscordId)
     return {
       hotsAccountId,
@@ -451,7 +536,11 @@ export async function clearAccountSubstitutions(guildId: string, battleTag?: str
       SET is_active = FALSE
       WHERE guild_id = ${guildId}
         AND is_active = TRUE
-        AND (LOWER(hots_battle_tag) = LOWER(${battleTag}) OR hots_battle_tag ILIKE ${hashPrefixPattern})
+        AND (
+          LOWER(hots_battle_tag) = LOWER(${battleTag})
+          OR hots_battle_tag ILIKE ${hashPrefixPattern}
+          OR LOWER(${battleTag}) LIKE LOWER(hots_battle_tag || '#%')
+        )
     `
     return result.count
   }

@@ -6,6 +6,7 @@ import {
   ButtonStyle,
   CacheType,
   ChatInputCommandInteraction,
+  EmbedBuilder,
   MessageFlags,
 } from 'discord.js'
 import { chatOrButtonOrModal, CommandIds, joinBtn, roleMap } from '../constants'
@@ -33,6 +34,7 @@ import {
   createEditRoleButtonDisabled,
   createEditRoleButtonEnabled,
   extractDiscordIdFromInteraction,
+  fetchDiscordNames,
   getBattleTag,
   getDiscordId,
   getEditRoleRow,
@@ -586,18 +588,26 @@ export async function handleAssignAccountCommand(interaction: ChatInputCommandIn
 
   const accountInput = interaction.options.getString(CommandIds.ACCOUNT, true).trim()
   const targetUser = interaction.options.getUser(CommandIds.TO, true)
+  const discordNames = fetchDiscordNames(interaction, targetUser.id, targetUser)
 
-  const result = await setAccountSubstitution(guildId, accountInput, targetUser.id)
+  const result = await setAccountSubstitution(guildId, accountInput, targetUser.id, undefined, discordNames)
   if (!result.success) {
     await safeReply(interaction, {
-      content: `Could not find an account matching "${accountInput}". Please verify the account exists.`,
+      content: `Could not assign account "${accountInput}".`,
       flags: MessageFlags.Ephemeral,
     })
     return
   }
 
+  const isPending = !result.hotsBattleTag.includes('#')
+  const successContent = isPending
+    ? `✅ Temporarily assigned display name **${result.hotsBattleTag}** to <@${targetUser.id}> for this evening.\n*(The full BattleTag #number will be automatically detected and linked when the match replay is imported.)*`
+    : result.originalDiscordId && result.originalDiscordId !== targetUser.id
+      ? `✅ Successfully assigned HotS account **${result.hotsBattleTag}** (owned by <@${result.originalDiscordId}>) to <@${targetUser.id}> for this evening.`
+      : `✅ Successfully assigned HotS account **${result.hotsBattleTag}** to <@${targetUser.id}> for this evening.`
+
   await safeReply(interaction, {
-    content: `✅ Successfully assigned HotS account **${result.hotsBattleTag}** (owned by <@${result.originalDiscordId}>) to <@${targetUser.id}> for this evening.`,
+    content: successContent,
   })
 
   // Update lobby if it exists
@@ -606,6 +616,49 @@ export async function handleAssignAccountCommand(interaction: ChatInputCommandIn
   } catch (err) {
     console.error('Error updating lobby message after account substitution:', err)
   }
+}
+
+export async function handleAssignAccountListCommand(
+  interaction: ChatInputCommandInteraction<CacheType>
+): Promise<void> {
+  if (!(await userIsAdmin(interaction))) {
+    return
+  }
+
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const activeSubs = await getActiveSubstitutions(guildId)
+  if (activeSubs.length === 0) {
+    await safeReply(interaction, {
+      content: 'There are currently no active account substitutions for this server.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  const lines = activeSubs.map(sub => {
+    const isPending = !sub.hotsBattleTag.includes('#')
+    const playerMention = `<@${sub.substituteDiscordId}>`
+    if (isPending) {
+      return `• **\`${sub.hotsBattleTag}\`** ➔ ${playerMention}\n  └ ⏳ **Pending Replay Discovery** *(Awaiting match replay to detect \`#number\`)*`
+    }
+    if (sub.originalDiscordId && sub.originalDiscordId !== sub.substituteDiscordId) {
+      return `• **\`${sub.hotsBattleTag}\`** ➔ ${playerMention}\n  └ ✅ **Active** *(Original: <@${sub.originalDiscordId}>)*`
+    }
+    return `• **\`${sub.hotsBattleTag}\`** ➔ ${playerMention}\n  └ ✅ **Active**`
+  })
+
+  const embed = new EmbedBuilder()
+    .setTitle('📋 Active Account Substitutions')
+    .setDescription(lines.join('\n\n'))
+    .setColor(0x5865f2)
+    .setFooter({ text: 'Add with /sub add • Clear with /sub clear' })
+
+  await safeReply(interaction, {
+    embeds: [embed],
+    flags: MessageFlags.Ephemeral,
+  })
 }
 
 export async function handleAssignAccountClearCommand(

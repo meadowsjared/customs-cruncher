@@ -82,4 +82,31 @@ describe('store.substitutions tags', () => {
     const label = getAccountLoanStatusTag(account, 'guild_1', 'user_normal', [])
     expect(label).toBe('')
   })
+
+  it('differentiates pending replay discovery from resolved substitutions based on # presence', () => {
+    const pendingSub: AccountSubstitution = {
+      id: 10,
+      guildId: 'guild_1',
+      hotsBattleTag: 'Wyndamere',
+      originalDiscordId: 'user_bob',
+      substituteDiscordId: 'user_bob',
+      replayId: null,
+      date: '2026-01-01',
+      isActive: true,
+    }
+
+    const resolvedSub: AccountSubstitution = {
+      id: 11,
+      guildId: 'guild_1',
+      hotsBattleTag: 'Wyndamere#4321',
+      originalDiscordId: 'user_bob',
+      substituteDiscordId: 'user_bob',
+      replayId: null,
+      date: '2026-01-01',
+      isActive: true,
+    }
+
+    expect(pendingSub.hotsBattleTag.includes('#')).toBe(false)
+    expect(resolvedSub.hotsBattleTag.includes('#')).toBe(true)
+  })
 })

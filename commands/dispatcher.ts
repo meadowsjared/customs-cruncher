@@ -10,6 +10,7 @@ import {
   handleAssignAccountAutocomplete,
   handleAssignAccountClearCommand,
   handleAssignAccountCommand,
+  handleAssignAccountListCommand,
   handleEditRoleButtonCommand,
   handleEditRoleCommand,
 } from './accounts'
@@ -234,6 +235,10 @@ async function handleSubSubCommand(interaction: ChatInputCommandInteraction<Cach
   const subcommand = interaction.options.getSubcommand(false)
   if (subcommand === 'clear') {
     await handleAssignAccountClearCommand(interaction)
+    return
+  }
+  if (subcommand === 'list') {
+    await handleAssignAccountListCommand(interaction)
     return
   }
   await handleAssignAccountCommand(interaction)

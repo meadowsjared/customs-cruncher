@@ -9,6 +9,7 @@ import {
   refreshPlayerStatsView,
   relinkAccountSubstitutions,
 } from './player'
+import { clearActiveSubstitutionsCache, clearResolvedAccountCache } from './substitutions'
 import { initReplaysTable, insertReplays } from './replays'
 
 export { parseReplay, parseReplaySync, relinkAccountSubstitutions }
@@ -124,17 +125,52 @@ export async function linkActiveSubstitutionsForReplays(
   let linkedCount = 0
   for (const sub of activeSubs) {
     const pattern = `%"name": "${sub.hots_battle_tag.split('#')[0]}"%`
-    const matchedReplays = await sql<Array<{ id: number }>>`
-      SELECT id
+    const matchedReplays = await sql<Array<{ id: number; players: unknown }>>`
+      SELECT id, players
       FROM replays
       WHERE id = ANY(${replayIds})
         AND players::text ILIKE ${pattern}
     `
     for (const r of matchedReplays) {
+      let actualBattleTag = sub.hots_battle_tag
+      if (!actualBattleTag.includes('#') && r.players && typeof r.players === 'object' && r.players !== null) {
+        for (const val of Object.values(r.players)) {
+          if (
+            val &&
+            typeof val === 'object' &&
+            'name' in val &&
+            'tag' in val &&
+            typeof val.name === 'string' &&
+            (typeof val.tag === 'number' || typeof val.tag === 'string') &&
+            val.name.toLowerCase() === sub.hots_battle_tag.toLowerCase()
+          ) {
+            actualBattleTag = `${val.name}#${val.tag}`
+            await sql`
+              UPDATE account_substitutions
+              SET hots_battle_tag = ${actualBattleTag}
+              WHERE id = ${sub.id}
+            `
+            await sql`
+              UPDATE hots_accounts
+              SET hots_battle_tag = ${actualBattleTag}
+              WHERE discord_id = ${sub.substitute_discord_id}
+                AND LOWER(hots_battle_tag) = LOWER(${sub.hots_battle_tag})
+            `
+            clearActivePlayersCache(guildId)
+            clearActiveSubstitutionsCache(guildId)
+            clearResolvedAccountCache()
+            break
+          }
+        }
+      }
+
       const existing = await sql<Array<{ id: number }>>`
         SELECT id FROM account_substitutions
         WHERE replay_id = ${r.id}
-          AND LOWER(hots_battle_tag) = LOWER(${sub.hots_battle_tag})
+          AND (
+            LOWER(hots_battle_tag) = LOWER(${actualBattleTag})
+            OR LOWER(hots_battle_tag) = LOWER(${sub.hots_battle_tag})
+          )
         LIMIT 1
       `
       if (!existing[0]) {
@@ -142,7 +178,7 @@ export async function linkActiveSubstitutionsForReplays(
           INSERT INTO account_substitutions (
             guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
           ) VALUES (
-            ${guildId}, ${sub.hots_battle_tag}, ${sub.original_discord_id}, ${sub.substitute_discord_id}, ${r.id}, FALSE
+            ${guildId}, ${actualBattleTag}, ${sub.original_discord_id}, ${sub.substitute_discord_id}, ${r.id}, FALSE
           )
         `
         linkedCount++

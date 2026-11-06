@@ -49,7 +49,9 @@ import {
 } from './playerStats'
 import {
   clearAccountSubstitutions,
+  clearActiveSubstitutionsCache,
   clearResolvedAccountCache,
+  ensurePlayerExists,
   filterActiveSubstitutedAccounts,
   getAccountLoanStatusTag,
   getAccountWithSubstitution,
@@ -96,6 +98,7 @@ export {
   clearLastLobbyScan,
   clearResolvedAccountCache,
   clearTeams,
+  ensurePlayerExists,
   filterActiveSubstitutedAccounts,
   getAccountLoanStatusTag,
   getAccountWithSubstitution,
@@ -752,6 +755,7 @@ ${validationResult.rules}
     WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})
       AND discord_id IS NOT NULL
       AND discord_id != ${discordId}
+      AND owner_discord_id IS NULL
     LIMIT 1
   `
   const existingAccount = existingAccounts[0]
@@ -772,7 +776,11 @@ ${validationResult.rules}
   const guildId = await requireGuildId(interaction)
   if (!guildId) return false
 
-  const player = await getPlayerByDiscordId(discordId, guildId)
+  let player = await getPlayerByDiscordId(discordId, guildId)
+  if (!player) {
+    await ensurePlayerExists(discordId)
+    player = await getPlayerByDiscordId(discordId, guildId)
+  }
   if (!player) {
     await safeReply(interaction, {
       content: 'Player not found in database',
@@ -892,6 +900,21 @@ ${validationResult.rules}
         SET discord_id = ${discordId}
         WHERE hots_account_id = ${accountId} AND discord_id IS NULL
       `
+
+      await tx`
+        UPDATE account_substitutions
+        SET original_discord_id = ${discordId}
+        WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})
+          AND is_active = TRUE
+      `
+
+      await tx`
+        UPDATE hots_accounts
+        SET owner_discord_id = ${discordId}
+        WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})
+          AND owner_discord_id IS NOT NULL
+          AND discord_id != ${discordId}
+      `
     })
 
     if (profileData?.detectedRoles && !player.role) {
@@ -899,6 +922,7 @@ ${validationResult.rules}
       player.role = profileData.detectedRoles
     }
     clearActivePlayersCache(guildId)
+    clearActiveSubstitutionsCache(guildId)
     clearResolvedAccountCache()
     if (interaction) {
       await updateLobbyMessage(guildId, interaction)

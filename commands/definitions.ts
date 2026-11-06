@@ -875,14 +875,14 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
-        name: 'assign',
-        description: 'Temporarily assign a HotS account to a player for this evening',
+        name: 'add',
+        description: 'Temporarily sub a player onto a HotS account or display name for this evening',
         type: ApplicationCommandOptionType.Subcommand,
         options: [
           {
             name: CommandIds.ACCOUNT,
             type: ApplicationCommandOptionType.String,
-            description: 'HotS account to assign (e.g. HealsOnly)',
+            description: 'HotS BattleTag or visible display name (e.g. HealsOnly or Wyndamere)',
             required: true,
             autocomplete: true,
           },
@@ -895,6 +895,11 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         ],
       },
       {
+        name: 'list',
+        description: 'View active account substitutions and their current statuses',
+        type: ApplicationCommandOptionType.Subcommand,
+      },
+      {
         name: 'clear',
         description: 'Clear active account substitutions (optionally for a specific account)',
         type: ApplicationCommandOptionType.Subcommand,
@@ -902,7 +907,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           {
             name: CommandIds.ACCOUNT,
             type: ApplicationCommandOptionType.String,
-            description: 'HotS account to clear assignment for (leave blank to clear all active substitutions)',
+            description: 'HotS account or name to clear substitution for (leave blank to clear all)',
             required: false,
             autocomplete: true,
           },
