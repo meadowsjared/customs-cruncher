@@ -116,20 +116,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
         ],
       },
       {
-        name: 'show',
-        description: 'Show current teams (ephemeral by default, with option to publish)',
-        type: ApplicationCommandOptionType.Subcommand,
-        options: [
-          {
-            name: CommandIds.PUBLISH,
-            type: ApplicationCommandOptionType.Boolean,
-            description: 'Whether to instantly publish the teams publicly (defaults to False)',
-            required: false,
-          },
-        ],
-      },
-      {
-        name: 'make',
+        name: 'teams',
         description: 'Create proposed teams using MMR balancing',
         type: ApplicationCommandOptionType.Subcommand,
         options: [
@@ -144,6 +131,19 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             name: 'publish',
             type: ApplicationCommandOptionType.Boolean,
             description: 'Whether to instantly publish the teams',
+            required: false,
+          },
+        ],
+      },
+      {
+        name: 'show',
+        description: 'Show current teams (ephemeral by default, with option to publish)',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: CommandIds.PUBLISH,
+            type: ApplicationCommandOptionType.Boolean,
+            description: 'Whether to instantly publish the teams publicly (defaults to False)',
             required: false,
           },
         ],

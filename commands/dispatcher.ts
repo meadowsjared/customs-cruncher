@@ -166,7 +166,6 @@ async function handleGameSubCommand(interaction: ChatInputCommandInteraction<Cac
       await handleClearCommand(interaction)
       return
     case 'teams':
-    case 'make':
       await handleMakeTeamsCommand(interaction)
       return
     case 'set':
