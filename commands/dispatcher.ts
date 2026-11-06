@@ -105,8 +105,9 @@ function wrapSlashOnly(handler: SlashOnlyHandler): InteractionHandler {
  * Registry of exact-match command and button custom ID handlers.
  */
 const exactHandlers = new Map<string, InteractionHandler>([
-  [CommandIds.LOBBY, wrapSlashOnly(handleLobbySubCommand)],
-  [CommandIds.TEAMS, wrapSlashOnly(handleTeamsSubCommand)],
+  [CommandIds.GAME, wrapSlashOnly(handleGameSubCommand)],
+  [CommandIds.LOBBY, wrapSlashOnly(handleGameSubCommand)],
+  [CommandIds.TEAMS, wrapSlashOnly(handleGameSubCommand)],
   [CommandIds.DRAFT, wrapSlashOnly(handleDraftSubCommand)],
   [CommandIds.CHANNEL, wrapSlashOnly(handleChannelSubCommand)],
   [CommandIds.MOVE_TO_LOBBY, handleMoveToLobbyCommand],
@@ -150,9 +151,9 @@ const exactHandlers = new Map<string, InteractionHandler>([
 ])
 
 /**
- * Handles subcommands for `/lobby <subcommand>`
+ * Handles subcommands for `/game <subcommand>` (also backwards-compatible with `/lobby` and `/teams`)
  */
-async function handleLobbySubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+async function handleGameSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
   const subcommand = interaction.options.getSubcommand(false)
   switch (subcommand) {
     case 'scan':
@@ -163,6 +164,25 @@ async function handleLobbySubCommand(interaction: ChatInputCommandInteraction<Ca
       return
     case 'clear':
       await handleClearCommand(interaction)
+      return
+    case 'teams':
+    case 'make':
+      await handleMakeTeamsCommand(interaction)
+      return
+    case 'set':
+      await handleSetTeamsCommand(interaction)
+      return
+    case 'swap':
+      await handleSwapTeamsCommand(interaction)
+      return
+    case 'publish':
+      await handlePublishTeamsCommand(interaction)
+      return
+    case 'check':
+      await handleCheckTeamsCommand(interaction)
+      return
+    case 'show':
+      await handleShowTeamsCommand(interaction)
       return
     case 'new':
     default:
@@ -244,33 +264,6 @@ async function handleSubSubCommand(interaction: ChatInputCommandInteraction<Cach
   await handleAssignAccountCommand(interaction)
 }
 
-/**
- * Handles subcommands for `/teams <subcommand>`
- */
-async function handleTeamsSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
-  const subcommand = interaction.options.getSubcommand(false)
-  switch (subcommand) {
-    case 'make':
-      await handleMakeTeamsCommand(interaction)
-      return
-    case 'set':
-      await handleSetTeamsCommand(interaction)
-      return
-    case 'swap':
-      await handleSwapTeamsCommand(interaction)
-      return
-    case 'publish':
-      await handlePublishTeamsCommand(interaction)
-      return
-    case 'check':
-      await handleCheckTeamsCommand(interaction)
-      return
-    case 'show':
-    default:
-      await handleShowTeamsCommand(interaction)
-      return
-  }
-}
 
 /**
  * Handles subcommands for `/replays <subcommand>`

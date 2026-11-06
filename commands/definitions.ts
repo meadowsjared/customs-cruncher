@@ -71,8 +71,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.LOBBY,
-    description: 'Custom game lobby management commands',
+    name: CommandIds.GAME,
+    description: 'Custom game lifecycle and team management commands',
     defaultMemberPermissions: minimumAdminPermissions,
     options: [
       {
@@ -115,23 +115,6 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           },
         ],
       },
-      {
-        name: 'refresh',
-        description: 'Refresh the lobby announcement message',
-        type: ApplicationCommandOptionType.Subcommand,
-      },
-      {
-        name: 'clear',
-        description: 'Clear the lobby and remove all players',
-        type: ApplicationCommandOptionType.Subcommand,
-      },
-    ],
-  },
-  {
-    name: CommandIds.TEAMS,
-    description: 'Team management and balancing commands',
-    defaultMemberPermissions: minimumAdminPermissions,
-    options: [
       {
         name: 'show',
         description: 'Show current teams (ephemeral by default, with option to publish)',
@@ -220,6 +203,16 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             required: false,
           },
         ],
+      },
+      {
+        name: 'refresh',
+        description: 'Refresh the lobby announcement message',
+        type: ApplicationCommandOptionType.Subcommand,
+      },
+      {
+        name: 'clear',
+        description: 'Clear the lobby and remove all players',
+        type: ApplicationCommandOptionType.Subcommand,
       },
     ],
   },

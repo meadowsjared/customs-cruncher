@@ -31,6 +31,7 @@ export const adminUserIds: string[] = parseAdminUserIds()
 
 // create an enum for the commands
 export const enum CommandIds {
+  GAME = 'game',
   NEW_GAME = 'new_game',
   LOBBY = 'lobby',
   SCREENSHOT = 'screenshot',
