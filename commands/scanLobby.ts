@@ -161,7 +161,7 @@ export async function processAndApplyLobbyScan(
   const response = await fetch(screenshot.url)
   const arrayBuffer = await response.arrayBuffer()
   const imageBuffer = Buffer.from(arrayBuffer)
-  const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync, screenshot.name)
+  const summary = await scanLobbyScreenshot(imageBuffer, guildId, sync, screenshot.name, interaction.guild?.name)
 
   await saveLastLobbyScan(guildId, {
     team1DiscordIds: summary.team1DiscordIds,

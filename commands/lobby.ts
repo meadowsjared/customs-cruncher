@@ -38,6 +38,8 @@ import { handleEditRoleCommand } from './accounts'
 import { updateAdminActiveButtons } from './admin'
 import { syncRecentReplays } from './replays'
 import { processAndApplyLobbyScan } from './scanLobby'
+import { tagLastLobbyImageAsFinal } from '../utils/lobbyScanner'
+import { getGameNumberTonight } from '../store/mapVote'
 import { checkIsAdmin, fetchDiscordNames, handleUserNameModalSubmit } from './shared'
 
 /**
@@ -101,9 +103,7 @@ async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?
 
 /** generates the list of previous players */
 async function generatePreviousPlayersList(guildId: string): Promise<string[]> {
-  return (await getActivePlayers(guildId))
-    .map(p => p.discordId)
-    .filter((id): id is string => typeof id === 'string')
+  return (await getActivePlayers(guildId)).map(p => p.discordId).filter((id): id is string => typeof id === 'string')
 }
 
 function generatePreviousPlayersMessage(previousPlayersList: string[]): string {
@@ -174,6 +174,13 @@ export async function handleNewGameCommand(
     await syncRecentReplays(guildId)
   } catch (err) {
     console.error('Error auto-syncing replays during /new_game:', err)
+  }
+
+  try {
+    const gameNumber = await getGameNumberTonight(guildId)
+    await tagLastLobbyImageAsFinal(gameNumber, interaction.guild?.name)
+  } catch (err) {
+    console.error('Error auto-tagging last lobby image during /new_game:', err)
   }
 
   /**
@@ -315,8 +322,7 @@ export async function handleRejoinCommand(
     // always update the lobby message instead of announcing
     await updateLobbyMessage(guildId, interaction)
     const joinVerb = newUser ? 'joined' : 'rejoined'
-    const playerPrimary =
-      player.usernames.accounts?.find(a => a.isPrimary) ?? player.usernames.accounts?.[0]
+    const playerPrimary = player.usernames.accounts?.find(a => a.isPrimary) ?? player.usernames.accounts?.[0]
     const tagDisplay = playerPrimary?.hotsBattleTag ? playerPrimary.hotsBattleTag.replace(/#.*$/, '') : 'unknown'
     const content =
       (updated === false ? `You are already in` : `You have ${joinVerb}`) +
@@ -478,4 +484,3 @@ async function handleUserJoined(guildId: string, interaction: chatOrButtonOrModa
     flags: MessageFlags.Ephemeral,
   })
 }
-

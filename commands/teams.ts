@@ -777,7 +777,13 @@ export async function handleCheckTeamsCommand(
       const response = await fetch(screenshot.url)
       const arrayBuffer = await response.arrayBuffer()
       const imageBuffer = Buffer.from(arrayBuffer)
-      const scanSummary = await scanLobbyScreenshot(imageBuffer, guildId, false, screenshot.name)
+      const scanSummary = await scanLobbyScreenshot(
+        imageBuffer,
+        guildId,
+        false,
+        screenshot.name,
+        interaction.guild?.name
+      )
       await saveLastLobbyScan(guildId, {
         team1DiscordIds: scanSummary.team1DiscordIds,
         team2DiscordIds: scanSummary.team2DiscordIds,

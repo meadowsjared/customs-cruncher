@@ -123,10 +123,25 @@ export async function getRecentlyPlayedMapNames(hours = 15): Promise<string[]> {
 
 /**
  * Returns the game number for tonight based on replays played in the last N hours (default 15 hours).
+ * If guildId is provided, only counts replays containing registered players from that guild.
  */
-export async function getGameNumberTonight(hours = 15): Promise<number> {
+export async function getGameNumberTonight(guildId?: string, hours = 15): Promise<number> {
   try {
     const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000)
+    if (guildId) {
+      const rows = await sql<{ count: number }[]>`
+        SELECT COUNT(DISTINCT r.id)::int AS count
+        FROM replays r
+        WHERE r.date >= ${cutoffDate}
+          AND EXISTS (
+            SELECT 1 FROM hots_accounts ha
+            WHERE ha.guild_id = ${guildId}
+              AND ha.hots_battle_tag = ANY(r.player_ids)
+          )
+      `
+      return (rows[0]?.count ?? 0) + 1
+    }
+
     const rows = await sql<{ count: number }[]>`
       SELECT COUNT(*)::int AS count
       FROM replays

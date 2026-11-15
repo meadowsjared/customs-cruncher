@@ -31,6 +31,7 @@ import {
 import { MapDefinition, MapVoteSession, MapVoteTally } from '../types/mapVote'
 import { safeReply, safeDeferUpdate, requireGuildId } from '../utils/interaction'
 import { syncRecentReplays } from './replays'
+import { tagLastLobbyImageAsFinal } from '../utils/lobbyScanner'
 
 const MAPS_ASSETS_DIR = path.resolve(process.cwd(), 'assets', 'maps')
 
@@ -221,6 +222,16 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
     console.error('Error auto-syncing replays during /map-vote:', err)
   }
 
+  const userTitle = interaction.options.getString('title')
+  const gameNumber = interaction.options.getNumber('game-number') ?? (await getGameNumberTonight(guildId))
+  const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`
+
+  try {
+    await tagLastLobbyImageAsFinal(gameNumber, interaction.guild?.name)
+  } catch (err) {
+    console.error('Error auto-tagging last lobby image during /map-vote:', err)
+  }
+
   const channel = interaction.channel
   if (!channel || !('send' in channel)) {
     await interaction.editReply({
@@ -235,9 +246,6 @@ export async function handleMapVoteCommand(interaction: ChatInputCommandInteract
     await closeAndLockMapVoteSession(channel, prevSession)
   }
 
-  const userTitle = interaction.options.getString('title')
-  const gameNumber = interaction.options.getNumber('game-number') ?? (await getGameNumberTonight())
-  const customTitle = userTitle ? `${userTitle} - Game ${gameNumber}` : `Game ${gameNumber}`
   const sessionId = Date.now().toString()
   const createdBy = interaction.user.id
 

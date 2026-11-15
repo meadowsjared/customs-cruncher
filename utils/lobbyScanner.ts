@@ -289,6 +289,17 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url))
 export const TEST_LOBBY_IMAGES_DIR = path.resolve(currentDir, '../assets/test-lobby-images')
 
 /**
+ * Returns the guild-specific directory for saving and inspecting lobby screenshots.
+ * Replaces filesystem-unfriendly characters in the guild name so each Discord server
+ * has its own human-readable, isolated folder.
+ */
+export function getGuildLobbyImagesDir(guildName?: string, baseDir = TEST_LOBBY_IMAGES_DIR): string {
+  if (!guildName) return path.join(baseDir, 'default')
+  const sanitized = guildName.replace(/[/\\?%*:|"<>]/g, '_').trim()
+  return path.join(baseDir, sanitized || 'default')
+}
+
+/**
  * TOGGLE: Set this to false to easily disable saving scanned lobby images to /assets/test-lobby-images.
  */
 export const SAVE_TEST_LOBBY_IMAGES = true
@@ -310,21 +321,24 @@ export function formatLocalTimestamp(d: Date = new Date()): string {
 }
 
 /**
- * Saves a scanned lobby screenshot under /assets/test-lobby-images.
+ * Saves a scanned lobby screenshot under /assets/test-lobby-images (or guild subfolder).
  * Uses a timestamped filename to prevent collisions and preserve scan history.
  */
 export async function saveScannedLobbyImage(
   imageBuffer: Buffer,
   originalFilename?: string,
-  destinationDir = TEST_LOBBY_IMAGES_DIR
+  destinationDir?: string,
+  guildName?: string
 ): Promise<string | null> {
   // To disable saving lobby images, toggle SAVE_TEST_LOBBY_IMAGES to false above
   if (!SAVE_TEST_LOBBY_IMAGES) {
     return null
   }
 
+  const targetDir = destinationDir ?? getGuildLobbyImagesDir(guildName)
+
   try {
-    await fs.mkdir(destinationDir, { recursive: true })
+    await fs.mkdir(targetDir, { recursive: true })
 
     let ext = 'png'
     try {
@@ -350,11 +364,16 @@ export async function saveScannedLobbyImage(
     }
 
     let filename = `${sanitizedBase}_${timestamp}.${ext}`
-    let targetPath = path.join(destinationDir, filename)
+    let targetPath = path.join(targetDir, filename)
     let counter = 1
-    while (await fs.stat(targetPath).then(() => true).catch(() => false)) {
+    while (
+      await fs
+        .stat(targetPath)
+        .then(() => true)
+        .catch(() => false)
+    ) {
       filename = `${sanitizedBase}_${timestamp}_${counter}.${ext}`
-      targetPath = path.join(destinationDir, filename)
+      targetPath = path.join(targetDir, filename)
       counter++
     }
 
@@ -366,15 +385,67 @@ export async function saveScannedLobbyImage(
   }
 }
 
+/**
+ * Checks the guild's lobby images directory for the most recent scan.
+ * If that last image is not yet tagged with "-Final", renames it to append "-Final - Game X".
+ *
+ * Automatically called during /new_game and /map-vote to mark the completed game's final lobby lineup.
+ *
+ * @param gameNumber Game number to assign (defaults to 1)
+ * @param guildName Optional guild name to locate the guild's specific screenshot directory
+ * @param destinationDir Optional explicit directory to inspect (defaults to guild folder under TEST_LOBBY_IMAGES_DIR)
+ * @returns The new path of the tagged image, or null if no untagged image was found or if already tagged.
+ */
+export async function tagLastLobbyImageAsFinal(gameNumber = 1, guildName?: string): Promise<string | null> {
+  if (!SAVE_TEST_LOBBY_IMAGES) {
+    return null
+  }
+
+  const targetDir = getGuildLobbyImagesDir(guildName)
+
+  try {
+    const dirExists = await fs
+      .access(targetDir)
+      .then(() => true)
+      .catch(() => false)
+    if (!dirExists) {
+      return null
+    }
+
+    const entries = await fs.readdir(targetDir).catch(() => [])
+    const files = entries.filter(f => f.toLowerCase().startsWith('lobby_') && /\.(png|jpe?g)$/i.test(f)).sort()
+
+    if (files.length === 0) {
+      return null
+    }
+
+    const last = files[files.length - 1]
+    if (last.includes('-Final')) {
+      return null
+    }
+
+    const ext = path.extname(last)
+    const base = path.basename(last, ext)
+    const newPath = path.join(targetDir, `${base}-Final - Game ${gameNumber}${ext}`)
+
+    await fs.rename(path.join(targetDir, last), newPath)
+    return newPath
+  } catch (err) {
+    console.error('Failed to tag last lobby image as final:', err)
+    return null
+  }
+}
+
 export async function scanLobbyScreenshot(
   imageBuffer: Buffer,
   guildId: string,
   sync = false,
-  originalFilename?: string
+  originalFilename?: string,
+  guildName?: string
 ): Promise<ScanLobbySummary> {
   // To disable saving scanned images, toggle SAVE_TEST_LOBBY_IMAGES to false above (or comment out this call)
   if (SAVE_TEST_LOBBY_IMAGES) {
-    await saveScannedLobbyImage(imageBuffer, originalFilename)
+    await saveScannedLobbyImage(imageBuffer, originalFilename, undefined, guildName)
   }
 
   const metadata = await sharp(imageBuffer).metadata()
