@@ -294,6 +294,22 @@ export const TEST_LOBBY_IMAGES_DIR = path.resolve(currentDir, '../assets/test-lo
 export const SAVE_TEST_LOBBY_IMAGES = true
 
 /**
+ * Formats a Date into a local timestamp string for filenames (YYYY-MM-DD_HH.mm.ss).
+ * Uses local machine time instead of UTC to match the user's actual play/capture time,
+ * with periods between time units to clearly distinguish the time from the date.
+ */
+export function formatLocalTimestamp(d: Date = new Date()): string {
+  const pad = (n: number, width = 2) => String(n).padStart(width, '0')
+  const year = d.getFullYear()
+  const month = pad(d.getMonth() + 1)
+  const day = pad(d.getDate())
+  const hours = pad(d.getHours())
+  const minutes = pad(d.getMinutes())
+  const seconds = pad(d.getSeconds())
+  return `${year}-${month}-${day}_${hours}.${minutes}.${seconds}`
+}
+
+/**
  * Saves a scanned lobby screenshot under /assets/test-lobby-images.
  * Uses a timestamped filename to prevent collisions and preserve scan history.
  */
@@ -322,7 +338,7 @@ export async function saveScannedLobbyImage(
       // Fallback to png if metadata parse fails
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const timestamp = formatLocalTimestamp()
     let sanitizedBase = 'lobby'
 
     if (originalFilename) {
@@ -333,8 +349,14 @@ export async function saveScannedLobbyImage(
       }
     }
 
-    const filename = `${sanitizedBase}_${timestamp}.${ext}`
-    const targetPath = path.join(destinationDir, filename)
+    let filename = `${sanitizedBase}_${timestamp}.${ext}`
+    let targetPath = path.join(destinationDir, filename)
+    let counter = 1
+    while (await fs.stat(targetPath).then(() => true).catch(() => false)) {
+      filename = `${sanitizedBase}_${timestamp}_${counter}.${ext}`
+      targetPath = path.join(destinationDir, filename)
+      counter++
+    }
 
     await fs.writeFile(targetPath, imageBuffer)
     return targetPath
