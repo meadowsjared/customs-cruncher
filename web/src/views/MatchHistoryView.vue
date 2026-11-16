@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ReplaySummary, ReplaysApiResponse } from '../types'
-import { formatDuration, formatDateRelative, getHeroImageUrl, getMapImageUrl } from '../utils/hots'
+import {
+  formatDuration,
+  formatDateRelative,
+  getHeroImageUrl,
+  getMapImageUrl,
+  resolveHeroName,
+} from '../utils/hots'
 
 const router = useRouter()
 const replays = ref<ReplaySummary[]>([])
@@ -84,6 +90,114 @@ function openMatch(id: number) {
   router.push(`/replay/${id}`)
 }
 
+interface TeamMemberInfo {
+  hero: string
+  player: string
+  playerName: string
+  playerTag: string
+}
+
+function parsePlayerEntry(raw: string, fallbackHero?: string): TeamMemberInfo {
+  const trimmed = raw.trim()
+  const match = trimmed.match(/^(.+?)\s*\((.+?)\)$/)
+  let playerStr = trimmed
+  let heroName = fallbackHero || 'Unknown'
+
+  if (match) {
+    playerStr = match[1].trim()
+    heroName = match[2].trim()
+  }
+
+  const [name, tag] = playerStr.split('#')
+  return {
+    hero: heroName,
+    player: playerStr,
+    playerName: name || playerStr,
+    playerTag: tag ? `#${tag}` : '',
+  }
+}
+
+function getTeamMembers(match: ReplaySummary, teamIndex: 0 | 1): TeamMemberInfo[] {
+  const playersList = teamIndex === 0 ? match.team0_players : match.team1_players
+  if (Array.isArray(playersList) && playersList.length > 0) {
+    return playersList.map((p, idx) => {
+      const fallbackHero = teamIndex === 0 ? match.heroes[idx] : match.heroes[idx + 5]
+      return parsePlayerEntry(p, fallbackHero)
+    })
+  }
+
+  const startIdx = teamIndex === 0 ? 0 : 5
+  return match.heroes.slice(startIdx, startIdx + 5).map(h => ({
+    hero: h,
+    player: 'Unknown Player',
+    playerName: 'Unknown Player',
+    playerTag: '',
+  }))
+}
+
+// Tooltip State
+interface ActiveHeroTooltipState {
+  visible: boolean
+  member: TeamMemberInfo | null
+  team: string
+  isWinner: boolean
+  x: number
+  y: number
+}
+
+const activeHeroTooltip = ref<ActiveHeroTooltipState>({
+  visible: false,
+  member: null,
+  team: '',
+  isWinner: false,
+  x: 0,
+  y: 0,
+})
+
+function showHeroTooltip(event: MouseEvent, member: TeamMemberInfo, team: string, isWinner: boolean) {
+  activeHeroTooltip.value = {
+    visible: true,
+    member,
+    team,
+    isWinner,
+    x: event.clientX,
+    y: event.clientY,
+  }
+}
+
+function updateTooltipPosition(event: MouseEvent) {
+  activeHeroTooltip.value.x = event.clientX
+  activeHeroTooltip.value.y = event.clientY
+}
+
+function hideHeroTooltip() {
+  activeHeroTooltip.value.visible = false
+}
+
+const tooltipStyle = computed(() => {
+  const padding = 16
+  const tooltipWidth = 260
+  const tooltipHeight = 110
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080
+
+  let left = activeHeroTooltip.value.x + 14
+  let top = activeHeroTooltip.value.y + 14
+
+  if (left + tooltipWidth > viewportWidth - padding) {
+    left = Math.max(padding, activeHeroTooltip.value.x - tooltipWidth - 14)
+  }
+
+  if (top + tooltipHeight > viewportHeight - padding) {
+    top = Math.max(padding, activeHeroTooltip.value.y - tooltipHeight - 14)
+  }
+
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+  }
+})
+
 onMounted(() => {
   fetchReplays()
 })
@@ -159,14 +273,21 @@ onMounted(() => {
               <span class="score-pill">{{ match.team0_takedowns }} Kills</span>
             </div>
             <div class="hero-icons-row">
-              <img
-                v-for="(hero, i) in match.heroes.slice(0, 5)"
+              <div
+                v-for="(member, i) in getTeamMembers(match, 0)"
                 :key="i"
-                :src="getHeroImageUrl(hero)"
-                :alt="hero"
-                :title="hero"
-                class="hero-avatar"
-              />
+                class="hero-avatar-wrapper"
+                @mouseenter.stop="showHeroTooltip($event, member, 'Blue Team', match.winner === 0)"
+                @mousemove.stop="updateTooltipPosition"
+                @mouseleave.stop="hideHeroTooltip"
+              >
+                <img
+                  :src="getHeroImageUrl(member.hero)"
+                  :alt="member.hero"
+                  class="hero-avatar"
+                  @error="hideBrokenImage"
+                />
+              </div>
             </div>
             <div class="players-subtext">
               {{ match.team0_players.join(', ') }}
@@ -186,14 +307,21 @@ onMounted(() => {
               <span class="score-pill">{{ match.team1_takedowns }} Kills</span>
             </div>
             <div class="hero-icons-row">
-              <img
-                v-for="(hero, i) in match.heroes.slice(5, 10)"
+              <div
+                v-for="(member, i) in getTeamMembers(match, 1)"
                 :key="i"
-                :src="getHeroImageUrl(hero)"
-                :alt="hero"
-                :title="hero"
-                class="hero-avatar"
-              />
+                class="hero-avatar-wrapper"
+                @mouseenter.stop="showHeroTooltip($event, member, 'Red Team', match.winner === 1)"
+                @mousemove.stop="updateTooltipPosition"
+                @mouseleave.stop="hideHeroTooltip"
+              >
+                <img
+                  :src="getHeroImageUrl(member.hero)"
+                  :alt="member.hero"
+                  class="hero-avatar"
+                  @error="hideBrokenImage"
+                />
+              </div>
             </div>
             <div class="players-subtext">
               {{ match.team1_players.join(', ') }}
@@ -217,6 +345,48 @@ onMounted(() => {
         Next →
       </button>
     </div>
+
+    <!-- Beautiful Floating Hero & Player Tooltip -->
+    <Teleport to="body">
+      <div
+        v-if="activeHeroTooltip.visible && activeHeroTooltip.member"
+        class="match-hero-tooltip"
+        :style="tooltipStyle"
+      >
+        <div class="tooltip-header">
+          <img
+            :src="getHeroImageUrl(activeHeroTooltip.member.hero)"
+            :alt="activeHeroTooltip.member.hero"
+            class="tooltip-hero-avatar"
+            @error="hideBrokenImage"
+          />
+          <div class="tooltip-title-wrap">
+            <span class="tooltip-hero-name">{{ resolveHeroName(activeHeroTooltip.member.hero) }}</span>
+            <div class="tooltip-player-line">
+              <span class="tooltip-played-by">Played by</span>
+              <span class="tooltip-player-name">
+                {{ activeHeroTooltip.member.playerName }}<span v-if="activeHeroTooltip.member.playerTag" class="tooltip-player-tag">{{ activeHeroTooltip.member.playerTag }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tooltip-footer">
+          <span
+            class="tooltip-team-tag"
+            :class="activeHeroTooltip.team === 'Blue Team' ? 'tag-blue' : 'tag-red'"
+          >
+            {{ activeHeroTooltip.team }}
+          </span>
+          <span
+            class="tooltip-outcome-tag"
+            :class="activeHeroTooltip.isWinner ? 'outcome-win' : 'outcome-loss'"
+          >
+            {{ activeHeroTooltip.isWinner ? 'Victory 🏆' : 'Defeat' }}
+          </span>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -456,6 +626,158 @@ onMounted(() => {
   font-size: 0.9rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.hero-avatar-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.hero-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-subtle);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+
+.hero-avatar:hover {
+  transform: scale(1.15);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.45);
+  z-index: 2;
+}
+
+/* Custom Floating Hero & Player Tooltip */
+.match-hero-tooltip {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  background: rgba(13, 20, 36, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 15px rgba(56, 189, 248, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 200px;
+  max-width: 280px;
+  animation: tooltipFadeIn 0.12s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.tooltip-hero-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+  flex-shrink: 0;
+}
+
+.tooltip-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tooltip-hero-name {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.tooltip-player-line {
+  font-size: 0.75rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.tooltip-played-by {
+  color: var(--text-muted);
+}
+
+.tooltip-player-name {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.tooltip-player-tag {
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+.tooltip-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.4rem;
+}
+
+.tooltip-team-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.03em;
+}
+
+.tag-blue {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.tag-red {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fb7185;
+  border: 1px solid rgba(251, 113, 133, 0.3);
+}
+
+.tooltip-outcome-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+}
+
+.outcome-win {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.outcome-loss {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.25);
 }
 
 @media (max-width: 900px) {
