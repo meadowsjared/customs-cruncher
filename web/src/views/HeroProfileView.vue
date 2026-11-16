@@ -387,7 +387,7 @@ onMounted(() => {
             </div>
 
             <div class="stat-pill-card">
-              <span class="stat-pill-label">Overall KDA</span>
+              <span class="stat-pill-label">Overall KAD</span>
               <span class="stat-pill-val val-kda">{{ heroData.hero.overallKda.toFixed(2) }}</span>
               <span class="stat-pill-sub">{{ heroData.hero.totalMatches }} Games</span>
             </div>
@@ -572,7 +572,7 @@ onMounted(() => {
                 <span class="kda-deaths">{{ m.deaths }}</span>
               </div>
               <div class="kda-ratio-badge">
-                {{ m.kda.toFixed(1) }} KDA
+                {{ m.kda.toFixed(1) }} KAD
               </div>
             </div>
 

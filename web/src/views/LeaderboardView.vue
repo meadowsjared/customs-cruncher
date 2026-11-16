@@ -697,7 +697,7 @@ onMounted(() => {
 
         <div class="stat-dossier-grid">
           <div class="stat-dossier-item">
-            <span class="dossier-label">Overall KDA</span>
+            <span class="dossier-label">Overall KAD</span>
             <span class="dossier-value" :class="(activeFilterPlayer.overall_kda || 0) < 3.0 ? 'text-red' : 'text-green'">
               {{ (activeFilterPlayer.overall_kda || 0).toFixed(2) }}
             </span>
@@ -812,7 +812,7 @@ onMounted(() => {
               Win Rate {{ sortColumn === 'win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
             <th class="sortable" @click="setSort('overall_kda')">
-              KDA {{ sortColumn === 'overall_kda' ? (sortAsc ? '▲' : '▼') : '' }}
+              KAD {{ sortColumn === 'overall_kda' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
             <th class="sortable" @click="setSort('avg_hero_damage')">
               Avg Hero Dmg {{ sortColumn === 'avg_hero_damage' ? (sortAsc ? '▲' : '▼') : '' }}

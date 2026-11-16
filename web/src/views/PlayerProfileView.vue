@@ -438,7 +438,7 @@ onMounted(() => {
             </div>
 
             <div class="stat-pill-card">
-              <span class="stat-pill-label">Hero KDA</span>
+              <span class="stat-pill-label">Hero KAD</span>
               <span class="stat-pill-val val-kda">{{ playerHeroStats.kda.toFixed(2) }}</span>
               <span class="stat-pill-sub">{{ playerHeroStats.total }} Games</span>
             </div>
@@ -503,7 +503,7 @@ onMounted(() => {
             </div>
 
             <div class="stat-pill-card">
-              <span class="stat-pill-label">Overall KDA</span>
+              <span class="stat-pill-label">Overall KAD</span>
               <span class="stat-pill-val val-kda">{{ profileData.player.overallKda.toFixed(2) }}</span>
               <span class="stat-pill-sub">{{ profileData.player.totalMatches }} Games</span>
             </div>
@@ -702,12 +702,12 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- KDA Stats Column -->
+            <!-- KAD Stats Column -->
             <div class="match-kda-col">
               <span class="kda-values">
                 {{ m.solo_kills }} / {{ m.assists }} / <span class="death-num">{{ m.deaths }}</span>
               </span>
-              <span class="kda-ratio">{{ m.kda.toFixed(1) }} KDA</span>
+              <span class="kda-ratio">{{ m.kda.toFixed(1) }} KAD</span>
             </div>
 
             <!-- Combat Numbers Column -->

@@ -729,7 +729,7 @@ onMounted(() => {
                 <tr>
                   <th>Player / Hero</th>
                   <th>K / A / D</th>
-                  <th>KDA</th>
+                  <th>KAD</th>
                   <th>Talents</th>
                   <th>Hero Dmg</th>
                   <th>Siege Dmg</th>
@@ -909,7 +909,7 @@ onMounted(() => {
                 <tr>
                   <th>Player / Hero</th>
                   <th>K / A / D</th>
-                  <th>KDA</th>
+                  <th>KAD</th>
                   <th>Talents</th>
                   <th>Hero Dmg</th>
                   <th>Siege Dmg</th>
