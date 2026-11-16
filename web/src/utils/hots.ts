@@ -194,8 +194,16 @@ export function formatTalentName(talentKey?: string): string {
   if (info && info.name) {
     return info.name
   }
-  // Fallback: E.g. "HanzoSimpleGeometry" -> "Simple Geometry"
-  return talentKey.replace(/([A-Z])/g, ' $1').trim()
+  let cleaned = talentKey
+  for (const hero of Object.keys(heroMap)) {
+    const raw = hero.replace(/[^a-zA-Z0-9]/g, '')
+    if (cleaned.startsWith(raw)) {
+      cleaned = cleaned.slice(raw.length)
+      break
+    }
+  }
+  cleaned = cleaned.replace(/^Talent/i, '').replace(/Talent$/i, '')
+  return cleaned.replace(/([A-Z])/g, ' $1').trim()
 }
 
 export function getTalentTooltip(talentKey?: string, tierIndex: number = 0): string {
