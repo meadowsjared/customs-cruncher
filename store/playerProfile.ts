@@ -30,6 +30,7 @@ export interface PlayerProfileSummary {
   avgDamageTaken: number
   avgXp: number
   topHeroes: PlayerProfileTopHero[]
+  highestWinRateHeroes: PlayerProfileTopHero[]
 }
 
 export interface PlayerMatchTalents {
@@ -264,14 +265,28 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
     })
   }
 
-  const topHeroes: PlayerProfileTopHero[] = Array.from(heroStatsMap.entries())
+  const allHeroStats: PlayerProfileTopHero[] = Array.from(heroStatsMap.entries())
     .map(([hero, entry]) => ({
       hero,
       games: entry.games,
       wins: entry.wins,
       winRatePct: entry.games > 0 ? Number(((entry.wins / entry.games) * 100).toFixed(1)) : 0,
     }))
-    .sort((a, b) => b.games - a.games)
+
+  const topHeroes = [...allHeroStats]
+    .sort((a, b) => b.games - a.games || b.winRatePct - a.winRatePct)
+    .slice(0, 5)
+
+  let eligibleForWinrate = allHeroStats.filter(h => h.games >= 3)
+  if (eligibleForWinrate.length < 3) {
+    eligibleForWinrate = allHeroStats.filter(h => h.games >= 2)
+  }
+  if (eligibleForWinrate.length < 3) {
+    eligibleForWinrate = allHeroStats
+  }
+
+  const highestWinRateHeroes = [...eligibleForWinrate]
+    .sort((a, b) => b.winRatePct - a.winRatePct || b.games - a.games)
     .slice(0, 5)
 
   const overallKda = totalMatches > 0 ? Number((sumKda / totalMatches).toFixed(2)) : 0
@@ -301,6 +316,7 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
       avgDamageTaken,
       avgXp,
       topHeroes,
+      highestWinRateHeroes,
     },
     matches: formattedMatches,
   }

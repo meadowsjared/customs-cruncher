@@ -330,75 +330,76 @@ onMounted(() => {
   <div class="player-profile-view container">
     <!-- Back to Matches / Search Bar Row -->
     <div class="profile-nav-bar">
-      <button class="btn btn-back" @click="router.push('/matches')">
+      <button class="btn btn-back"
+              @click="router.push('/matches')">
         ← Back to Matches
       </button>
 
       <!-- Player Search Input with Dropdown -->
       <div class="player-search-box">
         <span class="search-icon">🔍</span>
-        <input
-          v-model="searchQuery"
-          type="text"
-          class="player-search-input"
-          placeholder="Lookup player by name or BattleTag..."
-          @input="onSearchInput"
-          @focus="searchResults.length > 0 ? (showSearchDropdown = true) : null"
-          @blur="handleSearchBlur"
-        />
-        <div v-if="showSearchDropdown && searchResults.length > 0" class="player-search-dropdown">
-          <div
-            v-for="item in searchResults"
-            :key="item.rowId"
-            class="search-result-item"
-            @mousedown.prevent="selectPlayer(item)"
-          >
+        <input v-model="searchQuery"
+               type="text"
+               class="player-search-input"
+               placeholder="Lookup player by name or BattleTag..."
+               @input="onSearchInput"
+               @focus="searchResults.length > 0 ? (showSearchDropdown = true) : null"
+               @blur="handleSearchBlur" />
+        <div v-if="showSearchDropdown && searchResults.length > 0"
+             class="player-search-dropdown">
+          <div v-for="item in searchResults"
+               :key="item.rowId"
+               class="search-result-item"
+               @mousedown.prevent="selectPlayer(item)">
             <span class="result-tag">{{ item.battleTag }}</span>
-            <span v-if="item.isPrimary" class="result-badge">Primary</span>
+            <span v-if="item.isPrimary"
+                  class="result-badge">Primary</span>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="card loading-card">
+    <div v-if="loading"
+         class="card loading-card">
       <div class="spinner"></div>
       <p>Retrieving match history from the Nexus...</p>
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error" class="card error-card">
+    <div v-else-if="error"
+         class="card error-card">
       <span class="error-icon">⚠️</span>
       <h2>Player Not Found</h2>
       <p>{{ error }}</p>
-      <button class="btn btn-primary" @click="router.push('/matches')">
+      <button class="btn btn-primary"
+              @click="router.push('/matches')">
         Return to Matches
       </button>
     </div>
 
     <!-- Loaded Player Profile -->
-    <div v-else-if="profileData" class="profile-content">
+    <div v-else-if="profileData"
+         class="profile-content">
       <!-- Player Specific Hero Header Card -->
-      <div v-if="activeHeroParam && playerHeroStats" class="profile-header-card card hero-mode-card">
+      <div v-if="activeHeroParam && playerHeroStats"
+           class="profile-header-card card hero-mode-card">
         <div class="hero-mode-nav">
-          <button class="btn btn-back-all-heroes" @click="navigateToPlayerAllHeroes">
+          <button class="btn btn-back-all-heroes"
+                  @click="navigateToPlayerAllHeroes">
             ← View All Heroes for {{ profileData.player.name }}
           </button>
         </div>
 
         <div class="profile-header-top">
           <div class="profile-identity">
-            <div
-              class="hero-portrait-circle clickable-hero-portrait"
-              :title="`Click to view all matches for ${resolveHeroName(playerHeroStats.hero)} across ALL players`"
-              @click="navigateToHeroAllPlayers(playerHeroStats.hero)"
-            >
-              <img
-                :src="getHeroImageUrl(playerHeroStats.hero)"
-                :alt="playerHeroStats.hero"
-                class="hero-portrait-img"
-                @error="hideBrokenImage"
-              />
+            <div class="hero-portrait-circle clickable-hero-portrait"
+                 :title="`Click to view all matches for ${resolveHeroName(playerHeroStats.hero)} across ALL players`"
+                 @click="navigateToHeroAllPlayers(playerHeroStats.hero)">
+              <img :src="getHeroImageUrl(playerHeroStats.hero)"
+                   :alt="playerHeroStats.hero"
+                   class="hero-portrait-img"
+                   @error="hideBrokenImage" />
               <span class="hero-portrait-badge">View All Players ↗</span>
             </div>
             <div class="player-identity-info">
@@ -407,7 +408,8 @@ onMounted(() => {
               </h1>
               <p class="hero-specific-sub">
                 Performance on {{ resolveHeroName(playerHeroStats.hero) }}.
-                <a class="hero-global-link" @click="navigateToHeroAllPlayers(playerHeroStats.hero)">
+                <a class="hero-global-link"
+                   @click="navigateToHeroAllPlayers(playerHeroStats.hero)">
                   Click portrait to view all players on {{ resolveHeroName(playerHeroStats.hero) }} →
                 </a>
               </p>
@@ -418,10 +420,8 @@ onMounted(() => {
           <div class="profile-stat-pills">
             <div class="stat-pill-card">
               <span class="stat-pill-label">Hero Win Rate</span>
-              <span
-                class="stat-pill-val"
-                :class="playerHeroStats.winRatePct >= 50 ? 'val-good' : 'val-dim'"
-              >
+              <span class="stat-pill-val"
+                    :class="playerHeroStats.winRatePct >= 50 ? 'val-good' : 'val-dim'">
                 {{ playerHeroStats.winRatePct }}%
               </span>
               <span class="stat-pill-sub">
@@ -455,7 +455,8 @@ onMounted(() => {
       </div>
 
       <!-- General Player Header Card (When not viewing a single hero) -->
-      <div v-else class="profile-header-card card">
+      <div v-else
+           class="profile-header-card card">
         <div class="profile-header-top">
           <div class="profile-identity">
             <div class="player-avatar-circle">
@@ -464,16 +465,16 @@ onMounted(() => {
             <div class="player-identity-info">
               <h1 class="player-display-name">
                 {{ profileData.player.name }}
-                <span v-if="profileData.player.tag" class="player-bnet-tag">#{{ profileData.player.tag }}</span>
+                <span v-if="profileData.player.tag"
+                      class="player-bnet-tag">#{{ profileData.player.tag }}</span>
               </h1>
-              <div v-if="profileData.player.allTags.length > 1" class="linked-accounts-wrap">
+              <div v-if="profileData.player.allTags.length > 1"
+                   class="linked-accounts-wrap">
                 <span class="linked-label">Linked Accounts:</span>
-                <span
-                  v-for="tag in profileData.player.allTags"
-                  :key="tag"
-                  class="linked-tag-badge"
-                  :class="{ active: tag === profileData.player.battleTag }"
-                >
+                <span v-for="tag in profileData.player.allTags"
+                      :key="tag"
+                      class="linked-tag-badge"
+                      :class="{ active: tag === profileData.player.battleTag }">
                   {{ tag }}
                 </span>
               </div>
@@ -484,10 +485,8 @@ onMounted(() => {
           <div class="profile-stat-pills">
             <div class="stat-pill-card">
               <span class="stat-pill-label">Win Rate</span>
-              <span
-                class="stat-pill-val"
-                :class="profileData.player.winRatePct >= 50 ? 'val-good' : 'val-dim'"
-              >
+              <span class="stat-pill-val"
+                    :class="profileData.player.winRatePct >= 50 ? 'val-good' : 'val-dim'">
                 {{ profileData.player.winRatePct }}%
               </span>
               <span class="stat-pill-sub">
@@ -519,31 +518,54 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Top Heroes Strip -->
-        <div v-if="profileData.player.topHeroes.length > 0" class="top-heroes-section">
-          <span class="top-heroes-label">Most Played Heroes:</span>
-          <div class="top-heroes-chips">
-            <div
-              v-for="th in profileData.player.topHeroes"
-              :key="th.hero"
-              class="top-hero-chip clickable-top-hero-chip"
-              :title="`View ${profileData.player.name}'s matches on ${resolveHeroName(th.hero)}`"
-              @click="navigateToPlayerSpecificHero(th.hero)"
-            >
-              <img
-                :src="getHeroImageUrl(th.hero)"
-                :alt="th.hero"
-                class="top-hero-avatar"
-                @error="hideBrokenImage"
-              />
-              <span class="top-hero-name">{{ resolveHeroName(th.hero) }}</span>
-              <span class="top-hero-games">{{ th.games }}g</span>
-              <span
-                class="top-hero-wr"
-                :class="th.winRatePct >= 50 ? 'wr-positive' : 'wr-negative'"
-              >
-                {{ th.winRatePct }}%
-              </span>
+        <!-- Hero Highlights Wrapper -->
+        <div v-if="profileData.player.topHeroes.length > 0 || (profileData.player.highestWinRateHeroes && profileData.player.highestWinRateHeroes.length > 0)"
+             class="hero-strips-wrap">
+          <!-- Top Heroes Strip -->
+          <div v-if="profileData.player.topHeroes.length > 0"
+               class="top-heroes-section">
+            <span class="top-heroes-label">Most Played Heroes:</span>
+            <div class="top-heroes-chips">
+              <div v-for="th in profileData.player.topHeroes"
+                   :key="th.hero"
+                   class="top-hero-chip clickable-top-hero-chip"
+                   :title="`View ${profileData.player.name}'s matches on ${resolveHeroName(th.hero)}`"
+                   @click="navigateToPlayerSpecificHero(th.hero)">
+                <img :src="getHeroImageUrl(th.hero)"
+                     :alt="th.hero"
+                     class="top-hero-avatar"
+                     @error="hideBrokenImage" />
+                <span class="top-hero-name">{{ resolveHeroName(th.hero) }}</span>
+                <span class="top-hero-games">{{ th.games }}g</span>
+                <span class="top-hero-wr"
+                      :class="th.winRatePct >= 50 ? 'wr-positive' : 'wr-negative'">
+                  {{ th.winRatePct }}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Highest Winrate Heroes Strip -->
+          <div v-if="profileData.player.highestWinRateHeroes && profileData.player.highestWinRateHeroes.length > 0"
+               class="top-heroes-section winrate-heroes-section">
+            <span class="top-heroes-label">Highest Winrate Heroes:</span>
+            <div class="top-heroes-chips">
+              <div v-for="th in profileData.player.highestWinRateHeroes"
+                   :key="th.hero"
+                   class="top-hero-chip clickable-top-hero-chip wr-hero-chip"
+                   :title="`View ${profileData.player.name}'s matches on ${resolveHeroName(th.hero)} (${th.wins}W - ${th.games - th.wins}L)`"
+                   @click="navigateToPlayerSpecificHero(th.hero)">
+                <img :src="getHeroImageUrl(th.hero)"
+                     :alt="th.hero"
+                     class="top-hero-avatar"
+                     @error="hideBrokenImage" />
+                <span class="top-hero-name">{{ resolveHeroName(th.hero) }}</span>
+                <span class="top-hero-games">{{ th.games }}g</span>
+                <span class="top-hero-wr"
+                      :class="th.winRatePct >= 50 ? 'wr-positive' : 'wr-negative'">
+                  {{ th.winRatePct }}%
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -554,7 +576,8 @@ onMounted(() => {
         <div class="matches-section-header">
           <div class="section-title-wrap">
             <h2>
-              {{ activeHeroParam && playerHeroStats ? `${profileData.player.name}'s ${resolveHeroName(playerHeroStats.hero)} Matches` : 'Match History' }}
+              {{ activeHeroParam && playerHeroStats ? `${profileData.player.name}'s
+              ${resolveHeroName(playerHeroStats.hero)} Matches` : 'Match History' }}
             </h2>
             <span class="count-badge">{{ filteredMatches.length }} matches</span>
           </div>
@@ -563,36 +586,28 @@ onMounted(() => {
           <div class="matches-filter-bar">
             <div class="filter-group">
               <label>Filter Hero:</label>
-              <input
-                v-model="heroFilter"
-                type="text"
-                class="filter-hero-input"
-                placeholder="Search hero..."
-              />
+              <input v-model="heroFilter"
+                     type="text"
+                     class="filter-hero-input"
+                     placeholder="Search hero..." />
             </div>
 
             <div class="filter-group">
               <label>Result:</label>
               <div class="outcome-toggle-btns">
-                <button
-                  class="toggle-btn"
-                  :class="{ active: outcomeFilter === 'all' }"
-                  @click="outcomeFilter = 'all'"
-                >
+                <button class="toggle-btn"
+                        :class="{ active: outcomeFilter === 'all' }"
+                        @click="outcomeFilter = 'all'">
                   All
                 </button>
-                <button
-                  class="toggle-btn toggle-win"
-                  :class="{ active: outcomeFilter === 'win' }"
-                  @click="outcomeFilter = 'win'"
-                >
+                <button class="toggle-btn toggle-win"
+                        :class="{ active: outcomeFilter === 'win' }"
+                        @click="outcomeFilter = 'win'">
                   Victory
                 </button>
-                <button
-                  class="toggle-btn toggle-loss"
-                  :class="{ active: outcomeFilter === 'loss' }"
-                  @click="outcomeFilter = 'loss'"
-                >
+                <button class="toggle-btn toggle-loss"
+                        :class="{ active: outcomeFilter === 'loss' }"
+                        @click="outcomeFilter = 'loss'">
                   Defeat
                 </button>
               </div>
@@ -601,21 +616,22 @@ onMounted(() => {
         </div>
 
         <!-- Matches Table -->
-        <div v-if="filteredMatches.length === 0" class="empty-matches">
+        <div v-if="filteredMatches.length === 0"
+             class="empty-matches">
           <p>No matches match the selected filters.</p>
         </div>
 
-        <div v-else class="matches-cards-list">
-          <div
-            v-for="m in filteredMatches"
-            :key="m.replay_id"
-            class="player-match-row"
-            :class="m.win ? 'row-victory' : 'row-defeat'"
-            @click="navigateToMatch(m.replay_id)"
-          >
+        <div v-else
+             class="matches-cards-list">
+          <div v-for="m in filteredMatches"
+               :key="m.replay_id"
+               class="player-match-row"
+               :class="m.win ? 'row-victory' : 'row-defeat'"
+               @click="navigateToMatch(m.replay_id)">
             <!-- Result Color Bar & Badge -->
             <div class="match-result-col">
-              <span class="outcome-pill" :class="m.win ? 'outcome-win' : 'outcome-loss'">
+              <span class="outcome-pill"
+                    :class="m.win ? 'outcome-win' : 'outcome-loss'">
                 {{ m.win ? 'VICTORY' : 'DEFEAT' }}
               </span>
               <span class="match-time-rel">{{ formatDateRelative(m.date) }}</span>
@@ -623,12 +639,10 @@ onMounted(() => {
 
             <!-- Map Column -->
             <div class="match-map-col">
-              <img
-                :src="getMapImageUrl(m.map)"
-                :alt="m.map"
-                class="map-thumb"
-                @error="hideBrokenImage"
-              />
+              <img :src="getMapImageUrl(m.map)"
+                   :alt="m.map"
+                   class="map-thumb"
+                   @error="hideBrokenImage" />
               <div class="map-meta">
                 <span class="map-name">{{ m.map }}</span>
                 <span class="map-duration">{{ formatDuration(m.length) }}</span>
@@ -637,47 +651,43 @@ onMounted(() => {
 
             <!-- Hero Column -->
             <div class="match-hero-col">
-              <img
-                :src="getHeroImageUrl(m.hero)"
-                :alt="m.hero"
-                class="hero-thumb clickable-match-hero"
-                :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
-                @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)"
-                @error="hideBrokenImage"
-              />
+              <img :src="getHeroImageUrl(m.hero)"
+                   :alt="m.hero"
+                   class="hero-thumb clickable-match-hero"
+                   :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
+                   @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)"
+                   @error="hideBrokenImage" />
               <div class="hero-name-col">
-                <span
-                  class="hero-name clickable-match-hero"
-                  :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
-                  @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)"
-                >
+                <span class="hero-name clickable-match-hero"
+                      :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
+                      @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)">
                   {{ resolveHeroName(m.hero) }}
                 </span>
-                <span v-if="m.battle_tag" class="hero-match-btag" :title="`Played as ${m.battle_tag}`">
+                <span v-if="m.battle_tag"
+                      class="hero-match-btag"
+                      :title="`Played as ${m.battle_tag}`">
                   {{ m.battle_tag }}
                 </span>
               </div>
             </div>
 
             <!-- Talents Strip (7 Tiers with tooltips) -->
-            <div class="match-talents-col" @click.stop>
+            <div class="match-talents-col"
+                 @click.stop>
               <div class="talents-strip">
-                <div
-                  v-for="(tKey, tIdx) in getMatchTalentList(m.talents)"
-                  :key="tIdx"
-                  class="talent-slot"
-                  @mouseenter="showTalentTooltip($event, tKey, tIdx, m.hero)"
-                  @mousemove="updateTooltipPosition($event)"
-                  @mouseleave="hideTalentTooltip"
-                >
-                  <img
-                    v-if="tKey"
-                    :src="getTalentImageUrl(tKey)"
-                    :alt="formatTalentName(tKey)"
-                    class="talent-icon-img"
-                    @error="hideBrokenImage"
-                  />
-                  <span v-else class="talent-empty-tier">
+                <div v-for="(tKey, tIdx) in getMatchTalentList(m.talents)"
+                     :key="tIdx"
+                     class="talent-slot"
+                     @mouseenter="showTalentTooltip($event, tKey, tIdx, m.hero)"
+                     @mousemove="updateTooltipPosition($event)"
+                     @mouseleave="hideTalentTooltip">
+                  <img v-if="tKey"
+                       :src="getTalentImageUrl(tKey)"
+                       :alt="formatTalentName(tKey)"
+                       class="talent-icon-img"
+                       @error="hideBrokenImage" />
+                  <span v-else
+                        class="talent-empty-tier">
                     {{ [1, 4, 7, 10, 13, 16, 20][tIdx] }}
                   </span>
                 </div>
@@ -694,19 +704,23 @@ onMounted(() => {
 
             <!-- Combat Numbers Column -->
             <div class="match-stats-col">
-              <div class="stat-item" title="Hero Damage">
+              <div class="stat-item"
+                   title="Hero Damage">
                 <span class="stat-label">Hero</span>
                 <span class="stat-val dmg-hero">{{ formatNumber(m.hero_damage) }}</span>
               </div>
-              <div class="stat-item" title="Siege Damage">
+              <div class="stat-item"
+                   title="Siege Damage">
                 <span class="stat-label">Siege</span>
                 <span class="stat-val dmg-siege">{{ formatNumber(m.siege_damage) }}</span>
               </div>
-              <div class="stat-item" title="Healing / Shielding">
+              <div class="stat-item"
+                   title="Healing / Shielding">
                 <span class="stat-label">Heal</span>
                 <span class="stat-val dmg-heal">{{ formatNumber(m.healing + m.self_healing) }}</span>
               </div>
-              <div class="stat-item" title="Damage Taken">
+              <div class="stat-item"
+                   title="Damage Taken">
                 <span class="stat-label">Taken</span>
                 <span class="stat-val dmg-taken">{{ formatNumber(m.damage_taken) }}</span>
               </div>
@@ -714,7 +728,8 @@ onMounted(() => {
 
             <!-- Action Button -->
             <div class="match-action-col">
-              <button class="btn btn-view-match" @click.stop="navigateToMatch(m.replay_id)">
+              <button class="btn btn-view-match"
+                      @click.stop="navigateToMatch(m.replay_id)">
                 Details →
               </button>
             </div>
@@ -725,25 +740,20 @@ onMounted(() => {
 
     <!-- Floating Talent Tooltip Teleport -->
     <Teleport to="body">
-      <div
-        v-if="activeTooltip.visible"
-        class="hots-talent-tooltip"
-        :style="tooltipStyle"
-      >
-        <div
-          class="tooltip-inner"
-          :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }"
-        >
+      <div v-if="activeTooltip.visible"
+           class="hots-talent-tooltip"
+           :style="tooltipStyle">
+        <div class="tooltip-inner"
+             :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }">
           <div class="tooltip-header">
             <div class="tooltip-icon-wrap">
-              <img
-                v-if="activeTooltip.talentKey"
-                :src="getTalentImageUrl(activeTooltip.talentKey)"
-                :alt="formatTalentName(activeTooltip.talentKey)"
-                class="tooltip-talent-img"
-                @error="hideBrokenImage"
-              />
-              <span v-else class="tooltip-empty-lvl">
+              <img v-if="activeTooltip.talentKey"
+                   :src="getTalentImageUrl(activeTooltip.talentKey)"
+                   :alt="formatTalentName(activeTooltip.talentKey)"
+                   class="tooltip-talent-img"
+                   @error="hideBrokenImage" />
+              <span v-else
+                    class="tooltip-empty-lvl">
                 {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
               </span>
             </div>
@@ -752,11 +762,9 @@ onMounted(() => {
                 <span class="tooltip-lvl-badge">
                   Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
                 </span>
-                <span
-                  v-if="getTalentInfo(activeTooltip.talentKey)?.type"
-                  class="tooltip-type-badge"
-                  :class="getTypeBadgeClass(getTalentInfo(activeTooltip.talentKey)?.type)"
-                >
+                <span v-if="getTalentInfo(activeTooltip.talentKey)?.type"
+                      class="tooltip-type-badge"
+                      :class="getTypeBadgeClass(getTalentInfo(activeTooltip.talentKey)?.type)">
                   {{ getTalentInfo(activeTooltip.talentKey)?.type }}
                 </span>
               </div>
@@ -767,22 +775,24 @@ onMounted(() => {
           </div>
 
           <div class="tooltip-body">
-            <div
-              v-if="getTalentInfo(activeTooltip.talentKey)?.description"
-              class="tooltip-desc"
-              v-html="formatTalentDescriptionHtml(getTalentInfo(activeTooltip.talentKey)?.description)"
-            ></div>
-            <div v-else-if="activeTooltip.talentKey" class="tooltip-desc fallback-desc">
+            <div v-if="getTalentInfo(activeTooltip.talentKey)?.description"
+                 class="tooltip-desc"
+                 v-html="formatTalentDescriptionHtml(getTalentInfo(activeTooltip.talentKey)?.description)"></div>
+            <div v-else-if="activeTooltip.talentKey"
+                 class="tooltip-desc fallback-desc">
               {{ formatTalentName(activeTooltip.talentKey) }}
             </div>
-            <div v-else class="tooltip-desc empty-desc">
-              Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }} talent was not reached or selected in this match.
+            <div v-else
+                 class="tooltip-desc empty-desc">
+              Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }} talent was not reached or selected in this
+              match.
             </div>
           </div>
 
           <div class="tooltip-footer">
             <span class="tooltip-footer-tier">Tier {{ activeTooltip.tierIndex + 1 }}</span>
-            <span v-if="activeTooltip.heroName" class="tooltip-footer-hero">
+            <span v-if="activeTooltip.heroName"
+                  class="tooltip-footer-hero">
               {{ resolveHeroName(activeTooltip.heroName) }}
             </span>
           </div>
@@ -1037,13 +1047,19 @@ onMounted(() => {
   color: var(--text-dim);
 }
 
-/* Top Heroes Strip */
+/* Hero Strips Wrapper */
+.hero-strips-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 1rem;
+}
+
 .top-heroes-section {
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 1rem;
   flex-wrap: wrap;
 }
 
@@ -1051,6 +1067,13 @@ onMounted(() => {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-dim);
+  min-width: 170px;
+}
+
+.winrate-heroes-section {
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+  margin-top: 0;
+  padding-top: 0.75rem;
 }
 
 .top-heroes-chips {
@@ -1585,6 +1608,7 @@ onMounted(() => {
   .player-match-row {
     grid-template-columns: 100px 140px 120px 1fr auto;
   }
+
   .match-stats-col {
     display: none;
   }
@@ -1595,10 +1619,10 @@ onMounted(() => {
     grid-template-columns: 1fr;
     gap: 0.6rem;
   }
+
   .profile-header-top {
     flex-direction: column;
     align-items: flex-start;
   }
 }
 </style>
-

@@ -214,6 +214,7 @@ export interface PlayerProfileSummary {
   avgDamageTaken: number
   avgXp: number
   topHeroes: PlayerProfileTopHero[]
+  highestWinRateHeroes: PlayerProfileTopHero[]
 }
 
 export interface PlayerProfileMatch {
