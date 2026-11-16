@@ -4,6 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   PlayerProfileData,
   PlayerProfileMatch,
+  PlayerProfileSummary,
+  PlayerProfileTopHero,
+  PlayerHeroSpecificStats,
   PlayerSearchItem,
   ReplayPlayerTalents,
 } from '../types'
@@ -36,6 +39,16 @@ const showSearchDropdown = ref(false)
 // Filters for matches list
 const heroFilter = ref('')
 const outcomeFilter = ref<'all' | 'win' | 'loss'>('all')
+const limitFilter = ref<number>(0)
+const customLimit = ref<number | null>(null)
+
+const effectiveLimit = computed<number>(() => {
+  if (limitFilter.value === 0) return 0
+  if (limitFilter.value === -1) {
+    return customLimit.value && customLimit.value > 0 ? customLimit.value : 0
+  }
+  return limitFilter.value
+})
 
 // Tooltip State
 interface ActiveTooltipState {
@@ -219,21 +232,151 @@ const activeHeroParam = computed<string>(() => {
   return ''
 })
 
-const playerHeroStats = computed(() => {
-  if (!profileData.value || !activeHeroParam.value) return null
-  if (profileData.value.heroStats) {
-    return profileData.value.heroStats
+const displaySummary = computed<PlayerProfileSummary | null>(() => {
+  if (!profileData.value) return null
+  if (effectiveLimit.value <= 0) {
+    const p = profileData.value.player
+    return {
+      ...p,
+      totalKills: p.totalKills !== undefined
+        ? p.totalKills
+        : profileData.value.matches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0),
+      totalAssists: p.totalAssists !== undefined
+        ? p.totalAssists
+        : profileData.value.matches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0),
+      totalDeaths: p.totalDeaths !== undefined
+        ? p.totalDeaths
+        : profileData.value.matches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0),
+      overallKda: p.overallKda,
+    }
   }
+
+  const targetMatches = profileData.value.matches.slice(0, effectiveLimit.value)
+  const totalMatches = targetMatches.length
+  const wins = targetMatches.filter(m => m.win).length
+  const losses = totalMatches - wins
+  const totalKills = targetMatches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0)
+  const totalAssists = targetMatches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0)
+  const totalDeaths = targetMatches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0)
+  const winRatePct = totalMatches > 0 ? Number(((wins / totalMatches) * 100).toFixed(1)) : 0
+  const overallKda = totalMatches > 0
+    ? Number((targetMatches.reduce((acc, m) => acc + (Number(m.kda) || 0), 0) / totalMatches).toFixed(2))
+    : 0
+  const avgHeroDamage = totalMatches > 0
+    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.hero_damage) || 0), 0) / totalMatches)
+    : 0
+  const avgSiegeDamage = totalMatches > 0
+    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.siege_damage) || 0), 0) / totalMatches)
+    : 0
+  const avgHealing = totalMatches > 0
+    ? Math.round(targetMatches.reduce((acc, m) => acc + ((Number(m.healing) || 0) + (Number(m.self_healing) || 0)), 0) / totalMatches)
+    : 0
+  const avgDamageTaken = totalMatches > 0
+    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.damage_taken) || 0), 0) / totalMatches)
+    : 0
+  const avgXp = totalMatches > 0
+    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.xp_contribution) || 0), 0) / totalMatches)
+    : 0
+
+  const heroCounts = new Map<string, { hero: string; games: number; wins: number }>()
+  for (const m of targetMatches) {
+    const existing = heroCounts.get(m.hero)
+    if (existing) {
+      existing.games += 1
+      if (m.win) existing.wins += 1
+    } else {
+      heroCounts.set(m.hero, {
+        hero: m.hero,
+        games: 1,
+        wins: m.win ? 1 : 0,
+      })
+    }
+  }
+
+  const allHeroStats: PlayerProfileTopHero[] = Array.from(heroCounts.values()).map(h => ({
+    hero: h.hero,
+    games: h.games,
+    wins: h.wins,
+    winRatePct: h.games > 0 ? Number(((h.wins / h.games) * 100).toFixed(1)) : 0,
+  }))
+
+  const topHeroes: PlayerProfileTopHero[] = [...allHeroStats]
+    .sort((a, b) => b.games - a.games || b.winRatePct - a.winRatePct)
+    .slice(0, 5)
+
+  let eligibleForWinrate = allHeroStats.filter(h => h.games >= 3)
+  if (eligibleForWinrate.length < 3) {
+    eligibleForWinrate = allHeroStats.filter(h => h.games >= 2)
+  }
+  if (eligibleForWinrate.length < 3) {
+    eligibleForWinrate = allHeroStats
+  }
+
+  const highestWinRateHeroes: PlayerProfileTopHero[] = [...eligibleForWinrate]
+    .sort((a, b) => b.winRatePct - a.winRatePct || b.games - a.games)
+    .slice(0, 5)
+
+  const summary: PlayerProfileSummary = {
+    rowId: profileData.value.player.rowId,
+    battleTag: profileData.value.player.battleTag,
+    name: profileData.value.player.name,
+    tag: profileData.value.player.tag,
+    allTags: profileData.value.player.allTags,
+    totalMatches,
+    wins,
+    losses,
+    winRatePct,
+    overallKda,
+    totalKills,
+    totalAssists,
+    totalDeaths,
+    avgHeroDamage,
+    avgSiegeDamage,
+    avgHealing,
+    avgDamageTaken,
+    avgXp,
+    topHeroes,
+    highestWinRateHeroes,
+  }
+
+  return summary
+})
+
+const displayHeroStats = computed<PlayerHeroSpecificStats | null>(() => {
+  if (!profileData.value || !activeHeroParam.value) return null
+
   const target = activeHeroParam.value.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const matches = profileData.value.matches.filter(m => {
+  let matches = profileData.value.matches.filter(m => {
     const raw = m.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
     const resolved = resolveHeroName(m.hero).toLowerCase().replace(/[^a-z0-9]/g, '')
     return raw === target || resolved === target
   })
 
+  if (effectiveLimit.value > 0) {
+    matches = matches.slice(0, effectiveLimit.value)
+  } else if (profileData.value.heroStats) {
+    const hs = profileData.value.heroStats
+    return {
+      ...hs,
+      totalKills: hs.totalKills !== undefined
+        ? hs.totalKills
+        : matches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0),
+      totalAssists: hs.totalAssists !== undefined
+        ? hs.totalAssists
+        : matches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0),
+      totalDeaths: hs.totalDeaths !== undefined
+        ? hs.totalDeaths
+        : matches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0),
+      kda: hs.kda,
+    }
+  }
+
   const total = matches.length
   const wins = matches.filter(m => m.win).length
   const losses = total - wins
+  const totalKills = matches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0)
+  const totalAssists = matches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0)
+  const totalDeaths = matches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0)
   const winRatePct = total > 0 ? Number(((wins / total) * 100).toFixed(1)) : 0
 
   let sumKda = 0
@@ -256,18 +399,23 @@ const playerHeroStats = computed(() => {
   const avgHealing = total > 0 ? Math.round(sumHealing / total) : 0
   const avgDamageTaken = total > 0 ? Math.round(sumDmgTaken / total) : 0
 
-  return {
+  const heroStats: PlayerHeroSpecificStats = {
     hero: matches[0]?.hero || activeHeroParam.value,
     total,
     wins,
     losses,
     winRatePct,
     kda,
+    totalKills,
+    totalAssists,
+    totalDeaths,
     avgHeroDamage,
     avgSiegeDamage,
     avgHealing,
     avgDamageTaken,
   }
+
+  return heroStats
 })
 
 function navigateToHeroAllPlayers(heroName: string) {
@@ -297,6 +445,10 @@ const filteredMatches = computed<PlayerProfileMatch[]>(() => {
   if (heroFilter.value.trim()) {
     const h = heroFilter.value.trim().toLowerCase()
     list = list.filter(m => m.hero.toLowerCase().includes(h) || resolveHeroName(m.hero).toLowerCase().includes(h))
+  }
+
+  if (effectiveLimit.value > 0) {
+    list = list.slice(0, effectiveLimit.value)
   }
 
   return list
@@ -390,7 +542,7 @@ onMounted(() => {
     <div v-else-if="profileData"
          class="profile-content">
       <!-- Player Specific Hero Header Card -->
-      <div v-if="activeHeroParam && playerHeroStats"
+      <div v-if="activeHeroParam && displayHeroStats"
            class="profile-header-card card hero-mode-card">
         <div class="hero-mode-nav">
           <button class="btn btn-back-all-heroes"
@@ -402,23 +554,23 @@ onMounted(() => {
         <div class="profile-header-top">
           <div class="profile-identity">
             <div class="hero-portrait-circle clickable-hero-portrait"
-                 :title="`Click to view all matches for ${resolveHeroName(playerHeroStats.hero)} across ALL players`"
-                 @click="navigateToHeroAllPlayers(playerHeroStats.hero)">
-              <img :src="getHeroImageUrl(playerHeroStats.hero)"
-                   :alt="playerHeroStats.hero"
+                 :title="`Click to view all matches for ${resolveHeroName(displayHeroStats.hero)} across ALL players`"
+                 @click="navigateToHeroAllPlayers(displayHeroStats.hero)">
+              <img :src="getHeroImageUrl(displayHeroStats.hero)"
+                   :alt="displayHeroStats.hero"
                    class="hero-portrait-img"
                    @error="hideBrokenImage" />
               <span class="hero-portrait-badge">View All Players ↗</span>
             </div>
             <div class="player-identity-info">
               <h1 class="player-display-name">
-                {{ profileData.player.name }}'s {{ resolveHeroName(playerHeroStats.hero) }}
+                {{ profileData.player.name }}'s {{ resolveHeroName(displayHeroStats.hero) }}
               </h1>
               <p class="hero-specific-sub">
-                Performance on {{ resolveHeroName(playerHeroStats.hero) }}.
+                Performance on {{ resolveHeroName(displayHeroStats.hero) }}.
                 <a class="hero-global-link"
-                   @click="navigateToHeroAllPlayers(playerHeroStats.hero)">
-                  Click portrait to view all players on {{ resolveHeroName(playerHeroStats.hero) }} →
+                   @click="navigateToHeroAllPlayers(displayHeroStats.hero)">
+                  Click portrait to view all players on {{ resolveHeroName(displayHeroStats.hero) }} →
                 </a>
               </p>
             </div>
@@ -429,33 +581,44 @@ onMounted(() => {
             <div class="stat-pill-card">
               <span class="stat-pill-label">Hero Win Rate</span>
               <span class="stat-pill-val"
-                    :class="playerHeroStats.winRatePct >= 50 ? 'val-good' : 'val-dim'">
-                {{ playerHeroStats.winRatePct }}%
+                    :class="displayHeroStats.winRatePct >= 50 ? 'val-good' : 'val-dim'">
+                {{ displayHeroStats.winRatePct }}%
               </span>
               <span class="stat-pill-sub">
-                {{ playerHeroStats.wins }}W - {{ playerHeroStats.losses }}L
+                {{ displayHeroStats.wins }}W - {{ displayHeroStats.losses }}L
               </span>
             </div>
 
-            <div class="stat-pill-card">
+            <div class="stat-pill-card"
+                 :title="`${formatNumber(displayHeroStats.totalKills)} Kills / ${formatNumber(displayHeroStats.totalAssists)} Assists / ${formatNumber(displayHeroStats.totalDeaths)} Deaths (${effectiveLimit > 0 ? `Last ${displayHeroStats.total} Games` : `${displayHeroStats.total} Games`})`">
               <span class="stat-pill-label">Hero KAD</span>
-              <span class="stat-pill-val val-kda">{{ playerHeroStats.kda.toFixed(2) }}</span>
-              <span class="stat-pill-sub">{{ playerHeroStats.total }} Games</span>
+              <span class="stat-pill-val val-kda">{{ displayHeroStats.kda.toFixed(2) }}</span>
+              <span class="stat-pill-sub">
+                <span class="kad-breakdown">
+                  <span class="stat-k-text">{{ formatNumber(displayHeroStats.totalKills) }}</span>
+                  <span class="stat-slash">/</span>
+                  <span class="stat-a-text">{{ formatNumber(displayHeroStats.totalAssists) }}</span>
+                  <span class="stat-slash">/</span>
+                  <span class="stat-deaths-text">{{ formatNumber(displayHeroStats.totalDeaths) }}</span>
+                </span>
+                <span class="stat-pill-separator">•</span>
+                <span>{{ effectiveLimit > 0 ? `Last ${displayHeroStats.total} Games` : `${displayHeroStats.total} Games` }}</span>
+              </span>
             </div>
 
             <div class="stat-pill-card">
               <span class="stat-pill-label">Avg Hero Dmg</span>
-              <span class="stat-pill-val">{{ formatNumber(playerHeroStats.avgHeroDamage) }}</span>
+              <span class="stat-pill-val">{{ formatNumber(displayHeroStats.avgHeroDamage) }}</span>
               <span class="stat-pill-sub">Per Match</span>
             </div>
 
             <div class="stat-pill-card">
               <span class="stat-pill-label">Avg Heal / Dmg Taken</span>
               <span class="stat-pill-val">
-                {{ formatNumber(playerHeroStats.avgHealing || playerHeroStats.avgDamageTaken) }}
+                {{ formatNumber(displayHeroStats.avgHealing || displayHeroStats.avgDamageTaken) }}
               </span>
               <span class="stat-pill-sub">
-                {{ playerHeroStats.avgHealing ? 'Heal/Shield' : 'Dmg Taken' }}
+                {{ displayHeroStats.avgHealing ? 'Heal/Shield' : 'Dmg Taken' }}
               </span>
             </div>
           </div>
@@ -463,26 +626,26 @@ onMounted(() => {
       </div>
 
       <!-- General Player Header Card (When not viewing a single hero) -->
-      <div v-else
+      <div v-else-if="displaySummary"
            class="profile-header-card card">
         <div class="profile-header-top">
           <div class="profile-identity">
             <div class="player-avatar-circle">
-              <span>{{ profileData.player.name.charAt(0).toUpperCase() }}</span>
+              <span>{{ displaySummary.name.charAt(0).toUpperCase() }}</span>
             </div>
             <div class="player-identity-info">
               <h1 class="player-display-name">
-                {{ profileData.player.name }}
-                <span v-if="profileData.player.tag"
-                      class="player-bnet-tag">#{{ profileData.player.tag }}</span>
+                {{ displaySummary.name }}
+                <span v-if="displaySummary.tag"
+                      class="player-bnet-tag">#{{ displaySummary.tag }}</span>
               </h1>
-              <div v-if="profileData.player.allTags.length > 1"
+              <div v-if="displaySummary.allTags.length > 1"
                    class="linked-accounts-wrap">
                 <span class="linked-label">Linked Accounts:</span>
-                <span v-for="tag in profileData.player.allTags"
+                <span v-for="tag in displaySummary.allTags"
                       :key="tag"
                       class="linked-tag-badge"
-                      :class="{ active: tag === profileData.player.battleTag }">
+                      :class="{ active: tag === displaySummary.battleTag }">
                   {{ tag }}
                 </span>
               </div>
@@ -494,50 +657,61 @@ onMounted(() => {
             <div class="stat-pill-card">
               <span class="stat-pill-label">Win Rate</span>
               <span class="stat-pill-val"
-                    :class="profileData.player.winRatePct >= 50 ? 'val-good' : 'val-dim'">
-                {{ profileData.player.winRatePct }}%
+                    :class="displaySummary.winRatePct >= 50 ? 'val-good' : 'val-dim'">
+                {{ displaySummary.winRatePct }}%
               </span>
               <span class="stat-pill-sub">
-                {{ profileData.player.wins }}W - {{ profileData.player.losses }}L
+                {{ displaySummary.wins }}W - {{ displaySummary.losses }}L
               </span>
             </div>
 
-            <div class="stat-pill-card">
+            <div class="stat-pill-card"
+                 :title="`${formatNumber(displaySummary.totalKills)} Kills / ${formatNumber(displaySummary.totalAssists)} Assists / ${formatNumber(displaySummary.totalDeaths)} Deaths (${effectiveLimit > 0 ? `Last ${displaySummary.totalMatches} Games` : `${displaySummary.totalMatches} Games`})`">
               <span class="stat-pill-label">Overall KAD</span>
-              <span class="stat-pill-val val-kda">{{ profileData.player.overallKda.toFixed(2) }}</span>
-              <span class="stat-pill-sub">{{ profileData.player.totalMatches }} Games</span>
+              <span class="stat-pill-val val-kda">{{ displaySummary.overallKda.toFixed(2) }}</span>
+              <span class="stat-pill-sub">
+                <span class="kad-breakdown">
+                  <span class="stat-k-text">{{ formatNumber(displaySummary.totalKills) }}</span>
+                  <span class="stat-slash">/</span>
+                  <span class="stat-a-text">{{ formatNumber(displaySummary.totalAssists) }}</span>
+                  <span class="stat-slash">/</span>
+                  <span class="stat-deaths-text">{{ formatNumber(displaySummary.totalDeaths) }}</span>
+                </span>
+                <span class="stat-pill-separator">•</span>
+                <span>{{ effectiveLimit > 0 ? `Last ${displaySummary.totalMatches} Games` : `${displaySummary.totalMatches} Games` }}</span>
+              </span>
             </div>
 
             <div class="stat-pill-card">
               <span class="stat-pill-label">Avg Hero Dmg</span>
-              <span class="stat-pill-val">{{ formatNumber(profileData.player.avgHeroDamage) }}</span>
+              <span class="stat-pill-val">{{ formatNumber(displaySummary.avgHeroDamage) }}</span>
               <span class="stat-pill-sub">Per Match</span>
             </div>
 
             <div class="stat-pill-card">
               <span class="stat-pill-label">Avg Heal / Dmg Taken</span>
               <span class="stat-pill-val">
-                {{ formatNumber(profileData.player.avgHealing || profileData.player.avgDamageTaken) }}
+                {{ formatNumber(displaySummary.avgHealing || displaySummary.avgDamageTaken) }}
               </span>
               <span class="stat-pill-sub">
-                {{ profileData.player.avgHealing ? 'Heal/Shield' : 'Dmg Taken' }}
+                {{ displaySummary.avgHealing ? 'Heal/Shield' : 'Dmg Taken' }}
               </span>
             </div>
           </div>
         </div>
 
         <!-- Hero Highlights Wrapper -->
-        <div v-if="profileData.player.topHeroes.length > 0 || (profileData.player.highestWinRateHeroes && profileData.player.highestWinRateHeroes.length > 0)"
+        <div v-if="displaySummary.topHeroes.length > 0 || (displaySummary.highestWinRateHeroes && displaySummary.highestWinRateHeroes.length > 0)"
              class="hero-strips-wrap">
           <!-- Top Heroes Strip -->
-          <div v-if="profileData.player.topHeroes.length > 0"
+          <div v-if="displaySummary.topHeroes.length > 0"
                class="top-heroes-section">
-            <span class="top-heroes-label">Most Played Heroes:</span>
+            <span class="top-heroes-label">Most Played Heroes{{ effectiveLimit > 0 ? ` (Last ${displaySummary.totalMatches})` : '' }}:</span>
             <div class="top-heroes-chips">
-              <div v-for="th in profileData.player.topHeroes"
+              <div v-for="th in displaySummary.topHeroes"
                    :key="th.hero"
                    class="top-hero-chip clickable-top-hero-chip"
-                   :title="`View ${profileData.player.name}'s matches on ${resolveHeroName(th.hero)}`"
+                   :title="`View ${displaySummary.name}'s matches on ${resolveHeroName(th.hero)}`"
                    @click="navigateToPlayerSpecificHero(th.hero)">
                 <img :src="getHeroImageUrl(th.hero)"
                      :alt="th.hero"
@@ -554,14 +728,14 @@ onMounted(() => {
           </div>
 
           <!-- Highest Winrate Heroes Strip -->
-          <div v-if="profileData.player.highestWinRateHeroes && profileData.player.highestWinRateHeroes.length > 0"
+          <div v-if="displaySummary.highestWinRateHeroes && displaySummary.highestWinRateHeroes.length > 0"
                class="top-heroes-section winrate-heroes-section">
-            <span class="top-heroes-label">Highest Winrate Heroes:</span>
+            <span class="top-heroes-label">Highest Winrate Heroes{{ effectiveLimit > 0 ? ` (Last ${displaySummary.totalMatches})` : '' }}:</span>
             <div class="top-heroes-chips">
-              <div v-for="th in profileData.player.highestWinRateHeroes"
+              <div v-for="th in displaySummary.highestWinRateHeroes"
                    :key="th.hero"
                    class="top-hero-chip clickable-top-hero-chip wr-hero-chip"
-                   :title="`View ${profileData.player.name}'s matches on ${resolveHeroName(th.hero)} (${th.wins}W - ${th.games - th.wins}L)`"
+                   :title="`View ${displaySummary.name}'s matches on ${resolveHeroName(th.hero)} (${th.wins}W - ${th.games - th.wins}L)`"
                    @click="navigateToPlayerSpecificHero(th.hero)">
                 <img :src="getHeroImageUrl(th.hero)"
                      :alt="th.hero"
@@ -584,13 +758,19 @@ onMounted(() => {
         <div class="matches-section-header">
           <div class="section-title-wrap">
             <h2>
-              {{ activeHeroParam && playerHeroStats ? `${profileData.player.name}'s
-              ${resolveHeroName(playerHeroStats.hero)} Matches` : 'Match History' }}
+              {{ activeHeroParam && displayHeroStats ? `${profileData.player.name}'s
+              ${resolveHeroName(displayHeroStats.hero)} Matches` : 'Match History' }}
             </h2>
-            <span class="count-badge">{{ filteredMatches.length }} matches</span>
+            <span class="count-badge">
+              {{ filteredMatches.length }}
+              <template v-if="profileData && filteredMatches.length !== profileData.matches.length">
+                of {{ profileData.matches.length }}
+              </template>
+              matches
+            </span>
           </div>
 
-          <!-- Controls: Hero Filter & Outcome Filter -->
+          <!-- Controls: Hero Filter, Outcome Filter & Match Limit -->
           <div class="matches-filter-bar">
             <div class="filter-group">
               <label>Filter Hero:</label>
@@ -619,6 +799,29 @@ onMounted(() => {
                   Defeat
                 </button>
               </div>
+            </div>
+
+            <div class="filter-group">
+              <label>Matches:</label>
+              <select v-model="limitFilter" class="filter-limit-select">
+                <option :value="0">All Matches</option>
+                <option :value="5">Last 5 Matches</option>
+                <option :value="10">Last 10 Matches</option>
+                <option :value="20">Last 20 Matches</option>
+                <option :value="30">Last 30 Matches</option>
+                <option :value="50">Last 50 Matches</option>
+                <option :value="100">Last 100 Matches</option>
+                <option :value="250">Last 250 Matches</option>
+                <option :value="-1">Custom Count...</option>
+              </select>
+              <input
+                v-if="limitFilter === -1"
+                v-model.number="customLimit"
+                type="number"
+                min="1"
+                placeholder="# games"
+                class="filter-custom-limit-input"
+              />
             </div>
           </div>
         </div>
@@ -1055,6 +1258,34 @@ onMounted(() => {
   color: var(--text-dim);
 }
 
+.kad-breakdown {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.stat-k-text {
+  color: #f1f5f9;
+}
+
+.stat-a-text {
+  color: #94a3b8;
+}
+
+.stat-slash {
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0 0.1rem;
+}
+
+.stat-deaths-text {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.stat-pill-separator {
+  opacity: 0.4;
+  margin: 0 0.25rem;
+}
+
 /* Hero Strips Wrapper */
 .hero-strips-wrap {
   display: flex;
@@ -1198,6 +1429,28 @@ onMounted(() => {
 
 .filter-hero-input:focus {
   border-color: var(--accent-cyan);
+}
+
+.filter-limit-select,
+.filter-custom-limit-input {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: #fff;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-limit-select:focus,
+.filter-custom-limit-input:focus {
+  border-color: var(--accent-cyan);
+}
+
+.filter-custom-limit-input {
+  width: 80px;
+  cursor: text;
 }
 
 .outcome-toggle-btns {

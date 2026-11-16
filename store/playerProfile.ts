@@ -24,6 +24,9 @@ export interface PlayerProfileSummary {
   losses: number
   winRatePct: number
   overallKda: number
+  totalKills: number
+  totalAssists: number
+  totalDeaths: number
   avgHeroDamage: number
   avgSiegeDamage: number
   avgHealing: number
@@ -71,6 +74,9 @@ export interface PlayerHeroSpecificStats {
   losses: number
   winRatePct: number
   kda: number
+  totalKills: number
+  totalAssists: number
+  totalDeaths: number
   avgHeroDamage: number
   avgSiegeDamage: number
   avgHealing: number
@@ -217,6 +223,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
   const playerAggRow = await sql<Array<{
     total_matches: string
     wins: string
+    total_kills: string
+    total_assists: string
+    total_deaths: string
     avg_kda: number | null
     avg_hero_damage: number | null
     avg_siege_damage: number | null
@@ -227,6 +236,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
     SELECT
       COUNT(*) as total_matches,
       SUM(CASE WHEN win THEN 1 ELSE 0 END) as wins,
+      SUM(solo_kills) as total_kills,
+      SUM(assists) as total_assists,
+      SUM(deaths) as total_deaths,
       AVG(kda) as avg_kda,
       AVG(hero_damage) as avg_hero_damage,
       AVG(siege_damage) as avg_siege_damage,
@@ -239,6 +251,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
 
   const totalMatches = Number(playerAggRow[0]?.total_matches) || 0
   const wins = Number(playerAggRow[0]?.wins) || 0
+  const totalKills = Number(playerAggRow[0]?.total_kills) || 0
+  const totalAssists = Number(playerAggRow[0]?.total_assists) || 0
+  const totalDeaths = Number(playerAggRow[0]?.total_deaths) || 0
   const losses = totalMatches - wins
   const winRatePct = totalMatches > 0 ? Number(((wins / totalMatches) * 100).toFixed(1)) : 0
   const overallKda = totalMatches > 0 ? Number((Number(playerAggRow[0]?.avg_kda) || 0).toFixed(2)) : 0
@@ -313,6 +328,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
     const heroAggRow = await sql<Array<{
       games: string
       wins: string
+      total_kills: string
+      total_assists: string
+      total_deaths: string
       avg_kda: number | null
       avg_hero_damage: number | null
       avg_siege_damage: number | null
@@ -322,6 +340,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
       SELECT
         COUNT(*) as games,
         SUM(CASE WHEN win THEN 1 ELSE 0 END) as wins,
+        SUM(solo_kills) as total_kills,
+        SUM(assists) as total_assists,
+        SUM(deaths) as total_deaths,
         AVG(kda) as avg_kda,
         AVG(hero_damage) as avg_hero_damage,
         AVG(siege_damage) as avg_siege_damage,
@@ -337,6 +358,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
       const w = Number(heroAggRow[0].wins) || 0
       const l = g - w
       const wr = g > 0 ? Number(((w / g) * 100).toFixed(1)) : 0
+      const heroKills = Number(heroAggRow[0].total_kills) || 0
+      const heroAssists = Number(heroAggRow[0].total_assists) || 0
+      const heroDeaths = Number(heroAggRow[0].total_deaths) || 0
       heroStats = {
         hero: matches[0]?.hero || trimmedHero,
         total: g,
@@ -344,6 +368,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
         losses: l,
         winRatePct: wr,
         kda: Number((Number(heroAggRow[0].avg_kda) || 0).toFixed(2)),
+        totalKills: heroKills,
+        totalAssists: heroAssists,
+        totalDeaths: heroDeaths,
         avgHeroDamage: Math.round(Number(heroAggRow[0].avg_hero_damage) || 0),
         avgSiegeDamage: Math.round(Number(heroAggRow[0].avg_siege_damage) || 0),
         avgHealing: Math.round(Number(heroAggRow[0].avg_healing) || 0),
@@ -404,6 +431,9 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
       losses,
       winRatePct,
       overallKda,
+      totalKills,
+      totalAssists,
+      totalDeaths,
       avgHeroDamage,
       avgSiegeDamage,
       avgHealing,

@@ -224,6 +224,9 @@ export interface PlayerProfileSummary {
   losses: number
   winRatePct: number
   overallKda: number
+  totalKills: number
+  totalAssists: number
+  totalDeaths: number
   avgHeroDamage: number
   avgSiegeDamage: number
   avgHealing: number
@@ -261,6 +264,9 @@ export interface PlayerHeroSpecificStats {
   losses: number
   winRatePct: number
   kda: number
+  totalKills: number
+  totalAssists: number
+  totalDeaths: number
   avgHeroDamage: number
   avgSiegeDamage: number
   avgHealing: number
