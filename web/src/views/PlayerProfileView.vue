@@ -232,9 +232,49 @@ const activeHeroParam = computed<string>(() => {
   return ''
 })
 
+const filteredMatches = computed<PlayerProfileMatch[]>(() => {
+  if (!profileData.value) return []
+  let list = profileData.value.matches
+
+  if (outcomeFilter.value === 'win') {
+    list = list.filter(m => m.win)
+  } else if (outcomeFilter.value === 'loss') {
+    list = list.filter(m => !m.win)
+  }
+
+  if (heroFilter.value.trim()) {
+    const h = heroFilter.value.trim().toLowerCase()
+    list = list.filter(m => m.hero.toLowerCase().includes(h) || resolveHeroName(m.hero).toLowerCase().includes(h))
+  }
+
+  if (effectiveLimit.value > 0) {
+    list = list.slice(0, effectiveLimit.value)
+  }
+
+  return list
+})
+
+const hasActiveSummaryFilters = computed<boolean>(() => {
+  return (
+    outcomeFilter.value !== 'all' ||
+    heroFilter.value.trim().length > 0 ||
+    effectiveLimit.value > 0
+  )
+})
+
+const filterHeroStripSuffix = computed<string>(() => {
+  if (effectiveLimit.value > 0) {
+    return ` (Last ${displaySummary.value?.totalMatches ?? effectiveLimit.value})`
+  }
+  if (hasActiveSummaryFilters.value) {
+    return ' (Filtered)'
+  }
+  return ''
+})
+
 const displaySummary = computed<PlayerProfileSummary | null>(() => {
   if (!profileData.value) return null
-  if (effectiveLimit.value <= 0) {
+  if (!hasActiveSummaryFilters.value) {
     const p = profileData.value.player
     return {
       ...p,
@@ -251,7 +291,7 @@ const displaySummary = computed<PlayerProfileSummary | null>(() => {
     }
   }
 
-  const targetMatches = profileData.value.matches.slice(0, effectiveLimit.value)
+  const targetMatches = filteredMatches.value
   const totalMatches = targetMatches.length
   const wins = targetMatches.filter(m => m.win).length
   const losses = totalMatches - wins
@@ -346,16 +386,20 @@ const displayHeroStats = computed<PlayerHeroSpecificStats | null>(() => {
   if (!profileData.value || !activeHeroParam.value) return null
 
   const target = activeHeroParam.value.toLowerCase().replace(/[^a-z0-9]/g, '')
-  let matches = profileData.value.matches.filter(m => {
-    const raw = m.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
-    const resolved = resolveHeroName(m.hero).toLowerCase().replace(/[^a-z0-9]/g, '')
-    return raw === target || resolved === target
-  })
+  const hasExtraHeroFilters =
+    outcomeFilter.value !== 'all' ||
+    effectiveLimit.value > 0 ||
+    (heroFilter.value.trim().length > 0 &&
+      heroFilter.value.trim().toLowerCase() !== activeHeroParam.value.toLowerCase() &&
+      heroFilter.value.trim().toLowerCase() !== resolveHeroName(activeHeroParam.value).toLowerCase())
 
-  if (effectiveLimit.value > 0) {
-    matches = matches.slice(0, effectiveLimit.value)
-  } else if (profileData.value.heroStats) {
+  if (!hasExtraHeroFilters && profileData.value.heroStats) {
     const hs = profileData.value.heroStats
+    const matches = profileData.value.matches.filter(m => {
+      const raw = m.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const resolved = resolveHeroName(m.hero).toLowerCase().replace(/[^a-z0-9]/g, '')
+      return raw === target || resolved === target
+    })
     return {
       ...hs,
       totalKills: hs.totalKills !== undefined
@@ -371,6 +415,7 @@ const displayHeroStats = computed<PlayerHeroSpecificStats | null>(() => {
     }
   }
 
+  const matches = filteredMatches.value
   const total = matches.length
   const wins = matches.filter(m => m.win).length
   const losses = total - wins
@@ -431,28 +476,6 @@ function navigateToPlayerSpecificHero(heroName: string) {
   const rowId = profileData.value?.player.rowId || route.params.identifier
   router.push(`/player/${rowId}/hero/${encodeURIComponent(heroName)}`)
 }
-
-const filteredMatches = computed<PlayerProfileMatch[]>(() => {
-  if (!profileData.value) return []
-  let list = profileData.value.matches
-
-  if (outcomeFilter.value === 'win') {
-    list = list.filter(m => m.win)
-  } else if (outcomeFilter.value === 'loss') {
-    list = list.filter(m => !m.win)
-  }
-
-  if (heroFilter.value.trim()) {
-    const h = heroFilter.value.trim().toLowerCase()
-    list = list.filter(m => m.hero.toLowerCase().includes(h) || resolveHeroName(m.hero).toLowerCase().includes(h))
-  }
-
-  if (effectiveLimit.value > 0) {
-    list = list.slice(0, effectiveLimit.value)
-  }
-
-  return list
-})
 
 watch(
   activeHeroParam,
@@ -706,7 +729,7 @@ onMounted(() => {
           <!-- Top Heroes Strip -->
           <div v-if="displaySummary.topHeroes.length > 0"
                class="top-heroes-section">
-            <span class="top-heroes-label">Most Played Heroes{{ effectiveLimit > 0 ? ` (Last ${displaySummary.totalMatches})` : '' }}:</span>
+            <span class="top-heroes-label">Most Played Heroes{{ filterHeroStripSuffix }}:</span>
             <div class="top-heroes-chips">
               <div v-for="th in displaySummary.topHeroes"
                    :key="th.hero"
@@ -730,7 +753,7 @@ onMounted(() => {
           <!-- Highest Winrate Heroes Strip -->
           <div v-if="displaySummary.highestWinRateHeroes && displaySummary.highestWinRateHeroes.length > 0"
                class="top-heroes-section winrate-heroes-section">
-            <span class="top-heroes-label">Highest Winrate Heroes{{ effectiveLimit > 0 ? ` (Last ${displaySummary.totalMatches})` : '' }}:</span>
+            <span class="top-heroes-label">Highest Winrate Heroes{{ filterHeroStripSuffix }}:</span>
             <div class="top-heroes-chips">
               <div v-for="th in displaySummary.highestWinRateHeroes"
                    :key="th.hero"
