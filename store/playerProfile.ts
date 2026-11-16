@@ -47,6 +47,7 @@ export interface PlayerProfileMatch {
   date: string
   map: string
   hero: string
+  battle_tag?: string
   win: boolean
   kda: number
   solo_kills: number
@@ -78,6 +79,7 @@ interface ReplayStatsMatchRow {
   date: Date
   map: string
   hero: string
+  hots_battle_tag: string
   win: boolean
   kda: number
   solo_kills: number
@@ -199,6 +201,7 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
   // Query player's matches with talents extracted from replay JSON
   const matches = await sql<ReplayStatsMatchRow[]>`
     SELECT s.replay_id, s.date, s.map, s.hero, s.win,
+           s.hots_battle_tag,
            s.kda, s.solo_kills, s.assists, s.deaths, s.hero_damage, s.siege_damage,
            s.healing, s.self_healing, s.damage_taken, s.xp_contribution,
            s.length,
@@ -244,6 +247,7 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
       date: m.date instanceof Date ? m.date.toISOString() : String(m.date),
       map: m.map,
       hero: m.hero,
+      battle_tag: m.hots_battle_tag,
       win: Boolean(m.win),
       kda: Number(m.kda) || 0,
       solo_kills: Number(m.solo_kills) || 0,

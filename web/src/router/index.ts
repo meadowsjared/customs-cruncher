@@ -3,6 +3,7 @@ import MatchHistoryView from '../views/MatchHistoryView.vue'
 import MatchDetailView from '../views/MatchDetailView.vue'
 import LeaderboardView from '../views/LeaderboardView.vue'
 import PlayerProfileView from '../views/PlayerProfileView.vue'
+import HeroProfileView from '../views/HeroProfileView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,6 +35,16 @@ const router = createRouter({
       path: '/player/:identifier',
       name: 'player-profile',
       component: PlayerProfileView,
+    },
+    {
+      path: '/player/:identifier/hero/:heroName',
+      name: 'player-hero-profile',
+      component: PlayerProfileView,
+    },
+    {
+      path: '/hero/:heroName',
+      name: 'hero-profile',
+      component: HeroProfileView,
     },
     {
       path: '/:pathMatch(.*)*',

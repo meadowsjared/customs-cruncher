@@ -151,7 +151,11 @@ async function fetchPlayerProfile(identifier: string) {
     profileData.value = data
 
     if (data.player.rowId && String(data.player.rowId) !== route.params.identifier) {
-      router.replace(`/player/${data.player.rowId}`)
+      if (route.params.heroName) {
+        router.replace(`/player/${data.player.rowId}/hero/${route.params.heroName}`)
+      } else {
+        router.replace(`/player/${data.player.rowId}`)
+      }
     }
   } catch {
     error.value = 'Failed to load player profile from server.'
@@ -205,6 +209,75 @@ function navigateToMatch(matchId: number) {
   router.push(`/replay/${matchId}`)
 }
 
+const activeHeroParam = computed<string>(() => {
+  if (typeof route.params.heroName === 'string') {
+    return route.params.heroName
+  }
+  return ''
+})
+
+const playerHeroStats = computed(() => {
+  if (!profileData.value || !activeHeroParam.value) return null
+  const target = activeHeroParam.value.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const matches = profileData.value.matches.filter(m => {
+    const raw = m.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const resolved = resolveHeroName(m.hero).toLowerCase().replace(/[^a-z0-9]/g, '')
+    return raw === target || resolved === target
+  })
+
+  const total = matches.length
+  const wins = matches.filter(m => m.win).length
+  const losses = total - wins
+  const winRatePct = total > 0 ? Number(((wins / total) * 100).toFixed(1)) : 0
+
+  let sumKda = 0
+  let sumHeroDmg = 0
+  let sumSiegeDmg = 0
+  let sumHealing = 0
+  let sumDmgTaken = 0
+
+  for (const m of matches) {
+    sumKda += Number(m.kda) || 0
+    sumHeroDmg += Number(m.hero_damage) || 0
+    sumSiegeDmg += Number(m.siege_damage) || 0
+    sumHealing += (Number(m.healing) || 0) + (Number(m.self_healing) || 0)
+    sumDmgTaken += Number(m.damage_taken) || 0
+  }
+
+  const kda = total > 0 ? Number((sumKda / total).toFixed(2)) : 0
+  const avgHeroDamage = total > 0 ? Math.round(sumHeroDmg / total) : 0
+  const avgSiegeDamage = total > 0 ? Math.round(sumSiegeDmg / total) : 0
+  const avgHealing = total > 0 ? Math.round(sumHealing / total) : 0
+  const avgDamageTaken = total > 0 ? Math.round(sumDmgTaken / total) : 0
+
+  return {
+    hero: matches[0]?.hero || activeHeroParam.value,
+    total,
+    wins,
+    losses,
+    winRatePct,
+    kda,
+    avgHeroDamage,
+    avgSiegeDamage,
+    avgHealing,
+    avgDamageTaken,
+  }
+})
+
+function navigateToHeroAllPlayers(heroName: string) {
+  router.push(`/hero/${encodeURIComponent(heroName)}`)
+}
+
+function navigateToPlayerAllHeroes() {
+  const rowId = profileData.value?.player.rowId || route.params.identifier
+  router.push(`/player/${rowId}`)
+}
+
+function navigateToPlayerSpecificHero(heroName: string) {
+  const rowId = profileData.value?.player.rowId || route.params.identifier
+  router.push(`/player/${rowId}/hero/${encodeURIComponent(heroName)}`)
+}
+
 const filteredMatches = computed<PlayerProfileMatch[]>(() => {
   if (!profileData.value) return []
   let list = profileData.value.matches
@@ -222,6 +295,18 @@ const filteredMatches = computed<PlayerProfileMatch[]>(() => {
 
   return list
 })
+
+watch(
+  activeHeroParam,
+  newHero => {
+    if (newHero) {
+      heroFilter.value = resolveHeroName(newHero) || newHero
+    } else {
+      heroFilter.value = ''
+    }
+  },
+  { immediate: true }
+)
 
 watch(
   () => route.params.identifier,
@@ -293,8 +378,84 @@ onMounted(() => {
 
     <!-- Loaded Player Profile -->
     <div v-else-if="profileData" class="profile-content">
-      <!-- Player Header Card -->
-      <div class="profile-header-card card">
+      <!-- Player Specific Hero Header Card -->
+      <div v-if="activeHeroParam && playerHeroStats" class="profile-header-card card hero-mode-card">
+        <div class="hero-mode-nav">
+          <button class="btn btn-back-all-heroes" @click="navigateToPlayerAllHeroes">
+            ← View All Heroes for {{ profileData.player.name }}
+          </button>
+        </div>
+
+        <div class="profile-header-top">
+          <div class="profile-identity">
+            <div
+              class="hero-portrait-circle clickable-hero-portrait"
+              :title="`Click to view all matches for ${resolveHeroName(playerHeroStats.hero)} across ALL players`"
+              @click="navigateToHeroAllPlayers(playerHeroStats.hero)"
+            >
+              <img
+                :src="getHeroImageUrl(playerHeroStats.hero)"
+                :alt="playerHeroStats.hero"
+                class="hero-portrait-img"
+                @error="hideBrokenImage"
+              />
+              <span class="hero-portrait-badge">View All Players ↗</span>
+            </div>
+            <div class="player-identity-info">
+              <h1 class="player-display-name">
+                {{ profileData.player.name }}'s {{ resolveHeroName(playerHeroStats.hero) }}
+              </h1>
+              <p class="hero-specific-sub">
+                Performance on {{ resolveHeroName(playerHeroStats.hero) }}.
+                <a class="hero-global-link" @click="navigateToHeroAllPlayers(playerHeroStats.hero)">
+                  Click portrait to view all players on {{ resolveHeroName(playerHeroStats.hero) }} →
+                </a>
+              </p>
+            </div>
+          </div>
+
+          <!-- Key Stats Badges for this hero -->
+          <div class="profile-stat-pills">
+            <div class="stat-pill-card">
+              <span class="stat-pill-label">Hero Win Rate</span>
+              <span
+                class="stat-pill-val"
+                :class="playerHeroStats.winRatePct >= 50 ? 'val-good' : 'val-dim'"
+              >
+                {{ playerHeroStats.winRatePct }}%
+              </span>
+              <span class="stat-pill-sub">
+                {{ playerHeroStats.wins }}W - {{ playerHeroStats.losses }}L
+              </span>
+            </div>
+
+            <div class="stat-pill-card">
+              <span class="stat-pill-label">Hero KDA</span>
+              <span class="stat-pill-val val-kda">{{ playerHeroStats.kda.toFixed(2) }}</span>
+              <span class="stat-pill-sub">{{ playerHeroStats.total }} Games</span>
+            </div>
+
+            <div class="stat-pill-card">
+              <span class="stat-pill-label">Avg Hero Dmg</span>
+              <span class="stat-pill-val">{{ formatNumber(playerHeroStats.avgHeroDamage) }}</span>
+              <span class="stat-pill-sub">Per Match</span>
+            </div>
+
+            <div class="stat-pill-card">
+              <span class="stat-pill-label">Avg Heal / Dmg Taken</span>
+              <span class="stat-pill-val">
+                {{ formatNumber(playerHeroStats.avgHealing || playerHeroStats.avgDamageTaken) }}
+              </span>
+              <span class="stat-pill-sub">
+                {{ playerHeroStats.avgHealing ? 'Heal/Shield' : 'Dmg Taken' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- General Player Header Card (When not viewing a single hero) -->
+      <div v-else class="profile-header-card card">
         <div class="profile-header-top">
           <div class="profile-identity">
             <div class="player-avatar-circle">
@@ -365,8 +526,9 @@ onMounted(() => {
             <div
               v-for="th in profileData.player.topHeroes"
               :key="th.hero"
-              class="top-hero-chip"
-              :title="`${resolveHeroName(th.hero)}: ${th.games} games, ${th.winRatePct}% win rate`"
+              class="top-hero-chip clickable-top-hero-chip"
+              :title="`View ${profileData.player.name}'s matches on ${resolveHeroName(th.hero)}`"
+              @click="navigateToPlayerSpecificHero(th.hero)"
             >
               <img
                 :src="getHeroImageUrl(th.hero)"
@@ -391,7 +553,9 @@ onMounted(() => {
       <div class="profile-matches-section card">
         <div class="matches-section-header">
           <div class="section-title-wrap">
-            <h2>Match History</h2>
+            <h2>
+              {{ activeHeroParam && playerHeroStats ? `${profileData.player.name}'s ${resolveHeroName(playerHeroStats.hero)} Matches` : 'Match History' }}
+            </h2>
             <span class="count-badge">{{ filteredMatches.length }} matches</span>
           </div>
 
@@ -476,10 +640,23 @@ onMounted(() => {
               <img
                 :src="getHeroImageUrl(m.hero)"
                 :alt="m.hero"
-                class="hero-thumb"
+                class="hero-thumb clickable-match-hero"
+                :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
+                @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)"
                 @error="hideBrokenImage"
               />
-              <span class="hero-name">{{ resolveHeroName(m.hero) }}</span>
+              <div class="hero-name-col">
+                <span
+                  class="hero-name clickable-match-hero"
+                  :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
+                  @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)"
+                >
+                  {{ resolveHeroName(m.hero) }}
+                </span>
+                <span v-if="m.battle_tag" class="hero-match-btag" :title="`Played as ${m.battle_tag}`">
+                  {{ m.battle_tag }}
+                </span>
+              </div>
             </div>
 
             <!-- Talents Strip (7 Tiers with tooltips) -->
@@ -1034,7 +1211,7 @@ onMounted(() => {
 
 .player-match-row {
   display: grid;
-  grid-template-columns: 110px 180px 130px 180px 110px 1fr auto;
+  grid-template-columns: 110px 170px 145px 180px 110px 1fr auto;
   align-items: center;
   gap: 1rem;
   background: rgba(15, 23, 42, 0.7);
@@ -1146,11 +1323,27 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+.hero-name-col {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
 .hero-name {
   color: #fff;
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.hero-match-btag {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+  opacity: 0.85;
 }
 
 /* Talents Strip */
@@ -1278,6 +1471,113 @@ onMounted(() => {
 .btn-view-match:hover {
   background: var(--accent-cyan);
   color: #0b1120;
+}
+
+.hero-mode-card {
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 4px 24px rgba(56, 189, 248, 0.08);
+}
+
+.hero-mode-nav {
+  margin-bottom: 1.25rem;
+}
+
+.btn-back-all-heroes {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--primary-accent);
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-back-all-heroes:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-accent);
+}
+
+.hero-portrait-circle {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--primary-accent);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+  flex-shrink: 0;
+  background: #111827;
+  position: relative;
+}
+
+.clickable-hero-portrait {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.clickable-hero-portrait:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.6);
+  border-color: #38bdf8;
+}
+
+.hero-portrait-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-portrait-badge {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--primary-accent);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.1rem 0;
+}
+
+.hero-specific-sub {
+  margin: 0.35rem 0 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.hero-global-link {
+  color: var(--primary-accent);
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 0.4rem;
+  text-decoration: underline;
+}
+
+.hero-global-link:hover {
+  color: #fff;
+}
+
+.clickable-top-hero-chip {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clickable-top-hero-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-accent);
+  transform: translateY(-2px);
+}
+
+.clickable-match-hero {
+  cursor: pointer;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.clickable-match-hero:hover {
+  color: var(--primary-accent);
+  transform: scale(1.05);
 }
 
 /* Responsive */

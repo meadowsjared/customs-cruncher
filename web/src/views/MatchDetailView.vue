@@ -392,6 +392,29 @@ async function navigateToPlayer(player: ReplayPlayer) {
   router.push(`/player/${encodeURIComponent(`${player.name}-${player.tag}`)}`)
 }
 
+async function navigateToPlayerHero(player: ReplayPlayer, hero: string) {
+  let targetId = player.rowId ? String(player.rowId) : ''
+  if (!targetId) {
+    try {
+      const fullTag = `${player.name}#${player.tag}`
+      const res = await fetch(`/api/players/search?q=${encodeURIComponent(fullTag)}`)
+      if (res.ok) {
+        const data: { results: PlayerSearchItem[] } = await res.json()
+        if (data.results && data.results.length > 0) {
+          player.rowId = data.results[0].rowId
+          targetId = String(data.results[0].rowId)
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }
+  if (!targetId) {
+    targetId = `${player.name}-${player.tag}`
+  }
+  router.push(`/player/${encodeURIComponent(targetId)}/hero/${encodeURIComponent(hero)}`)
+}
+
 onMounted(() => {
   fetchMatchDetail()
 })
@@ -723,7 +746,9 @@ onMounted(() => {
                     <div class="player-info-wrap">
                       <img :src="getHeroImageUrl(p.hero)"
                            :alt="p.hero"
-                           class="hero-avatar" />
+                           class="hero-avatar clickable-hero-link"
+                           :title="`View ${p.name}'s ${p.hero} matches`"
+                           @click="navigateToPlayerHero(p, p.hero)" />
                       <div class="name-hero-col">
                         <div class="name-tag-row">
                           <span class="player-name clickable-player-link"
@@ -737,7 +762,9 @@ onMounted(() => {
                                 class="badge badge-highlight">★ You</span>
                         </div>
                         <div class="hero-pick-row">
-                          <span class="hero-name">{{ p.hero }}</span>
+                          <span class="hero-name clickable-hero-link"
+                                :title="`View ${p.name}'s ${p.hero} matches`"
+                                @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
                           <span v-if="getPlayerPickOrder(p.hero, p.team)"
                                 class="pick-order-tag"
                                 title="Draft Pick Order">
@@ -899,7 +926,9 @@ onMounted(() => {
                     <div class="player-info-wrap">
                       <img :src="getHeroImageUrl(p.hero)"
                            :alt="p.hero"
-                           class="hero-avatar" />
+                           class="hero-avatar clickable-hero-link"
+                           :title="`View ${p.name}'s ${p.hero} matches`"
+                           @click="navigateToPlayerHero(p, p.hero)" />
                       <div class="name-hero-col">
                         <div class="name-tag-row">
                           <span class="player-name clickable-player-link"
@@ -913,7 +942,9 @@ onMounted(() => {
                                 class="badge badge-highlight">★ You</span>
                         </div>
                         <div class="hero-pick-row">
-                          <span class="hero-name">{{ p.hero }}</span>
+                          <span class="hero-name clickable-hero-link"
+                                :title="`View ${p.name}'s ${p.hero} matches`"
+                                @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
                           <span v-if="getPlayerPickOrder(p.hero, p.team)"
                                 class="pick-order-tag"
                                 title="Draft Pick Order">
@@ -1034,10 +1065,16 @@ onMounted(() => {
               <div class="player-info-wrap">
                 <img :src="getHeroImageUrl(p.hero)"
                      :alt="p.hero"
-                     class="hero-avatar" />
+                     class="hero-avatar clickable-hero-link"
+                     :title="`View ${p.name}'s ${p.hero} matches`"
+                     @click="navigateToPlayerHero(p, p.hero)" />
                 <div class="name-hero-col">
                   <div class="name-tag-row">
-                    <span class="player-name">{{ p.name }}</span>
+                    <span class="player-name clickable-player-link"
+                          :title="`View player history for ${p.name}`"
+                          @click="navigateToPlayer(p)">
+                      {{ p.name }}
+                    </span>
                     <span v-if="p.tag"
                           class="player-tag">#{{ p.tag }}</span>
                     <span class="team-pill"
@@ -1045,7 +1082,11 @@ onMounted(() => {
                       {{ p.team === 0 ? 'Blue' : 'Red' }}
                     </span>
                   </div>
-                  <span class="hero-name">{{ p.hero }}</span>
+                  <span class="hero-name clickable-hero-link"
+                        :title="`View ${p.name}'s ${p.hero} matches`"
+                        @click="navigateToPlayerHero(p, p.hero)">
+                    {{ p.hero }}
+                  </span>
                 </div>
               </div>
 
@@ -2341,6 +2382,22 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+}
+
+.clickable-hero-link {
+  cursor: pointer;
+  transition: color 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+
+.clickable-hero-link:hover {
+  color: var(--primary-accent);
+  opacity: 0.95;
+  text-decoration: underline;
+}
+
+img.clickable-hero-link:hover {
+  transform: scale(1.1);
+  text-decoration: none;
 }
 
 .error-icon {

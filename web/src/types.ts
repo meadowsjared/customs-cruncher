@@ -221,6 +221,7 @@ export interface PlayerProfileMatch {
   date: string
   map: string
   hero: string
+  battle_tag?: string
   win: boolean
   kda: number
   solo_kills: number
@@ -239,5 +240,61 @@ export interface PlayerProfileMatch {
 export interface PlayerProfileData {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
+}
+
+export interface HeroProfileTopPlayer {
+  rowId: number | null
+  battleTag: string
+  name: string
+  tag: string
+  games: number
+  wins: number
+  winRatePct: number
+  kda: number
+}
+
+export interface HeroProfileSummary {
+  hero: string
+  canonicalName: string
+  totalMatches: number
+  wins: number
+  losses: number
+  winRatePct: number
+  overallKda: number
+  avgHeroDamage: number
+  avgSiegeDamage: number
+  avgHealing: number
+  avgDamageTaken: number
+  avgXp: number
+  topPlayers: HeroProfileTopPlayer[]
+}
+
+export interface HeroProfileMatch {
+  replay_id: number
+  date: string
+  map: string
+  hero: string
+  player_row_id: number | null
+  player_name: string
+  player_tag: string
+  player_battle_tag: string
+  win: boolean
+  kda: number
+  solo_kills: number
+  assists: number
+  deaths: number
+  hero_damage: number
+  siege_damage: number
+  healing: number
+  self_healing: number
+  damage_taken: number
+  xp_contribution: number
+  length: number
+  talents: ReplayPlayerTalents | null
+}
+
+export interface HeroProfileData {
+  hero: HeroProfileSummary
+  matches: HeroProfileMatch[]
 }
 

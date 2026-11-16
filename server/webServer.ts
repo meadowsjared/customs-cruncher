@@ -4,6 +4,7 @@ import path from 'node:path'
 import { sql } from '../store/db'
 import { getPlayerAggregatedStats, getPlayerMatchHistory } from '../store/playerStats'
 import { searchPlayers, getPlayerProfile } from '../store/playerProfile'
+import { getHeroProfile } from '../store/heroProfile'
 
 export const WEB_PORT = Number(process.env.WEB_PORT || 3002)
 
@@ -372,6 +373,21 @@ export function createServer(): http.Server {
         }
 
         sendJson(res, 200, profile)
+        return
+      }
+
+      // GET /api/hero/:heroName or /api/heroes/:heroName
+      const heroMatch = pathname.match(/^\/api\/(?:hero|heroes)\/([^/]+)$/)
+      if (heroMatch) {
+        const heroName = decodeURIComponent(heroMatch[1])
+        const heroProfile = await getHeroProfile(heroName)
+
+        if (!heroProfile) {
+          sendJson(res, 404, { error: 'Hero not found' })
+          return
+        }
+
+        sendJson(res, 200, heroProfile)
         return
       }
 
