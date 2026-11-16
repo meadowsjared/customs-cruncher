@@ -351,11 +351,23 @@ function computeTeamTotal(players: ReplayPlayer[], key: keyof NonNullable<Replay
 }
 
 function computeTeamAvgKda(players: ReplayPlayer[]): string {
-  const kills = computeTeamTotal(players, 'SoloKill')
-  const assists = computeTeamTotal(players, 'Assists')
-  const deaths = computeTeamTotal(players, 'Deaths')
-  if (deaths === 0) return `${kills + assists}`
-  return ((kills + assists) / deaths).toFixed(2)
+  if (players.length === 0) return '0.00'
+  let totalKda = 0
+  let count = 0
+  for (const p of players) {
+    if (typeof p.gameStats?.KDA === 'number') {
+      totalKda += p.gameStats.KDA
+      count++
+    } else {
+      const kills = p.gameStats?.SoloKill ?? 0
+      const assists = p.gameStats?.Assists ?? 0
+      const deaths = p.gameStats?.Deaths ?? 0
+      totalKda += (kills + assists) / Math.max(1, deaths)
+      count++
+    }
+  }
+  if (count === 0) return '0.00'
+  return (totalKda / count).toFixed(2)
 }
 
 onMounted(() => {
