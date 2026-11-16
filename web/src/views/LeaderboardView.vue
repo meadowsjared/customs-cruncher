@@ -8,7 +8,7 @@ const router = useRouter()
 const players = ref<LeaderboardPlayer[]>([])
 const loading = ref(true)
 const search = ref('')
-const minGames = ref(3)
+const minGames = ref(10)
 
 type SortKey =
   | 'games_played'
