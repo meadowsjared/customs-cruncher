@@ -351,6 +351,9 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
 
   const validAccounts = await filterActiveSubstitutedAccounts(allAccounts, guildId)
 
+  const lastScan = await getLastLobbyScan(guildId)
+  const scannedNames = lastScan?.scannedNames
+
   const seenPlayerKeys = new Set<string>()
   const uniquePlayers: Player[] = []
   for (const row of rows) {
@@ -361,7 +364,18 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
       continue
     }
     seenPlayerKeys.add(key)
-    uniquePlayers.push(getPlayerFromRow(row, validAccounts))
+    const player = getPlayerFromRow(row, validAccounts)
+    if (scannedNames) {
+      const pId = getPlayerIdentifier(player)
+      const name =
+        (player.discordId && scannedNames[player.discordId]) ||
+        (pId && scannedNames[pId]) ||
+        (row.hots_battle_tag && scannedNames[row.hots_battle_tag.toLowerCase()])
+      if (name) {
+        player.scannedName = name
+      }
+    }
+    uniquePlayers.push(player)
   }
   return uniquePlayers
 }
@@ -1548,11 +1562,18 @@ export function formatPlayerDisplay(
 
   if (options.includeBattleTag) {
     const subAccount = player.usernames.accounts?.find(account => account.ownerDiscordId)
-    const primaryAccount = subAccount ?? player.usernames.accounts?.find(account => account.isPrimary)
-    if (primaryAccount) {
-      result += ` ${primaryAccount.hotsBattleTag.replace(/#.*$/, '')}`
-      if (primaryAccount.ownerDiscordId) {
-        result += getSubstitutedAccountOwnerTag(primaryAccount.ownerDiscordId, guildId)
+    if (player.scannedName) {
+      result += ` ${player.scannedName}`
+      if (subAccount?.ownerDiscordId) {
+        result += getSubstitutedAccountOwnerTag(subAccount.ownerDiscordId, guildId)
+      }
+    } else {
+      const primaryAccount = subAccount ?? player.usernames.accounts?.find(account => account.isPrimary)
+      if (primaryAccount) {
+        result += ` ${primaryAccount.hotsBattleTag.replace(/#.*$/, '')}`
+        if (primaryAccount.ownerDiscordId) {
+          result += getSubstitutedAccountOwnerTag(primaryAccount.ownerDiscordId, guildId)
+        }
       }
     }
   }

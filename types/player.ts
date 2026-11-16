@@ -526,6 +526,7 @@ export type Player = {
   customGames?: number
   customWinRate?: number
   lastActive: Date
+  scannedName?: string
 }
 
 export type PlayerWithAccounts = Omit<Player, 'usernames'> & {

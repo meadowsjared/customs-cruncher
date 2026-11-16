@@ -28,6 +28,7 @@ export interface ScanLobbySummary {
   unregisteredSpectators?: string[]
   team1CaptainDiscordId?: string
   team2CaptainDiscordId?: string
+  scannedNames?: Record<string, string>
 }
 
 let workerInstance: Promise<Worker> | null = null
@@ -521,6 +522,7 @@ export async function scanLobbyScreenshot(
   const processedPlayerIds = new Set<string>()
   const team1DiscordIds: string[] = []
   const team2DiscordIds: string[] = []
+  const scannedNames: Record<string, string> = {}
   let team1CaptainDiscordId: string | undefined
   let team2CaptainDiscordId: string | undefined
 
@@ -533,6 +535,16 @@ export async function scanLobbyScreenshot(
         continue
       }
       processedPlayerIds.add(playerId)
+
+      const normOcr = detected.text.toLowerCase().trim()
+      const isRealIdMatch = Boolean(
+        matched.realIdName && normOcr.includes(matched.realIdName.toLowerCase().trim())
+      )
+      const displayedName = isRealIdMatch ? matched.realIdName! : matched.hotsBattleTag.replace(/#.*$/, '')
+      scannedNames[playerId] = displayedName
+      if (matched.discordId) {
+        scannedNames[matched.discordId] = displayedName
+      }
 
       const { updated } = await setPlayerActive(playerId, true, guildId, matched.hotsBattleTag)
       if (isSpectatorSlot) {
@@ -619,5 +631,6 @@ export async function scanLobbyScreenshot(
     unregisteredSpectators,
     team1CaptainDiscordId,
     team2CaptainDiscordId,
+    scannedNames,
   }
 }

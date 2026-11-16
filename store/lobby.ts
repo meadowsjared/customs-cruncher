@@ -473,6 +473,7 @@ export interface StoredLobbyScan {
   team2DiscordIds: string[]
   spectatorDiscordIds?: string[]
   unregistered: string[]
+  scannedNames?: Record<string, string>
   scannedAt: string
 }
 
@@ -503,6 +504,7 @@ export async function saveLastLobbyScan(
     team2DiscordIds: string[]
     spectatorDiscordIds?: string[]
     unregistered?: string[]
+    scannedNames?: Record<string, string>
   }
 ): Promise<void> {
   const data: StoredLobbyScan = {
@@ -510,6 +512,7 @@ export async function saveLastLobbyScan(
     team2DiscordIds: scan.team2DiscordIds,
     spectatorDiscordIds: scan.spectatorDiscordIds ?? [],
     unregistered: scan.unregistered ?? [],
+    scannedNames: scan.scannedNames ?? {},
     scannedAt: new Date().toISOString(),
   }
   await setSetting(LAST_LOBBY_SCAN_KEY, JSON.stringify(data), guildId)
@@ -532,11 +535,20 @@ export async function getLastLobbyScan(guildId: string): Promise<StoredLobbyScan
         'spectatorDiscordIds' in parsed && Array.isArray(parsed.spectatorDiscordIds)
           ? parsed.spectatorDiscordIds.filter((item): item is string => typeof item === 'string')
           : []
+      const scannedNames: Record<string, string> = {}
+      if ('scannedNames' in parsed && typeof parsed.scannedNames === 'object' && parsed.scannedNames !== null) {
+        for (const [k, v] of Object.entries(parsed.scannedNames)) {
+          if (typeof v === 'string') {
+            scannedNames[k] = v
+          }
+        }
+      }
       return {
         team1DiscordIds: parsed.team1DiscordIds.filter((item): item is string => typeof item === 'string'),
         team2DiscordIds: parsed.team2DiscordIds.filter((item): item is string => typeof item === 'string'),
         spectatorDiscordIds,
         unregistered,
+        scannedNames,
         scannedAt: parsed.scannedAt,
       }
     }

@@ -789,6 +789,7 @@ export async function handleCheckTeamsCommand(
         team2DiscordIds: scanSummary.team2DiscordIds,
         spectatorDiscordIds: scanSummary.spectatorDiscordIds,
         unregistered: scanSummary.unregistered,
+        scannedNames: scanSummary.scannedNames,
       })
       scanData = scanSummary
     } else {

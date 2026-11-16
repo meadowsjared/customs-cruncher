@@ -104,6 +104,18 @@ async function applyTeamsFromScan(
   }
   const sortedPlayers = await getSortedActivePlayers(guildId, true)
 
+  if (scanSummary.scannedNames) {
+    for (const p of sortedPlayers) {
+      const id = getPlayerIdentifier(p)
+      const name =
+        (p.discordId && scanSummary.scannedNames[p.discordId]) ||
+        (id && scanSummary.scannedNames[id])
+      if (name) {
+        p.scannedName = name
+      }
+    }
+  }
+
   const team1: Player[] = []
   const team2: Player[] = []
   const spectators: Player[] = []
@@ -168,6 +180,7 @@ export async function processAndApplyLobbyScan(
     team2DiscordIds: summary.team2DiscordIds,
     spectatorDiscordIds: summary.spectatorDiscordIds,
     unregistered: summary.unregistered,
+    scannedNames: summary.scannedNames,
   })
 
   if (options?.updateLobby) {
