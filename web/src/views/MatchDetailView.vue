@@ -1286,7 +1286,7 @@ onMounted(() => {
                 <td class="num-cell">🎙️ {{ (p.gameStats?.bsteps || 0) > 0 ? p.gameStats?.bsteps : '-' }}</td>
                 <td class="num-cell bold-cell">
                   {{ (p.bsteps?.length || 0) + (p.sprays?.length || 0) + (p.taunts?.length || 0) + (p.dances?.length ||
-                  0) }}
+                    0) }}
                 </td>
               </tr>
             </tbody>
@@ -2173,7 +2173,7 @@ onMounted(() => {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
 }
 
@@ -2181,19 +2181,23 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
+  display: block;
 }
 
 .pick-num-badge {
   position: absolute;
-  bottom: 0;
-  right: 0;
-  background: rgba(0, 0, 0, 0.8);
+  bottom: -2px;
+  right: -4px;
+  background: rgba(0, 0, 0, 0.85);
   font-size: 0.65rem;
   font-family: var(--font-mono);
   color: #fff;
   padding: 0 2px;
   border-radius: 2px;
   line-height: 1;
+  z-index: 2;
+  white-space: nowrap;
 }
 
 .pick-hero-text {
