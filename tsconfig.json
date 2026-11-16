@@ -11,8 +11,8 @@
     "rootDir": "./",
     "strict": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["bun"]
+    "types": ["bun", "vite/client"]
   },
   "include": ["**/**/*.ts"],
-  "exclude": ["node_modules", "store_backup"]
+  "exclude": ["node_modules", "store_backup", "web", "dist"]
 }

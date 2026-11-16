@@ -18,6 +18,7 @@ import { slashCommands } from './commands/definitions'
 import { botChannelName, CommandIds } from './constants'
 import { setSetting } from './store/settings'
 import { getBotChannel } from './utils/channel'
+import { startWebServer, stopWebServer } from './server/webServer'
 
 export const client = new Client({
   intents: [
@@ -155,11 +156,19 @@ async function startBot(maxRetries = 10, delayMs = 5000): Promise<void> {
   }
 }
 
+if (process.env.NODE_ENV !== 'test') {
+  void startWebServer().catch(err => {
+    console.error('[WebServer] Failed to start web server:', err)
+  })
+}
 void startBot()
 
 // Graceful shutdown handler
 const shutdown = async () => {
-  console.log('Shutting down bot...')
+  console.log('Shutting down bot and web server...')
+  await stopWebServer().catch(err => {
+    console.error('[WebServer] Error stopping web server:', err)
+  })
   client.user?.setPresence({
     status: PresenceUpdateStatus.Invisible,
     activities: [{ name: 'Shutting down...', type: 0 }],

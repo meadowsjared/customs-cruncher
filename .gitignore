@@ -16,3 +16,4 @@ logs/
 .running_version
 store_backup/
 *.traineddata
+web/dist/

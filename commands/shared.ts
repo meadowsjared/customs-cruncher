@@ -1,6 +1,9 @@
 import dotenv from 'dotenv'
+import fs from 'node:fs'
+import path from 'node:path'
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonInteraction,
   ButtonStyle,
@@ -282,6 +285,12 @@ export async function handleUserNameModalSubmit(
 export async function handleGuideCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
+  const bannerPath = path.resolve(process.cwd(), 'assets/branding/Banner_01.jpg')
+  const files: AttachmentBuilder[] = []
+  if (fs.existsSync(bannerPath)) {
+    files.push(new AttachmentBuilder(bannerPath, { name: 'banner.jpg' }))
+  }
+
   const exampleEmbed = new EmbedBuilder()
     .setColor(0x0099ff)
     .setTitle('Customs Cruncher — Lobby Guide')
@@ -308,10 +317,12 @@ export async function handleGuideCommand(
 \`⚔️ Assassin, 🔄 Flex\` — prefer assassin but comfortable filling any role`,
     })
     .setFooter({ text: 'Enjoy playing!' })
-    .setImage(
-      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
-    )
-  await safeReply(interaction, { embeds: [exampleEmbed], flags: safePing() })
+
+  if (files.length > 0) {
+    exampleEmbed.setImage('attachment://banner.jpg')
+  }
+
+  await safeReply(interaction, { embeds: [exampleEmbed], files, flags: safePing() })
 }
 
 export async function handleTwitchCommand(
