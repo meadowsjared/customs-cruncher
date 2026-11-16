@@ -125,6 +125,19 @@ export interface TeamStats {
   }
 }
 
+export interface ReplayBanItem {
+  hero: string
+  order: number
+  absolute?: number
+}
+
+export interface ReplayPicks {
+  0?: string[]
+  1?: string[]
+  first?: number
+  [key: string]: string[] | number | undefined
+}
+
 export interface ReplayDetail {
   id: number
   date: string
@@ -142,12 +155,8 @@ export interface ReplayDetail {
   first_keep_win?: boolean
   teams: Record<string, TeamStats>
   players: Record<string, ReplayPlayer>
-  bans?: Record<string, Array<{ hero: string; order: number }>>
-  picks?: {
-    0: string[]
-    1: string[]
-    first?: number
-  }
+  bans?: Record<string, ReplayBanItem[]>
+  picks?: ReplayPicks
 }
 
 export interface LeaderboardPlayer {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ReplayDetail, ReplayPlayer } from '../types'
+import type { ReplayDetail, ReplayPlayer, ReplayBanItem } from '../types'
 import {
   formatDuration,
   formatDateRelative,
@@ -13,6 +13,7 @@ import {
   formatTalentName,
   getTalentTooltip,
   getTalentBuildCode,
+  resolveHeroName,
 } from '../utils/hots'
 
 const route = useRoute()
@@ -22,7 +23,7 @@ const match = ref<ReplayDetail | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-type ActiveTab = 'overview' | 'talents' | 'combat' | 'defense' | 'siege' | 'bm' | 'draft'
+type ActiveTab = 'overview' | 'talents' | 'combat' | 'defense' | 'siege' | 'bm'
 const activeTab = ref<ActiveTab>('overview')
 
 // Target player/hero from URL query parameters
@@ -48,6 +49,60 @@ const team1Players = computed(() => {
   if (!match.value?.players) return []
   return Object.values(match.value.players).filter((p) => p.team === 1)
 })
+
+// Draft & bans computed data
+const team0Bans = computed<ReplayBanItem[]>(() => match.value?.bans?.['0'] || [])
+const team1Bans = computed<ReplayBanItem[]>(() => match.value?.bans?.['1'] || [])
+
+const team0Picks = computed<string[]>(() => {
+  const p = match.value?.picks?.['0'] || match.value?.picks?.[0]
+  if (Array.isArray(p)) return p
+  return []
+})
+
+const team1Picks = computed<string[]>(() => {
+  const p = match.value?.picks?.['1'] || match.value?.picks?.[1]
+  if (Array.isArray(p)) return p
+  return []
+})
+
+const firstPickTeam = computed<number | null>(() => {
+  if (!match.value) return null
+  if (typeof match.value.picks?.first === 'number') {
+    return match.value.picks.first
+  }
+  if (typeof match.value.first_pick_win === 'boolean') {
+    return match.value.first_pick_win ? match.value.winner : (match.value.winner === 0 ? 1 : 0)
+  }
+  return null
+})
+
+const hasDraftInfo = computed<boolean>(() => {
+  return team0Bans.value.length > 0 || team1Bans.value.length > 0 || team0Picks.value.length > 0 || team1Picks.value.length > 0
+})
+
+function getPickNumber(team: number, pickIndex: number): number {
+  if (firstPickTeam.value === null) {
+    return pickIndex + 1
+  }
+  const isFirstTeam = firstPickTeam.value === team
+  const firstPickOrder = [1, 4, 5, 8, 9]
+  const secondPickOrder = [2, 3, 6, 7, 10]
+  return isFirstTeam
+    ? (firstPickOrder[pickIndex] || pickIndex + 1)
+    : (secondPickOrder[pickIndex] || pickIndex + 1)
+}
+
+function getPlayerPickOrder(heroName: string, team: number): number | null {
+  const picks = team === 0 ? team0Picks.value : team1Picks.value
+  const cleanHero = resolveHeroName(heroName).toLowerCase()
+  const idx = picks.findIndex(p => {
+    const pClean = resolveHeroName(p).toLowerCase()
+    return pClean === cleanHero || p.toLowerCase() === heroName.toLowerCase()
+  })
+  if (idx === -1) return null
+  return getPickNumber(team, idx)
+}
 
 // Copy build code feedback tracker
 const copiedPlayerHandle = ref<string | null>(null)
@@ -313,20 +368,124 @@ onMounted(() => {
           <span>🕺</span>
           <span>BM & Flares</span>
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'draft' }"
-          @click="activeTab = 'draft'"
-        >
-          <span>📜</span>
-          <span>Draft & Timeline</span>
-        </button>
       </div>
 
       <!-- ============================================================== -->
       <!-- TAB 1: OVERVIEW & SCORES                                       -->
       <!-- ============================================================== -->
       <div v-if="activeTab === 'overview'" class="tab-pane">
+        <!-- Integrated Draft Order & Bans Card -->
+        <div v-if="hasDraftInfo" class="card draft-overview-card">
+          <div class="draft-card-header">
+            <div class="draft-title-group">
+              <span class="draft-header-icon">📜</span>
+              <h3>Draft Order & Bans</h3>
+            </div>
+            <div v-if="firstPickTeam !== null" class="first-pick-pill" :class="firstPickTeam === 0 ? 'pill-blue' : 'pill-red'">
+              🎯 Team {{ firstPickTeam === 0 ? 'Blue' : 'Red' }} First Pick
+            </div>
+          </div>
+
+          <div class="draft-teams-row">
+            <!-- Blue Team Draft Side -->
+            <div class="draft-team-side blue-side">
+              <div class="draft-side-title-row">
+                <span class="team-label blue-label">Blue Team</span>
+                <span v-if="firstPickTeam === 0" class="first-pick-tag">First Pick</span>
+              </div>
+
+              <!-- Bans -->
+              <div v-if="team0Bans.length" class="draft-items-row">
+                <span class="draft-row-label">Bans:</span>
+                <div class="draft-chips-wrap">
+                  <div
+                    v-for="b in team0Bans"
+                    :key="b.hero"
+                    class="ban-hero-chip"
+                    :title="`Banned: ${resolveHeroName(b.hero)} (Round ${b.order})`"
+                  >
+                    <div class="ban-avatar-box">
+                      <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-hero-img" @error="hideBrokenImage" />
+                      <span class="ban-slash">🚫</span>
+                    </div>
+                    <span class="ban-hero-text">{{ resolveHeroName(b.hero) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Picks in order -->
+              <div v-if="team0Picks.length" class="draft-items-row">
+                <span class="draft-row-label">Picks:</span>
+                <div class="draft-chips-wrap">
+                  <div
+                    v-for="(pick, pIdx) in team0Picks"
+                    :key="pick"
+                    class="pick-hero-chip"
+                    :title="`Pick #${getPickNumber(0, pIdx)}: ${resolveHeroName(pick)}`"
+                  >
+                    <div class="pick-avatar-box">
+                      <img :src="getHeroImageUrl(pick)" :alt="pick" class="pick-hero-img" @error="hideBrokenImage" />
+                      <span class="pick-num-badge">#{{ getPickNumber(0, pIdx) }}</span>
+                    </div>
+                    <span class="pick-hero-text">{{ resolveHeroName(pick) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- VS Divider -->
+            <div class="draft-mid-divider">
+              <span class="vs-badge">VS</span>
+            </div>
+
+            <!-- Red Team Draft Side -->
+            <div class="draft-team-side red-side">
+              <div class="draft-side-title-row">
+                <span class="team-label red-label">Red Team</span>
+                <span v-if="firstPickTeam === 1" class="first-pick-tag">First Pick</span>
+              </div>
+
+              <!-- Bans -->
+              <div v-if="team1Bans.length" class="draft-items-row">
+                <span class="draft-row-label">Bans:</span>
+                <div class="draft-chips-wrap">
+                  <div
+                    v-for="b in team1Bans"
+                    :key="b.hero"
+                    class="ban-hero-chip"
+                    :title="`Banned: ${resolveHeroName(b.hero)} (Round ${b.order})`"
+                  >
+                    <div class="ban-avatar-box">
+                      <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-hero-img" @error="hideBrokenImage" />
+                      <span class="ban-slash">🚫</span>
+                    </div>
+                    <span class="ban-hero-text">{{ resolveHeroName(b.hero) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Picks in order -->
+              <div v-if="team1Picks.length" class="draft-items-row">
+                <span class="draft-row-label">Picks:</span>
+                <div class="draft-chips-wrap">
+                  <div
+                    v-for="(pick, pIdx) in team1Picks"
+                    :key="pick"
+                    class="pick-hero-chip"
+                    :title="`Pick #${getPickNumber(1, pIdx)}: ${resolveHeroName(pick)}`"
+                  >
+                    <div class="pick-avatar-box">
+                      <img :src="getHeroImageUrl(pick)" :alt="pick" class="pick-hero-img" @error="hideBrokenImage" />
+                      <span class="pick-num-badge">#{{ getPickNumber(1, pIdx) }}</span>
+                    </div>
+                    <span class="pick-hero-text">{{ resolveHeroName(pick) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Blue Team Table -->
         <div class="team-section team-0-section">
           <div class="team-section-header">
@@ -337,6 +496,18 @@ onMounted(() => {
               <span v-else class="badge badge-loss">DEFEAT</span>
             </div>
             <div class="team-stats-summary">
+              <div v-if="team0Bans.length" class="team-bans-inline">
+                <span class="bans-inline-label">Bans:</span>
+                <span
+                  v-for="b in team0Bans"
+                  :key="b.hero"
+                  class="ban-inline-pill"
+                  :title="`Banned: ${resolveHeroName(b.hero)}`"
+                >
+                  <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-tiny-avatar" @error="hideBrokenImage" />
+                  <span>{{ resolveHeroName(b.hero) }}</span>
+                </span>
+              </div>
               <span class="stat-pill">Level {{ match.teams?.['0']?.level || '?' }}</span>
               <span class="stat-pill">{{ match.team0_takedowns }} Takedowns</span>
             </div>
@@ -372,7 +543,12 @@ onMounted(() => {
                           <span v-if="p.tag" class="player-tag">#{{ p.tag }}</span>
                           <span v-if="isPlayerHighlighted(p)" class="badge badge-highlight">★ You</span>
                         </div>
-                        <span class="hero-name">{{ p.hero }}</span>
+                        <div class="hero-pick-row">
+                          <span class="hero-name">{{ p.hero }}</span>
+                          <span v-if="getPlayerPickOrder(p.hero, p.team)" class="pick-order-tag" title="Draft Pick Order">
+                            Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -469,6 +645,18 @@ onMounted(() => {
               <span v-else class="badge badge-loss">DEFEAT</span>
             </div>
             <div class="team-stats-summary">
+              <div v-if="team1Bans.length" class="team-bans-inline">
+                <span class="bans-inline-label">Bans:</span>
+                <span
+                  v-for="b in team1Bans"
+                  :key="b.hero"
+                  class="ban-inline-pill"
+                  :title="`Banned: ${resolveHeroName(b.hero)}`"
+                >
+                  <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-tiny-avatar" @error="hideBrokenImage" />
+                  <span>{{ resolveHeroName(b.hero) }}</span>
+                </span>
+              </div>
               <span class="stat-pill">Level {{ match.teams?.['1']?.level || '?' }}</span>
               <span class="stat-pill">{{ match.team1_takedowns }} Takedowns</span>
             </div>
@@ -504,7 +692,12 @@ onMounted(() => {
                           <span v-if="p.tag" class="player-tag">#{{ p.tag }}</span>
                           <span v-if="isPlayerHighlighted(p)" class="badge badge-highlight">★ You</span>
                         </div>
-                        <span class="hero-name">{{ p.hero }}</span>
+                        <div class="hero-pick-row">
+                          <span class="hero-name">{{ p.hero }}</span>
+                          <span v-if="getPlayerPickOrder(p.hero, p.team)" class="pick-order-tag" title="Draft Pick Order">
+                            Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -863,44 +1056,6 @@ onMounted(() => {
               </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- ============================================================== -->
-      <!-- TAB 7: DRAFT & TIMELINE                                        -->
-      <!-- ============================================================== -->
-      <div v-else-if="activeTab === 'draft'" class="tab-pane">
-        <div class="card draft-section">
-          <h3>Draft Picks & Bans</h3>
-          <div class="draft-grid">
-            <div class="draft-team-col">
-              <span class="team-pill pill-blue">Blue Team Picks</span>
-              <div class="draft-heroes-row">
-                <span v-for="pick in match.picks?.['0'] || []" :key="pick" class="draft-pick-chip">
-                  <img :src="getHeroImageUrl(pick)" :alt="pick" class="hero-avatar small" />
-                  <span>{{ pick }}</span>
-                </span>
-              </div>
-              <div v-if="match.bans?.['0']?.length" class="bans-row">
-                <span class="bans-label">Bans:</span>
-                <span v-for="b in match.bans['0']" :key="b.hero" class="ban-chip">🚫 {{ b.hero }}</span>
-              </div>
-            </div>
-
-            <div class="draft-team-col">
-              <span class="team-pill pill-red">Red Team Picks</span>
-              <div class="draft-heroes-row">
-                <span v-for="pick in match.picks?.['1'] || []" :key="pick" class="draft-pick-chip">
-                  <img :src="getHeroImageUrl(pick)" :alt="pick" class="hero-avatar small" />
-                  <span>{{ pick }}</span>
-                </span>
-              </div>
-              <div v-if="match.bans?.['1']?.length" class="bans-row">
-                <span class="bans-label">Bans:</span>
-                <span v-for="b in match.bans['1']" :key="b.hero" class="ban-chip">🚫 {{ b.hero }}</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1312,59 +1467,274 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* Draft Section */
-.draft-section {
+/* Integrated Draft & Bans Card */
+.draft-overview-card {
+  margin-bottom: 2rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.draft-card-header {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.draft-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+.draft-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.draft-team-col {
+.draft-title-group h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.draft-header-icon {
+  font-size: 1.25rem;
+}
+
+.first-pick-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+}
+
+.draft-teams-row {
+  display: flex;
+  align-items: stretch;
+  gap: 1.5rem;
+}
+
+.draft-team-side {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.draft-heroes-row {
+.draft-side-title-row {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.draft-pick-chip {
+.team-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.blue-label {
+  color: var(--team-0);
+}
+
+.red-label {
+  color: var(--team-1);
+}
+
+.first-pick-tag {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-gold);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+}
+
+.draft-items-row {
   display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.draft-row-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  min-width: 44px;
+}
+
+.draft-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ban-hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+}
+
+.ban-avatar-box {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ban-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(85%) brightness(0.7);
+}
+
+.ban-slash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  opacity: 0.9;
+}
+
+.ban-hero-text {
+  color: var(--accent-red);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.pick-hero-chip {
+  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   background: var(--bg-surface-elevated);
-  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-subtle);
+  padding: 0.15rem 0.55rem;
   border-radius: var(--radius-full);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
 }
 
-.hero-avatar.small {
-  width: 24px;
-  height: 24px;
+.pick-avatar-box {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.bans-row {
+.pick-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pick-num-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.8);
+  font-size: 0.55rem;
+  font-family: var(--font-mono);
+  color: #fff;
+  padding: 0 2px;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+.pick-hero-text {
+  color: var(--text-main);
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+
+.draft-mid-divider {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-dim);
+  justify-content: center;
 }
 
-.ban-chip {
-  background: rgba(248, 113, 113, 0.1);
-  color: var(--accent-red);
+.vs-badge {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  padding: 0.35rem 0.55rem;
+  border-radius: var(--radius-full);
+}
+
+/* Inline Bans in Team Header */
+.team-bans-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bans-inline-label {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.ban-inline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
   padding: 0.1rem 0.45rem;
   border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  color: var(--accent-red);
+}
+
+.ban-tiny-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  filter: grayscale(80%);
+}
+
+/* Pick Order Pill in Table Row */
+.hero-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pick-order-tag {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+@media (max-width: 900px) {
+  .draft-teams-row {
+    flex-direction: column;
+  }
 }
 
 /* Highlighted Player Row Flair */
@@ -1389,11 +1759,5 @@ onMounted(() => {
 
 .error-icon {
   font-size: 2.5rem;
-}
-
-@media (max-width: 900px) {
-  .draft-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
