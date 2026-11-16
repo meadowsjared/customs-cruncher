@@ -308,7 +308,6 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
       WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
         AND REGEXP_REPLACE(LOWER(s.hero), '[^a-z0-9]', '', 'g') = ${normHero}
       ORDER BY s.date DESC
-      LIMIT 250
     `
 
     const heroAggRow = await sql<Array<{
@@ -363,7 +362,6 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
       JOIN replays r ON s.replay_id = r.id
       WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
       ORDER BY s.date DESC
-      LIMIT 100
     `
   }
 
