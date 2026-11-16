@@ -319,6 +319,8 @@ export type ReplayPlayerStatRow = {
 export type PlayerAggregatedStats = {
   toon_handle: string
   player_name: string
+  hots_battle_tag?: string
+  row_id?: number | null
   games_played: number
   wins: number
   losses: number

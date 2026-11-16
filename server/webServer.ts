@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { sql } from '../store/db'
 import { getPlayerAggregatedStats, getPlayerMatchHistory } from '../store/playerStats'
+import { searchPlayers, getPlayerProfile } from '../store/playerProfile'
 
 export const WEB_PORT = Number(process.env.WEB_PORT || 3002)
 
@@ -258,7 +259,7 @@ export function createServer(): http.Server {
           teams: unknown
           level_times: unknown
           level_adv_timeline: unknown
-          players: unknown
+          players: Record<string, Record<string, unknown>>
         }>>`
           SELECT
             id,
@@ -299,13 +300,51 @@ export function createServer(): http.Server {
           return
         }
 
-        sendJson(res, 200, rows[0])
+        const replay = rows[0]
+        if (replay && replay.players && typeof replay.players === 'object') {
+          const playerEntries = Object.entries(replay.players)
+          const tags: string[] = []
+          for (const [, p] of playerEntries) {
+            if (p && typeof p === 'object' && 'name' in p && 'tag' in p) {
+              tags.push(`${String(p.name)}#${String(p.tag)}`.toLowerCase())
+            }
+          }
+          if (tags.length > 0) {
+            const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
+              SELECT id, hots_battle_tag FROM hots_accounts WHERE LOWER(hots_battle_tag) IN ${sql(tags)}
+            `
+            const tagMap = new Map<string, number>()
+            for (const a of accounts) {
+              tagMap.set(a.hots_battle_tag.toLowerCase(), a.id)
+            }
+            for (const [, p] of playerEntries) {
+              if (p && typeof p === 'object' && 'name' in p && 'tag' in p) {
+                const fullTag = `${String(p.name)}#${String(p.tag)}`.toLowerCase()
+                p.rowId = tagMap.get(fullTag) ?? null
+              }
+            }
+          }
+        }
+
+        sendJson(res, 200, replay)
         return
       }
 
       // GET /api/leaderboard
       if (pathname === '/api/leaderboard') {
         const stats = await getPlayerAggregatedStats()
+        const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
+          SELECT id, hots_battle_tag FROM hots_accounts
+        `
+        const tagMap = new Map<string, number>()
+        for (const a of accounts) {
+          tagMap.set(a.hots_battle_tag.toLowerCase(), a.id)
+        }
+        for (const s of stats) {
+          if (s.hots_battle_tag) {
+            s.row_id = tagMap.get(s.hots_battle_tag.toLowerCase()) ?? null
+          }
+        }
         sendJson(res, 200, {
           players: stats,
           total: stats.length,
@@ -313,24 +352,26 @@ export function createServer(): http.Server {
         return
       }
 
-      // GET /api/players/:toonHandle
-      const playerMatch = pathname.match(/^\/api\/players\/([^/]+)$/)
-      if (playerMatch) {
-        const toonHandle = decodeURIComponent(playerMatch[1])
-        const [stats, matchHistory] = await Promise.all([
-          getPlayerAggregatedStats({ toonHandle }),
-          getPlayerMatchHistory(toonHandle, 50),
-        ])
+      // GET /api/players/search?q=...
+      if (pathname === '/api/players/search') {
+        const query = (urlObj.searchParams.get('q') || '').trim()
+        const results = await searchPlayers(query)
+        sendJson(res, 200, { results })
+        return
+      }
 
-        if (stats.length === 0 && matchHistory.length === 0) {
+      // GET /api/player/:identifier or /api/players/:identifier
+      const playerMatch = pathname.match(/^\/api\/players?\/([^/]+)$/)
+      if (playerMatch) {
+        const identifier = decodeURIComponent(playerMatch[1])
+        const profile = await getPlayerProfile(identifier)
+
+        if (!profile) {
           sendJson(res, 404, { error: 'Player not found' })
           return
         }
 
-        sendJson(res, 200, {
-          player: stats[0] || null,
-          matches: matchHistory,
-        })
+        sendJson(res, 200, profile)
         return
       }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ReplayDetail, ReplayPlayer, ReplayBanItem } from '../types'
+import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem } from '../types'
 import {
   formatDuration,
   formatDateRelative,
@@ -370,6 +370,28 @@ function computeTeamAvgKda(players: ReplayPlayer[]): string {
   return (totalKda / count).toFixed(2)
 }
 
+async function navigateToPlayer(player: ReplayPlayer) {
+  if (player.rowId) {
+    router.push(`/player/${player.rowId}`)
+    return
+  }
+  try {
+    const fullTag = `${player.name}#${player.tag}`
+    const res = await fetch(`/api/players/search?q=${encodeURIComponent(fullTag)}`)
+    if (res.ok) {
+      const data: { results: PlayerSearchItem[] } = await res.json()
+      if (data.results && data.results.length > 0) {
+        player.rowId = data.results[0].rowId
+        router.push(`/player/${data.results[0].rowId}`)
+        return
+      }
+    }
+  } catch {
+    // fallback
+  }
+  router.push(`/player/${encodeURIComponent(`${player.name}-${player.tag}`)}`)
+}
+
 onMounted(() => {
   fetchMatchDetail()
 })
@@ -704,7 +726,11 @@ onMounted(() => {
                            class="hero-avatar" />
                       <div class="name-hero-col">
                         <div class="name-tag-row">
-                          <span class="player-name">{{ p.name }}</span>
+                          <span class="player-name clickable-player-link"
+                                :title="`View player history for ${p.name}`"
+                                @click="navigateToPlayer(p)">
+                            {{ p.name }}
+                          </span>
                           <span v-if="p.tag"
                                 class="player-tag">#{{ p.tag }}</span>
                           <span v-if="isPlayerHighlighted(p)"
@@ -876,7 +902,11 @@ onMounted(() => {
                            class="hero-avatar" />
                       <div class="name-hero-col">
                         <div class="name-tag-row">
-                          <span class="player-name">{{ p.name }}</span>
+                          <span class="player-name clickable-player-link"
+                                :title="`View player history for ${p.name}`"
+                                @click="navigateToPlayer(p)">
+                            {{ p.name }}
+                          </span>
                           <span v-if="p.tag"
                                 class="player-tag">#{{ p.tag }}</span>
                           <span v-if="isPlayerHighlighted(p)"
@@ -1731,6 +1761,16 @@ onMounted(() => {
 .player-name {
   font-weight: 700;
   color: var(--text-main);
+}
+
+.clickable-player-link {
+  cursor: pointer;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.clickable-player-link:hover {
+  color: var(--accent-cyan);
+  text-decoration: underline;
 }
 
 .player-tag {

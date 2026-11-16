@@ -97,6 +97,7 @@ export interface ReplayPlayer {
   skin?: string
   team: number
   win: boolean
+  rowId?: number | null
   gameStats?: PlayerGameStats
   talents?: ReplayPlayerTalents
   bsteps?: unknown[]
@@ -162,6 +163,7 @@ export interface ReplayDetail {
 export interface LeaderboardPlayer {
   toon_handle: string
   player_name: string
+  row_id?: number | null
   games_played: number
   wins: number
   losses: number
@@ -180,5 +182,62 @@ export interface LeaderboardPlayer {
   total_taunts: number
   total_dances: number
   recent_10_win_rate_pct?: number
+}
+
+export interface PlayerSearchItem {
+  rowId: number
+  battleTag: string
+  isPrimary: boolean
+}
+
+export interface PlayerProfileTopHero {
+  hero: string
+  games: number
+  wins: number
+  winRatePct: number
+}
+
+export interface PlayerProfileSummary {
+  rowId: number
+  battleTag: string
+  name: string
+  tag: string
+  allTags: string[]
+  totalMatches: number
+  wins: number
+  losses: number
+  winRatePct: number
+  overallKda: number
+  avgHeroDamage: number
+  avgSiegeDamage: number
+  avgHealing: number
+  avgDamageTaken: number
+  avgXp: number
+  topHeroes: PlayerProfileTopHero[]
+}
+
+export interface PlayerProfileMatch {
+  replay_id: number
+  date: string
+  map: string
+  hero: string
+  win: boolean
+  kda: number
+  solo_kills: number
+  assists: number
+  deaths: number
+  hero_damage: number
+  siege_damage: number
+  healing: number
+  self_healing: number
+  damage_taken: number
+  xp_contribution: number
+  length: number
+  talents: ReplayPlayerTalents | null
+}
+
+export interface PlayerProfileData {
+  player: PlayerProfileSummary
+  matches: PlayerProfileMatch[]
 }
 

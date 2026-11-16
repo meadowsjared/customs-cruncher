@@ -70,8 +70,12 @@ function getRankBadge(idx: number): string {
   return `#${idx + 1}`
 }
 
-function viewPlayerMatches(playerName: string) {
-  router.push({ path: '/matches', query: { search: playerName } })
+function viewPlayerMatches(player: LeaderboardPlayer) {
+  if (player.row_id) {
+    router.push(`/player/${player.row_id}`)
+  } else {
+    router.push(`/player/${encodeURIComponent(player.player_name)}`)
+  }
 }
 
 onMounted(() => {
@@ -158,7 +162,7 @@ onMounted(() => {
             v-for="(p, idx) in filteredPlayers"
             :key="p.toon_handle"
             class="player-row"
-            @click="viewPlayerMatches(p.player_name)"
+            @click="viewPlayerMatches(p)"
           >
             <!-- Rank -->
             <td class="rank-col">

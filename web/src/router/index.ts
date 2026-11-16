@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import MatchHistoryView from '../views/MatchHistoryView.vue'
 import MatchDetailView from '../views/MatchDetailView.vue'
 import LeaderboardView from '../views/LeaderboardView.vue'
+import PlayerProfileView from '../views/PlayerProfileView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -28,6 +29,11 @@ const router = createRouter({
       path: '/leaderboard',
       name: 'leaderboard',
       component: LeaderboardView,
+    },
+    {
+      path: '/player/:identifier',
+      name: 'player-profile',
+      component: PlayerProfileView,
     },
     {
       path: '/:pathMatch(.*)*',

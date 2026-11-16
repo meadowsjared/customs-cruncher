@@ -71,6 +71,7 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
     SELECT
       toon_handle,
       MAX(latest_player_name) AS player_name,
+      MAX(hots_battle_tag) AS hots_battle_tag,
       COUNT(*)::int AS games_played,
       COUNT(*) FILTER (WHERE win)::int AS wins,
       COUNT(*) FILTER (WHERE NOT win)::int AS losses,

@@ -5,7 +5,7 @@ export interface TalentInfo {
   name: string
   description: string
   icon: string
-  tier: string
+  tier: string | number
   type: string
   hero: string
 }
