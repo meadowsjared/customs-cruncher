@@ -379,38 +379,41 @@ onMounted(() => {
   <div class="container">
     <!-- Back Navigation -->
     <div class="back-nav">
-      <button class="btn" @click="router.push('/matches')">
+      <button class="btn"
+              @click="router.push('/matches')">
         ← Back to Matches
       </button>
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="loading-state">
+    <div v-if="loading"
+         class="loading-state">
       <div class="spinner"></div>
       <p>Analyzing battle data from the Nexus...</p>
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error" class="card error-card">
+    <div v-else-if="error"
+         class="card error-card">
       <span class="error-icon">⚠️</span>
       <h2>{{ error }}</h2>
       <p>Please check the match ID or return to match history.</p>
-      <button class="btn btn-primary" @click="router.push('/matches')">
+      <button class="btn btn-primary"
+              @click="router.push('/matches')">
         Browse Match History
       </button>
     </div>
 
     <!-- Match Content -->
-    <div v-else-if="match" class="match-detail-content">
+    <div v-else-if="match"
+         class="match-detail-content">
       <!-- Match Header Banner -->
       <div class="match-banner card">
         <div class="banner-bg">
-          <img
-            :src="getMapImageUrl(match.map)"
-            :alt="match.map"
-            class="banner-map-img"
-            @error="hideBrokenImage"
-          />
+          <img :src="getMapImageUrl(match.map)"
+               :alt="match.map"
+               class="banner-map-img"
+               @error="hideBrokenImage" />
           <div class="banner-gradient"></div>
         </div>
 
@@ -426,16 +429,21 @@ onMounted(() => {
           </div>
 
           <div class="banner-badges">
-            <div v-if="match.first_pick_win" class="milestone-badge" title="Team with first pick won the match">
+            <div v-if="match.first_pick_win"
+                 class="milestone-badge"
+                 title="Team with first pick won the match">
               <span>🎯 First Pick Win</span>
             </div>
-            <div v-if="match.first_objective !== null && match.first_objective !== undefined" class="milestone-badge">
+            <div v-if="match.first_objective !== null && match.first_objective !== undefined"
+                 class="milestone-badge">
               <span>⚔️ 1st Obj: Team {{ match.first_objective === 0 ? 'Blue' : 'Red' }}</span>
             </div>
-            <div v-if="match.first_fort !== null && match.first_fort !== undefined" class="milestone-badge">
+            <div v-if="match.first_fort !== null && match.first_fort !== undefined"
+                 class="milestone-badge">
               <span>🏰 1st Fort: Team {{ match.first_fort === 0 ? 'Blue' : 'Red' }}</span>
             </div>
-            <div v-if="match.first_keep !== null && match.first_keep !== undefined" class="milestone-badge">
+            <div v-if="match.first_keep !== null && match.first_keep !== undefined"
+                 class="milestone-badge">
               <span>🏯 1st Keep: Team {{ match.first_keep === 0 ? 'Blue' : 'Red' }}</span>
             </div>
           </div>
@@ -443,7 +451,8 @@ onMounted(() => {
       </div>
 
       <!-- Focused Player Alert (if targeted in URL) -->
-      <div v-if="targetAccount || targetHero" class="highlight-banner card">
+      <div v-if="targetAccount || targetHero"
+           class="highlight-banner card">
         <span class="sparkle-icon">✨</span>
         <div>
           <strong>Focused Match Link:</strong>
@@ -454,51 +463,39 @@ onMounted(() => {
 
       <!-- Category Navigation Tabs -->
       <div class="tabs-nav">
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'overview' }"
-          @click="activeTab = 'overview'"
-        >
+        <button class="tab-btn"
+                :class="{ active: activeTab === 'overview' }"
+                @click="activeTab = 'overview'">
           <span>📊</span>
           <span>Overview</span>
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'talents' }"
-          @click="activeTab = 'talents'"
-        >
+        <button class="tab-btn"
+                :class="{ active: activeTab === 'talents' }"
+                @click="activeTab = 'talents'">
           <span>🌳</span>
           <span>Talents & Builds</span>
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'combat' }"
-          @click="activeTab = 'combat'"
-        >
+        <button class="tab-btn"
+                :class="{ active: activeTab === 'combat' }"
+                @click="activeTab = 'combat'">
           <span>⚔️</span>
           <span>Combat & Damage</span>
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'defense' }"
-          @click="activeTab = 'defense'"
-        >
+        <button class="tab-btn"
+                :class="{ active: activeTab === 'defense' }"
+                @click="activeTab = 'defense'">
           <span>🛡️</span>
           <span>Defense & CC</span>
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'siege' }"
-          @click="activeTab = 'siege'"
-        >
+        <button class="tab-btn"
+                :class="{ active: activeTab === 'siege' }"
+                @click="activeTab = 'siege'">
           <span>🏰</span>
           <span>Siege & Macro</span>
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'bm' }"
-          @click="activeTab = 'bm'"
-        >
+        <button class="tab-btn"
+                :class="{ active: activeTab === 'bm' }"
+                @click="activeTab = 'bm'">
           <span>🕺</span>
           <span>BM & Flares</span>
         </button>
@@ -507,15 +504,19 @@ onMounted(() => {
       <!-- ============================================================== -->
       <!-- TAB 1: OVERVIEW & SCORES                                       -->
       <!-- ============================================================== -->
-      <div v-if="activeTab === 'overview'" class="tab-pane">
+      <div v-if="activeTab === 'overview'"
+           class="tab-pane">
         <!-- Integrated Draft Order & Bans Card -->
-        <div v-if="hasDraftInfo" class="card draft-overview-card">
+        <div v-if="hasDraftInfo"
+             class="card draft-overview-card">
           <div class="draft-card-header">
             <div class="draft-title-group">
               <span class="draft-header-icon">📜</span>
               <h3>Draft Order & Bans</h3>
             </div>
-            <div v-if="firstPickTeam !== null" class="first-pick-pill" :class="firstPickTeam === 0 ? 'pill-blue' : 'pill-red'">
+            <div v-if="firstPickTeam !== null"
+                 class="first-pick-pill"
+                 :class="firstPickTeam === 0 ? 'pill-blue' : 'pill-red'">
               🎯 Team {{ firstPickTeam === 0 ? 'Blue' : 'Red' }} First Pick
             </div>
           </div>
@@ -527,24 +528,29 @@ onMounted(() => {
                 <div class="draft-title-left">
                   <span class="team-color-indicator blue-indicator"></span>
                   <span class="team-label blue-label">Blue Team</span>
-                  <span v-if="match.winner === 0" class="badge badge-win">VICTORY 🏆</span>
-                  <span v-else-if="match.winner === 1" class="badge badge-loss">DEFEAT</span>
+                  <span v-if="match.winner === 0"
+                        class="badge badge-win">VICTORY 🏆</span>
+                  <span v-else-if="match.winner === 1"
+                        class="badge badge-loss">DEFEAT</span>
                 </div>
-                <span v-if="firstPickTeam === 0" class="first-pick-tag">First Pick</span>
+                <span v-if="firstPickTeam === 0"
+                      class="first-pick-tag">First Pick</span>
               </div>
 
               <!-- Bans -->
-              <div v-if="team0Bans.length" class="draft-items-row">
+              <div v-if="team0Bans.length"
+                   class="draft-items-row">
                 <span class="draft-row-label">Bans:</span>
                 <div class="draft-chips-wrap">
-                  <div
-                    v-for="b in team0Bans"
-                    :key="b.hero"
-                    class="ban-hero-chip"
-                    :title="`Banned: ${resolveHeroName(b.hero)} (Round ${b.order})`"
-                  >
+                  <div v-for="b in team0Bans"
+                       :key="b.hero"
+                       class="ban-hero-chip"
+                       :title="`Banned: ${resolveHeroName(b.hero)} (Round ${b.order})`">
                     <div class="ban-avatar-box">
-                      <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-hero-img" @error="hideBrokenImage" />
+                      <img :src="getHeroImageUrl(b.hero)"
+                           :alt="b.hero"
+                           class="ban-hero-img"
+                           @error="hideBrokenImage" />
                       <span class="ban-slash">🚫</span>
                     </div>
                     <span class="ban-hero-text">{{ resolveHeroName(b.hero) }}</span>
@@ -553,17 +559,19 @@ onMounted(() => {
               </div>
 
               <!-- Picks in order -->
-              <div v-if="team0Picks.length" class="draft-items-row">
+              <div v-if="team0Picks.length"
+                   class="draft-items-row">
                 <span class="draft-row-label">Picks:</span>
                 <div class="draft-chips-wrap">
-                  <div
-                    v-for="(pick, pIdx) in team0Picks"
-                    :key="pick || pIdx"
-                    class="pick-hero-chip"
-                    :title="`Pick #${getPickNumber(0, pIdx)}: ${resolveHeroName(pick) || 'Unknown'}`"
-                  >
+                  <div v-for="(pick, pIdx) in team0Picks"
+                       :key="pick || pIdx"
+                       class="pick-hero-chip"
+                       :title="`Pick #${getPickNumber(0, pIdx)}: ${resolveHeroName(pick) || 'Unknown'}`">
                     <div class="pick-avatar-box">
-                      <img :src="getHeroImageUrl(pick)" :alt="pick || 'Unknown'" class="pick-hero-img" @error="hideBrokenImage" />
+                      <img :src="getHeroImageUrl(pick)"
+                           :alt="pick || 'Unknown'"
+                           class="pick-hero-img"
+                           @error="hideBrokenImage" />
                       <span class="pick-num-badge">#{{ getPickNumber(0, pIdx) }}</span>
                     </div>
                     <span class="pick-hero-text">{{ resolveHeroName(pick) || 'Unknown' }}</span>
@@ -583,24 +591,29 @@ onMounted(() => {
                 <div class="draft-title-left">
                   <span class="team-color-indicator red-indicator"></span>
                   <span class="team-label red-label">Red Team</span>
-                  <span v-if="match.winner === 1" class="badge badge-win">VICTORY 🏆</span>
-                  <span v-else-if="match.winner === 0" class="badge badge-loss">DEFEAT</span>
+                  <span v-if="match.winner === 1"
+                        class="badge badge-win">VICTORY 🏆</span>
+                  <span v-else-if="match.winner === 0"
+                        class="badge badge-loss">DEFEAT</span>
                 </div>
-                <span v-if="firstPickTeam === 1" class="first-pick-tag">First Pick</span>
+                <span v-if="firstPickTeam === 1"
+                      class="first-pick-tag">First Pick</span>
               </div>
 
               <!-- Bans -->
-              <div v-if="team1Bans.length" class="draft-items-row">
+              <div v-if="team1Bans.length"
+                   class="draft-items-row">
                 <span class="draft-row-label">Bans:</span>
                 <div class="draft-chips-wrap">
-                  <div
-                    v-for="b in team1Bans"
-                    :key="b.hero"
-                    class="ban-hero-chip"
-                    :title="`Banned: ${resolveHeroName(b.hero)} (Round ${b.order})`"
-                  >
+                  <div v-for="b in team1Bans"
+                       :key="b.hero"
+                       class="ban-hero-chip"
+                       :title="`Banned: ${resolveHeroName(b.hero)} (Round ${b.order})`">
                     <div class="ban-avatar-box">
-                      <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-hero-img" @error="hideBrokenImage" />
+                      <img :src="getHeroImageUrl(b.hero)"
+                           :alt="b.hero"
+                           class="ban-hero-img"
+                           @error="hideBrokenImage" />
                       <span class="ban-slash">🚫</span>
                     </div>
                     <span class="ban-hero-text">{{ resolveHeroName(b.hero) }}</span>
@@ -609,17 +622,19 @@ onMounted(() => {
               </div>
 
               <!-- Picks in order -->
-              <div v-if="team1Picks.length" class="draft-items-row">
+              <div v-if="team1Picks.length"
+                   class="draft-items-row">
                 <span class="draft-row-label">Picks:</span>
                 <div class="draft-chips-wrap">
-                  <div
-                    v-for="(pick, pIdx) in team1Picks"
-                    :key="pick || pIdx"
-                    class="pick-hero-chip"
-                    :title="`Pick #${getPickNumber(1, pIdx)}: ${resolveHeroName(pick) || 'Unknown'}`"
-                  >
+                  <div v-for="(pick, pIdx) in team1Picks"
+                       :key="pick || pIdx"
+                       class="pick-hero-chip"
+                       :title="`Pick #${getPickNumber(1, pIdx)}: ${resolveHeroName(pick) || 'Unknown'}`">
                     <div class="pick-avatar-box">
-                      <img :src="getHeroImageUrl(pick)" :alt="pick || 'Unknown'" class="pick-hero-img" @error="hideBrokenImage" />
+                      <img :src="getHeroImageUrl(pick)"
+                           :alt="pick || 'Unknown'"
+                           class="pick-hero-img"
+                           @error="hideBrokenImage" />
                       <span class="pick-num-badge">#{{ getPickNumber(1, pIdx) }}</span>
                     </div>
                     <span class="pick-hero-text">{{ resolveHeroName(pick) || 'Unknown' }}</span>
@@ -631,30 +646,30 @@ onMounted(() => {
         </div>
 
         <!-- Blue Team Table -->
-        <div
-          class="team-section team-0-section"
-          :class="match.winner === 0 ? 'team-winner' : 'team-loser'"
-        >
-          <div
-            class="team-section-header"
-            :class="match.winner === 0 ? 'header-winner' : 'header-loser'"
-          >
+        <div class="team-section team-0-section"
+             :class="match.winner === 0 ? 'team-winner' : 'team-loser'">
+          <div class="team-section-header"
+               :class="match.winner === 0 ? 'header-winner' : 'header-loser'">
             <div class="team-title-group">
               <span class="team-color-indicator blue-indicator"></span>
               <h2 class="team-title-blue">Blue Team</h2>
-              <span v-if="match.winner === 0" class="badge badge-win">VICTORY 🏆</span>
-              <span v-else class="badge badge-loss">DEFEAT</span>
+              <span v-if="match.winner === 0"
+                    class="badge badge-win">VICTORY 🏆</span>
+              <span v-else
+                    class="badge badge-loss">DEFEAT</span>
             </div>
             <div class="team-stats-summary">
-              <div v-if="team0Bans.length" class="team-bans-inline">
+              <div v-if="team0Bans.length"
+                   class="team-bans-inline">
                 <span class="bans-inline-label">Bans:</span>
-                <span
-                  v-for="b in team0Bans"
-                  :key="b.hero"
-                  class="ban-inline-pill"
-                  :title="`Banned: ${resolveHeroName(b.hero)}`"
-                >
-                  <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-tiny-avatar" @error="hideBrokenImage" />
+                <span v-for="b in team0Bans"
+                      :key="b.hero"
+                      class="ban-inline-pill"
+                      :title="`Banned: ${resolveHeroName(b.hero)}`">
+                  <img :src="getHeroImageUrl(b.hero)"
+                       :alt="b.hero"
+                       class="ban-tiny-avatar"
+                       @error="hideBrokenImage" />
                   <span>{{ resolveHeroName(b.hero) }}</span>
                 </span>
               </div>
@@ -679,23 +694,27 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr
-                  v-for="p in team0Players"
-                  :key="p.ToonHandle"
-                  :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
-                >
+                <tr v-for="p in team0Players"
+                    :key="p.ToonHandle"
+                    :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
                   <td class="player-cell">
                     <div class="player-info-wrap">
-                      <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                      <img :src="getHeroImageUrl(p.hero)"
+                           :alt="p.hero"
+                           class="hero-avatar" />
                       <div class="name-hero-col">
                         <div class="name-tag-row">
                           <span class="player-name">{{ p.name }}</span>
-                          <span v-if="p.tag" class="player-tag">#{{ p.tag }}</span>
-                          <span v-if="isPlayerHighlighted(p)" class="badge badge-highlight">★ You</span>
+                          <span v-if="p.tag"
+                                class="player-tag">#{{ p.tag }}</span>
+                          <span v-if="isPlayerHighlighted(p)"
+                                class="badge badge-highlight">★ You</span>
                         </div>
                         <div class="hero-pick-row">
                           <span class="hero-name">{{ p.hero }}</span>
-                          <span v-if="getPlayerPickOrder(p.hero, p.team)" class="pick-order-tag" title="Draft Pick Order">
+                          <span v-if="getPlayerPickOrder(p.hero, p.team)"
+                                class="pick-order-tag"
+                                title="Draft Pick Order">
                             Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
                           </span>
                         </div>
@@ -704,29 +723,27 @@ onMounted(() => {
                   </td>
                   <td class="kad-cell">
                     <span class="kad-text">
-                      {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} / 
+                      {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} /
                       <span class="deaths-val">{{ p.gameStats?.Deaths || 0 }}</span>
                     </span>
                   </td>
-                  <td class="num-cell">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}</td>
+                  <td class="num-cell">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}
+                  </td>
                   <td class="talents-cell">
                     <div class="player-talents-strip">
-                      <div
-                        v-for="(tKey, idx) in getPlayerTalentList(p)"
-                        :key="idx"
-                        class="talent-mini-slot"
-                        @mouseenter="showTalentTooltip($event, tKey, idx, p)"
-                        @mousemove="updateTooltipPosition($event)"
-                        @mouseleave="hideTalentTooltip"
-                      >
-                        <img
-                          v-if="tKey"
-                          :src="getTalentImageUrl(tKey)"
-                          :alt="formatTalentName(tKey)"
-                          class="talent-mini-img"
-                          @error="hideBrokenImage"
-                        />
-                        <span v-else class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
+                      <div v-for="(tKey, idx) in getPlayerTalentList(p)"
+                           :key="idx"
+                           class="talent-mini-slot"
+                           @mouseenter="showTalentTooltip($event, tKey, idx, p)"
+                           @mousemove="updateTooltipPosition($event)"
+                           @mouseleave="hideTalentTooltip">
+                        <img v-if="tKey"
+                             :src="getTalentImageUrl(tKey)"
+                             :alt="formatTalentName(tKey)"
+                             class="talent-mini-img"
+                             @error="hideBrokenImage" />
+                        <span v-else
+                              class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
                       </div>
                     </div>
                   </td>
@@ -734,7 +751,9 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-hero" :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-hero"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -742,15 +761,20 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-siege" :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-siege"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
                   <td class="stat-bar-cell">
                     <div class="stat-bar-container">
-                      <span class="stat-bar-value">{{ formatNumber((p.gameStats?.Healing || 0) + (p.gameStats?.SelfHealing || 0)) }}</span>
+                      <span class="stat-bar-value">{{ formatNumber((p.gameStats?.Healing || 0) +
+                        (p.gameStats?.SelfHealing || 0)) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-healing" :style="{ width: `${Math.min(100, (((p.gameStats?.Healing || 0) + (p.gameStats?.SelfHealing || 0)) / maxStats.healing) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-healing"
+                             :style="{ width: `${Math.min(100, (((p.gameStats?.Healing || 0) + (p.gameStats?.SelfHealing || 0)) / maxStats.healing) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -758,7 +782,9 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.DamageTaken) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-taken" :style="{ width: `${Math.min(100, ((p.gameStats?.DamageTaken || 0) / maxStats.damageTaken) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-taken"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.DamageTaken || 0) / maxStats.damageTaken) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -766,19 +792,23 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.ExperienceContribution) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-xp" :style="{ width: `${Math.min(100, ((p.gameStats?.ExperienceContribution || 0) / maxStats.xp) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-xp"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.ExperienceContribution || 0) / maxStats.xp) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
                 </tr>
                 <tr class="totals-row">
                   <td>Team 1 Totals</td>
-                  <td>{{ computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }} / {{ computeTeamTotal(team0Players, 'Deaths') }}</td>
+                  <td>{{ computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }}
+                    / {{ computeTeamTotal(team0Players, 'Deaths') }}</td>
                   <td>{{ computeTeamAvgKda(team0Players) }}</td>
                   <td></td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'HeroDamage')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'SiegeDamage')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'Healing') + computeTeamTotal(team0Players, 'SelfHealing')) }}</td>
+                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'Healing') + computeTeamTotal(team0Players,
+                    'SelfHealing')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'DamageTaken')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'ExperienceContribution')) }}</td>
                 </tr>
@@ -788,30 +818,30 @@ onMounted(() => {
         </div>
 
         <!-- Red Team Table -->
-        <div
-          class="team-section team-1-section"
-          :class="match.winner === 1 ? 'team-winner' : 'team-loser'"
-        >
-          <div
-            class="team-section-header"
-            :class="match.winner === 1 ? 'header-winner' : 'header-loser'"
-          >
+        <div class="team-section team-1-section"
+             :class="match.winner === 1 ? 'team-winner' : 'team-loser'">
+          <div class="team-section-header"
+               :class="match.winner === 1 ? 'header-winner' : 'header-loser'">
             <div class="team-title-group">
               <span class="team-color-indicator red-indicator"></span>
               <h2 class="team-title-red">Red Team</h2>
-              <span v-if="match.winner === 1" class="badge badge-win">VICTORY 🏆</span>
-              <span v-else class="badge badge-loss">DEFEAT</span>
+              <span v-if="match.winner === 1"
+                    class="badge badge-win">VICTORY 🏆</span>
+              <span v-else
+                    class="badge badge-loss">DEFEAT</span>
             </div>
             <div class="team-stats-summary">
-              <div v-if="team1Bans.length" class="team-bans-inline">
+              <div v-if="team1Bans.length"
+                   class="team-bans-inline">
                 <span class="bans-inline-label">Bans:</span>
-                <span
-                  v-for="b in team1Bans"
-                  :key="b.hero"
-                  class="ban-inline-pill"
-                  :title="`Banned: ${resolveHeroName(b.hero)}`"
-                >
-                  <img :src="getHeroImageUrl(b.hero)" :alt="b.hero" class="ban-tiny-avatar" @error="hideBrokenImage" />
+                <span v-for="b in team1Bans"
+                      :key="b.hero"
+                      class="ban-inline-pill"
+                      :title="`Banned: ${resolveHeroName(b.hero)}`">
+                  <img :src="getHeroImageUrl(b.hero)"
+                       :alt="b.hero"
+                       class="ban-tiny-avatar"
+                       @error="hideBrokenImage" />
                   <span>{{ resolveHeroName(b.hero) }}</span>
                 </span>
               </div>
@@ -836,23 +866,27 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr
-                  v-for="p in team1Players"
-                  :key="p.ToonHandle"
-                  :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
-                >
+                <tr v-for="p in team1Players"
+                    :key="p.ToonHandle"
+                    :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
                   <td class="player-cell">
                     <div class="player-info-wrap">
-                      <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                      <img :src="getHeroImageUrl(p.hero)"
+                           :alt="p.hero"
+                           class="hero-avatar" />
                       <div class="name-hero-col">
                         <div class="name-tag-row">
                           <span class="player-name">{{ p.name }}</span>
-                          <span v-if="p.tag" class="player-tag">#{{ p.tag }}</span>
-                          <span v-if="isPlayerHighlighted(p)" class="badge badge-highlight">★ You</span>
+                          <span v-if="p.tag"
+                                class="player-tag">#{{ p.tag }}</span>
+                          <span v-if="isPlayerHighlighted(p)"
+                                class="badge badge-highlight">★ You</span>
                         </div>
                         <div class="hero-pick-row">
                           <span class="hero-name">{{ p.hero }}</span>
-                          <span v-if="getPlayerPickOrder(p.hero, p.team)" class="pick-order-tag" title="Draft Pick Order">
+                          <span v-if="getPlayerPickOrder(p.hero, p.team)"
+                                class="pick-order-tag"
+                                title="Draft Pick Order">
                             Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
                           </span>
                         </div>
@@ -861,29 +895,27 @@ onMounted(() => {
                   </td>
                   <td class="kad-cell">
                     <span class="kad-text">
-                      {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} / 
+                      {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} /
                       <span class="deaths-val">{{ p.gameStats?.Deaths || 0 }}</span>
                     </span>
                   </td>
-                  <td class="num-cell">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}</td>
+                  <td class="num-cell">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}
+                  </td>
                   <td class="talents-cell">
                     <div class="player-talents-strip">
-                      <div
-                        v-for="(tKey, idx) in getPlayerTalentList(p)"
-                        :key="idx"
-                        class="talent-mini-slot"
-                        @mouseenter="showTalentTooltip($event, tKey, idx, p)"
-                        @mousemove="updateTooltipPosition($event)"
-                        @mouseleave="hideTalentTooltip"
-                      >
-                        <img
-                          v-if="tKey"
-                          :src="getTalentImageUrl(tKey)"
-                          :alt="formatTalentName(tKey)"
-                          class="talent-mini-img"
-                          @error="hideBrokenImage"
-                        />
-                        <span v-else class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
+                      <div v-for="(tKey, idx) in getPlayerTalentList(p)"
+                           :key="idx"
+                           class="talent-mini-slot"
+                           @mouseenter="showTalentTooltip($event, tKey, idx, p)"
+                           @mousemove="updateTooltipPosition($event)"
+                           @mouseleave="hideTalentTooltip">
+                        <img v-if="tKey"
+                             :src="getTalentImageUrl(tKey)"
+                             :alt="formatTalentName(tKey)"
+                             class="talent-mini-img"
+                             @error="hideBrokenImage" />
+                        <span v-else
+                              class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
                       </div>
                     </div>
                   </td>
@@ -891,7 +923,9 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-hero" :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-hero"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -899,15 +933,20 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-siege" :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-siege"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
                   <td class="stat-bar-cell">
                     <div class="stat-bar-container">
-                      <span class="stat-bar-value">{{ formatNumber((p.gameStats?.Healing || 0) + (p.gameStats?.SelfHealing || 0)) }}</span>
+                      <span class="stat-bar-value">{{ formatNumber((p.gameStats?.Healing || 0) +
+                        (p.gameStats?.SelfHealing || 0)) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-healing" :style="{ width: `${Math.min(100, (((p.gameStats?.Healing || 0) + (p.gameStats?.SelfHealing || 0)) / maxStats.healing) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-healing"
+                             :style="{ width: `${Math.min(100, (((p.gameStats?.Healing || 0) + (p.gameStats?.SelfHealing || 0)) / maxStats.healing) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -915,7 +954,9 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.DamageTaken) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-taken" :style="{ width: `${Math.min(100, ((p.gameStats?.DamageTaken || 0) / maxStats.damageTaken) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-taken"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.DamageTaken || 0) / maxStats.damageTaken) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -923,19 +964,23 @@ onMounted(() => {
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.ExperienceContribution) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-xp" :style="{ width: `${Math.min(100, ((p.gameStats?.ExperienceContribution || 0) / maxStats.xp) * 100)}%` }"></div>
+                        <div class="stat-bar-fill fill-xp"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.ExperienceContribution || 0) / maxStats.xp) * 100)}%` }">
+                        </div>
                       </div>
                     </div>
                   </td>
                 </tr>
                 <tr class="totals-row">
                   <td>Team 2 Totals</td>
-                  <td>{{ computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }} / {{ computeTeamTotal(team1Players, 'Deaths') }}</td>
+                  <td>{{ computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }}
+                    / {{ computeTeamTotal(team1Players, 'Deaths') }}</td>
                   <td>{{ computeTeamAvgKda(team1Players) }}</td>
                   <td></td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'HeroDamage')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'SiegeDamage')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'Healing') + computeTeamTotal(team1Players, 'SelfHealing')) }}</td>
+                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'Healing') + computeTeamTotal(team1Players,
+                    'SelfHealing')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'DamageTaken')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'ExperienceContribution')) }}</td>
                 </tr>
@@ -948,22 +993,25 @@ onMounted(() => {
       <!-- ============================================================== -->
       <!-- TAB 2: TALENTS & BUILDS                                        -->
       <!-- ============================================================== -->
-      <div v-else-if="activeTab === 'talents'" class="tab-pane">
+      <div v-else-if="activeTab === 'talents'"
+           class="tab-pane">
         <div class="talents-section-grid">
-          <div
-            v-for="p in [...team0Players, ...team1Players]"
-            :key="p.ToonHandle"
-            class="card talent-player-card"
-            :class="[p.team === 0 ? 'talent-card-blue' : 'talent-card-red', { 'highlighted-row': isPlayerHighlighted(p) }]"
-          >
+          <div v-for="p in [...team0Players, ...team1Players]"
+               :key="p.ToonHandle"
+               class="card talent-player-card"
+               :class="[p.team === 0 ? 'talent-card-blue' : 'talent-card-red', { 'highlighted-row': isPlayerHighlighted(p) }]">
             <div class="talent-card-header">
               <div class="player-info-wrap">
-                <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                <img :src="getHeroImageUrl(p.hero)"
+                     :alt="p.hero"
+                     class="hero-avatar" />
                 <div class="name-hero-col">
                   <div class="name-tag-row">
                     <span class="player-name">{{ p.name }}</span>
-                    <span v-if="p.tag" class="player-tag">#{{ p.tag }}</span>
-                    <span class="team-pill" :class="p.team === 0 ? 'pill-blue' : 'pill-red'">
+                    <span v-if="p.tag"
+                          class="player-tag">#{{ p.tag }}</span>
+                    <span class="team-pill"
+                          :class="p.team === 0 ? 'pill-blue' : 'pill-red'">
                       {{ p.team === 0 ? 'Blue' : 'Red' }}
                     </span>
                   </div>
@@ -972,11 +1020,9 @@ onMounted(() => {
               </div>
 
               <div class="build-code-action">
-                <button
-                  class="copy-code-btn"
-                  :class="{ copied: copiedPlayerHandle === p.ToonHandle }"
-                  @click="copyBuildCode(p)"
-                >
+                <button class="copy-code-btn"
+                        :class="{ copied: copiedPlayerHandle === p.ToonHandle }"
+                        @click="copyBuildCode(p)">
                   <span v-if="copiedPlayerHandle === p.ToonHandle">Copied! ✓</span>
                   <span v-else>📋 Copy In-Game Code</span>
                 </button>
@@ -985,59 +1031,46 @@ onMounted(() => {
 
             <!-- 7 Talent Tiers Breakdown -->
             <div class="talents-tiers-list">
-              <div
-                v-for="(tKey, idx) in getPlayerTalentList(p)"
-                :key="idx"
-                class="talent-tier-item"
-                :class="{ 'talent-unselected': !tKey }"
-              >
+              <div v-for="(tKey, idx) in getPlayerTalentList(p)"
+                   :key="idx"
+                   class="talent-tier-item"
+                   :class="{ 'talent-unselected': !tKey }">
                 <div class="tier-level-badge">Lvl {{ [1, 4, 7, 10, 13, 16, 20][idx] }}</div>
                 <div class="talent-icon-box">
-                  <img
-                    v-if="tKey"
-                    :src="getTalentImageUrl(tKey)"
-                    :alt="formatTalentName(tKey)"
-                    class="talent-detail-icon"
-                    @error="hideBrokenImage"
-                  />
-                  <span v-else class="talent-detail-placeholder">—</span>
+                  <img v-if="tKey"
+                       :src="getTalentImageUrl(tKey)"
+                       :alt="formatTalentName(tKey)"
+                       class="talent-detail-icon"
+                       @error="hideBrokenImage" />
+                  <span v-else
+                        class="talent-detail-placeholder">—</span>
                 </div>
                 <div class="talent-choice-detail">
                   <div class="talent-name-row">
                     <span class="talent-choice-name">{{ formatTalentName(tKey) || 'Not Reached / Selected' }}</span>
-                    <span
-                      v-if="getTalentInfo(tKey)?.type"
-                      class="talent-type-badge"
-                      :class="getTypeBadgeClass(getTalentInfo(tKey)?.type)"
-                    >
+                    <span v-if="getTalentInfo(tKey)?.type"
+                          class="talent-type-badge"
+                          :class="getTypeBadgeClass(getTalentInfo(tKey)?.type)">
                       {{ getTalentInfo(tKey)?.type }}
                     </span>
                   </div>
-                  <div
-                    v-if="getTalentInfo(tKey)?.description"
-                    class="talent-description"
-                    v-html="formatTalentDescriptionHtml(getTalentInfo(tKey)?.description)"
-                  ></div>
+                  <div v-if="getTalentInfo(tKey)?.description"
+                       class="talent-description"
+                       v-html="formatTalentDescriptionHtml(getTalentInfo(tKey)?.description)"></div>
 
                   <!-- Quest Progress / Tracking Stats -->
-                  <div
-                    v-if="getCorrelatedQuestStats(tKey, p.gameStats).length > 0"
-                    class="talent-quest-stats"
-                  >
-                    <div
-                      v-for="(stat, sIdx) in getCorrelatedQuestStats(tKey, p.gameStats)"
-                      :key="sIdx"
-                      class="talent-quest-badge"
-                      :class="{ 'quest-completed': stat.completed }"
-                    >
+                  <div v-if="getCorrelatedQuestStats(tKey, p.gameStats).length > 0"
+                       class="talent-quest-stats">
+                    <div v-for="(stat, sIdx) in getCorrelatedQuestStats(tKey, p.gameStats)"
+                         :key="sIdx"
+                         class="talent-quest-badge"
+                         :class="{ 'quest-completed': stat.completed }">
                       <span class="quest-stat-icon">{{ getQuestIcon(stat.type) }}</span>
                       <span class="quest-stat-text">{{ stat.displayText }}</span>
                     </div>
                   </div>
-                  <div
-                    v-else-if="isQuestTalent(tKey)"
-                    class="talent-quest-stats"
-                  >
+                  <div v-else-if="isQuestTalent(tKey)"
+                       class="talent-quest-stats">
                     <div class="talent-quest-untracked">
                       <span class="untracked-dot">•</span>
                       <span>Quest hits not logged in replay</span>
@@ -1053,7 +1086,8 @@ onMounted(() => {
       <!-- ============================================================== -->
       <!-- TAB 3: ADVANCED COMBAT & DAMAGE                                -->
       <!-- ============================================================== -->
-      <div v-else-if="activeTab === 'combat'" class="tab-pane">
+      <div v-else-if="activeTab === 'combat'"
+           class="tab-pane">
         <div class="table-container card">
           <table class="advanced-stat-table">
             <thead>
@@ -1073,17 +1107,18 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="p in [...team0Players, ...team1Players]"
-                :key="p.ToonHandle"
-                :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
-              >
+              <tr v-for="p in [...team0Players, ...team1Players]"
+                  :key="p.ToonHandle"
+                  :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
                 <td>
                   <div class="player-info-wrap">
-                    <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                    <img :src="getHeroImageUrl(p.hero)"
+                         :alt="p.hero"
+                         class="hero-avatar" />
                     <div>
                       <span class="player-name">{{ p.name }}</span>
-                      <span class="team-pill" :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
+                      <span class="team-pill"
+                            :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
                     </div>
                   </div>
                 </td>
@@ -1107,7 +1142,8 @@ onMounted(() => {
       <!-- ============================================================== -->
       <!-- TAB 4: DEFENSE, HEALING & CC                                   -->
       <!-- ============================================================== -->
-      <div v-else-if="activeTab === 'defense'" class="tab-pane">
+      <div v-else-if="activeTab === 'defense'"
+           class="tab-pane">
         <div class="table-container card">
           <table class="advanced-stat-table">
             <thead>
@@ -1126,17 +1162,18 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="p in [...team0Players, ...team1Players]"
-                :key="p.ToonHandle"
-                :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
-              >
+              <tr v-for="p in [...team0Players, ...team1Players]"
+                  :key="p.ToonHandle"
+                  :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
                 <td>
                   <div class="player-info-wrap">
-                    <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                    <img :src="getHeroImageUrl(p.hero)"
+                         :alt="p.hero"
+                         class="hero-avatar" />
                     <div>
                       <span class="player-name">{{ p.name }}</span>
-                      <span class="team-pill" :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
+                      <span class="team-pill"
+                            :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
                     </div>
                   </div>
                 </td>
@@ -1159,7 +1196,8 @@ onMounted(() => {
       <!-- ============================================================== -->
       <!-- TAB 5: SIEGE & MACRO                                           -->
       <!-- ============================================================== -->
-      <div v-else-if="activeTab === 'siege'" class="tab-pane">
+      <div v-else-if="activeTab === 'siege'"
+           class="tab-pane">
         <div class="table-container card">
           <table class="advanced-stat-table">
             <thead>
@@ -1177,17 +1215,18 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="p in [...team0Players, ...team1Players]"
-                :key="p.ToonHandle"
-                :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
-              >
+              <tr v-for="p in [...team0Players, ...team1Players]"
+                  :key="p.ToonHandle"
+                  :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
                 <td>
                   <div class="player-info-wrap">
-                    <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                    <img :src="getHeroImageUrl(p.hero)"
+                         :alt="p.hero"
+                         class="hero-avatar" />
                     <div>
                       <span class="player-name">{{ p.name }}</span>
-                      <span class="team-pill" :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
+                      <span class="team-pill"
+                            :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
                     </div>
                   </div>
                 </td>
@@ -1209,7 +1248,8 @@ onMounted(() => {
       <!-- ============================================================== -->
       <!-- TAB 6: BM & SOCIAL FLARES                                      -->
       <!-- ============================================================== -->
-      <div v-else-if="activeTab === 'bm'" class="tab-pane">
+      <div v-else-if="activeTab === 'bm'"
+           class="tab-pane">
         <div class="table-container card">
           <table class="advanced-stat-table">
             <thead>
@@ -1224,17 +1264,18 @@ onMounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="p in [...team0Players, ...team1Players]"
-                :key="p.ToonHandle"
-                :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
-              >
+              <tr v-for="p in [...team0Players, ...team1Players]"
+                  :key="p.ToonHandle"
+                  :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
                 <td>
                   <div class="player-info-wrap">
-                    <img :src="getHeroImageUrl(p.hero)" :alt="p.hero" class="hero-avatar" />
+                    <img :src="getHeroImageUrl(p.hero)"
+                         :alt="p.hero"
+                         class="hero-avatar" />
                     <div>
                       <span class="player-name">{{ p.name }}</span>
-                      <span class="team-pill" :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
+                      <span class="team-pill"
+                            :class="p.team === 0 ? 'pill-blue' : 'pill-red'">{{ p.hero }}</span>
                     </div>
                   </div>
                 </td>
@@ -1244,7 +1285,8 @@ onMounted(() => {
                 <td class="num-cell">💃 {{ p.dances?.length || 0 }}</td>
                 <td class="num-cell">🎙️ {{ (p.gameStats?.bsteps || 0) > 0 ? p.gameStats?.bsteps : '-' }}</td>
                 <td class="num-cell bold-cell">
-                  {{ (p.bsteps?.length || 0) + (p.sprays?.length || 0) + (p.taunts?.length || 0) + (p.dances?.length || 0) }}
+                  {{ (p.bsteps?.length || 0) + (p.sprays?.length || 0) + (p.taunts?.length || 0) + (p.dances?.length ||
+                  0) }}
                 </td>
               </tr>
             </tbody>
@@ -1255,25 +1297,20 @@ onMounted(() => {
 
     <!-- Custom Floating HotS Talent Tooltip -->
     <Teleport to="body">
-      <div
-        v-if="activeTooltip.visible"
-        class="hots-talent-tooltip"
-        :style="tooltipStyle"
-      >
-        <div
-          class="tooltip-inner"
-          :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }"
-        >
+      <div v-if="activeTooltip.visible"
+           class="hots-talent-tooltip"
+           :style="tooltipStyle">
+        <div class="tooltip-inner"
+             :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }">
           <div class="tooltip-header">
             <div class="tooltip-icon-wrap">
-              <img
-                v-if="activeTooltip.talentKey"
-                :src="getTalentImageUrl(activeTooltip.talentKey)"
-                :alt="getTooltipTalentName(activeTooltip.talentKey, activeTooltip.tierIndex)"
-                class="tooltip-talent-img"
-                @error="hideBrokenImage"
-              />
-              <span v-else class="tooltip-empty-lvl">
+              <img v-if="activeTooltip.talentKey"
+                   :src="getTalentImageUrl(activeTooltip.talentKey)"
+                   :alt="getTooltipTalentName(activeTooltip.talentKey, activeTooltip.tierIndex)"
+                   class="tooltip-talent-img"
+                   @error="hideBrokenImage" />
+              <span v-else
+                    class="tooltip-empty-lvl">
                 {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
               </span>
             </div>
@@ -1283,11 +1320,9 @@ onMounted(() => {
                 <span class="tooltip-lvl-badge">
                   Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
                 </span>
-                <span
-                  v-if="getTalentInfo(activeTooltip.talentKey)?.type"
-                  class="tooltip-type-badge"
-                  :class="getTypeBadgeClass(getTalentInfo(activeTooltip.talentKey)?.type)"
-                >
+                <span v-if="getTalentInfo(activeTooltip.talentKey)?.type"
+                      class="tooltip-type-badge"
+                      :class="getTypeBadgeClass(getTalentInfo(activeTooltip.talentKey)?.type)">
                   {{ getTalentInfo(activeTooltip.talentKey)?.type }}
                 </span>
               </div>
@@ -1298,37 +1333,32 @@ onMounted(() => {
           </div>
 
           <div class="tooltip-body">
-            <div
-              v-if="getTalentInfo(activeTooltip.talentKey)?.description"
-              class="tooltip-desc"
-              v-html="formatTalentDescriptionHtml(getTalentInfo(activeTooltip.talentKey)?.description)"
-            ></div>
-            <div v-else-if="activeTooltip.talentKey" class="tooltip-desc fallback-desc">
+            <div v-if="getTalentInfo(activeTooltip.talentKey)?.description"
+                 class="tooltip-desc"
+                 v-html="formatTalentDescriptionHtml(getTalentInfo(activeTooltip.talentKey)?.description)"></div>
+            <div v-else-if="activeTooltip.talentKey"
+                 class="tooltip-desc fallback-desc">
               {{ formatTalentName(activeTooltip.talentKey) }}
             </div>
-            <div v-else class="tooltip-desc empty-desc">
-              Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }} talent was not reached or selected in this match.
+            <div v-else
+                 class="tooltip-desc empty-desc">
+              Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }} talent was not reached or selected in this
+              match.
             </div>
 
             <!-- Quest Progress / Tracking Stats -->
-            <div
-              v-if="activeTooltip.player && getCorrelatedQuestStats(activeTooltip.talentKey, activeTooltip.player.gameStats).length > 0"
-              class="tooltip-quest-section"
-            >
-              <div
-                v-for="(stat, sIdx) in getCorrelatedQuestStats(activeTooltip.talentKey, activeTooltip.player.gameStats)"
-                :key="sIdx"
-                class="tooltip-quest-badge"
-                :class="{ 'quest-completed': stat.completed }"
-              >
+            <div v-if="activeTooltip.player && getCorrelatedQuestStats(activeTooltip.talentKey, activeTooltip.player.gameStats).length > 0"
+                 class="tooltip-quest-section">
+              <div v-for="(stat, sIdx) in getCorrelatedQuestStats(activeTooltip.talentKey, activeTooltip.player.gameStats)"
+                   :key="sIdx"
+                   class="tooltip-quest-badge"
+                   :class="{ 'quest-completed': stat.completed }">
                 <span class="quest-stat-icon">{{ getQuestIcon(stat.type) }}</span>
                 <span class="quest-stat-text">{{ stat.displayText }}</span>
               </div>
             </div>
-            <div
-              v-else-if="activeTooltip.player && isQuestTalent(activeTooltip.talentKey)"
-              class="tooltip-quest-section"
-            >
+            <div v-else-if="activeTooltip.player && isQuestTalent(activeTooltip.talentKey)"
+                 class="tooltip-quest-section">
               <div class="tooltip-quest-untracked">
                 <span class="untracked-dot">•</span>
                 <span>Quest hits not logged in replay</span>
@@ -1338,7 +1368,8 @@ onMounted(() => {
 
           <div class="tooltip-footer">
             <span class="tooltip-footer-tier">Tier {{ activeTooltip.tierIndex + 1 }}</span>
-            <span v-if="getTalentInfo(activeTooltip.talentKey)?.hero || activeTooltip.heroName" class="tooltip-footer-hero">
+            <span v-if="getTalentInfo(activeTooltip.talentKey)?.hero || activeTooltip.heroName"
+                  class="tooltip-footer-hero">
               {{ getTalentInfo(activeTooltip.talentKey)?.hero || activeTooltip.heroName }}
             </span>
           </div>
@@ -2157,7 +2188,7 @@ onMounted(() => {
   bottom: 0;
   right: 0;
   background: rgba(0, 0, 0, 0.8);
-  font-size: 0.55rem;
+  font-size: 0.65rem;
   font-family: var(--font-mono);
   color: #fff;
   padding: 0 2px;
