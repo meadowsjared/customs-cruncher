@@ -15,6 +15,8 @@ import {
   getTalentBuildCode,
   resolveHeroName,
   formatTalentDescriptionHtml,
+  isQuestTalent,
+  getCorrelatedQuestStats,
 } from '../utils/hots'
 
 const route = useRoute()
@@ -126,6 +128,7 @@ interface ActiveTooltipState {
   talentKey?: string
   tierIndex: number
   heroName: string
+  player?: ReplayPlayer
   x: number
   y: number
 }
@@ -138,12 +141,13 @@ const activeTooltip = ref<ActiveTooltipState>({
   y: 0,
 })
 
-function showTalentTooltip(event: MouseEvent, talentKey?: string, tierIndex: number = 0, heroName: string = '') {
+function showTalentTooltip(event: MouseEvent, talentKey?: string, tierIndex: number = 0, player?: ReplayPlayer) {
   activeTooltip.value = {
     visible: true,
     talentKey,
     tierIndex,
-    heroName,
+    heroName: player?.hero || '',
+    player,
     x: event.clientX,
     y: event.clientY,
   }
@@ -157,6 +161,13 @@ function updateTooltipPosition(event: MouseEvent) {
 
 function hideTalentTooltip() {
   activeTooltip.value.visible = false
+}
+
+function getQuestIcon(type: string): string {
+  if (type === 'globe') return '🔮'
+  if (type === 'takedown') return '⚔️'
+  if (type === 'minion') return '🌾'
+  return '✦'
 }
 
 function getTooltipTalentName(talentKey?: string, tierIndex: number = 0): string {
@@ -182,7 +193,7 @@ function getTypeBadgeClass(type?: string): string {
 const tooltipStyle = computed(() => {
   const padding = 16
   const tooltipWidth = 330
-  const tooltipHeight = 170
+  const tooltipHeight = 240
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
 
@@ -475,7 +486,12 @@ onMounted(() => {
             <!-- Blue Team Draft Side -->
             <div class="draft-team-side blue-side">
               <div class="draft-side-title-row">
-                <span class="team-label blue-label">Blue Team</span>
+                <div class="draft-title-left">
+                  <span class="team-color-indicator blue-indicator"></span>
+                  <span class="team-label blue-label">Blue Team</span>
+                  <span v-if="match.winner === 0" class="badge badge-win">VICTORY 🏆</span>
+                  <span v-else-if="match.winner === 1" class="badge badge-loss">DEFEAT</span>
+                </div>
                 <span v-if="firstPickTeam === 0" class="first-pick-tag">First Pick</span>
               </div>
 
@@ -526,7 +542,12 @@ onMounted(() => {
             <!-- Red Team Draft Side -->
             <div class="draft-team-side red-side">
               <div class="draft-side-title-row">
-                <span class="team-label red-label">Red Team</span>
+                <div class="draft-title-left">
+                  <span class="team-color-indicator red-indicator"></span>
+                  <span class="team-label red-label">Red Team</span>
+                  <span v-if="match.winner === 1" class="badge badge-win">VICTORY 🏆</span>
+                  <span v-else-if="match.winner === 0" class="badge badge-loss">DEFEAT</span>
+                </div>
                 <span v-if="firstPickTeam === 1" class="first-pick-tag">First Pick</span>
               </div>
 
@@ -572,11 +593,17 @@ onMounted(() => {
         </div>
 
         <!-- Blue Team Table -->
-        <div class="team-section team-0-section">
-          <div class="team-section-header">
+        <div
+          class="team-section team-0-section"
+          :class="match.winner === 0 ? 'team-winner' : 'team-loser'"
+        >
+          <div
+            class="team-section-header"
+            :class="match.winner === 0 ? 'header-winner' : 'header-loser'"
+          >
             <div class="team-title-group">
               <span class="team-color-indicator blue-indicator"></span>
-              <h2>Blue Team</h2>
+              <h2 class="team-title-blue">Blue Team</h2>
               <span v-if="match.winner === 0" class="badge badge-win">VICTORY 🏆</span>
               <span v-else class="badge badge-loss">DEFEAT</span>
             </div>
@@ -650,7 +677,7 @@ onMounted(() => {
                         v-for="(tKey, idx) in getPlayerTalentList(p)"
                         :key="idx"
                         class="talent-mini-slot"
-                        @mouseenter="showTalentTooltip($event, tKey, idx, p.hero)"
+                        @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                         @mousemove="updateTooltipPosition($event)"
                         @mouseleave="hideTalentTooltip"
                       >
@@ -723,11 +750,17 @@ onMounted(() => {
         </div>
 
         <!-- Red Team Table -->
-        <div class="team-section team-1-section">
-          <div class="team-section-header">
+        <div
+          class="team-section team-1-section"
+          :class="match.winner === 1 ? 'team-winner' : 'team-loser'"
+        >
+          <div
+            class="team-section-header"
+            :class="match.winner === 1 ? 'header-winner' : 'header-loser'"
+          >
             <div class="team-title-group">
               <span class="team-color-indicator red-indicator"></span>
-              <h2>Red Team</h2>
+              <h2 class="team-title-red">Red Team</h2>
               <span v-if="match.winner === 1" class="badge badge-win">VICTORY 🏆</span>
               <span v-else class="badge badge-loss">DEFEAT</span>
             </div>
@@ -801,7 +834,7 @@ onMounted(() => {
                         v-for="(tKey, idx) in getPlayerTalentList(p)"
                         :key="idx"
                         class="talent-mini-slot"
-                        @mouseenter="showTalentTooltip($event, tKey, idx, p.hero)"
+                        @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                         @mousemove="updateTooltipPosition($event)"
                         @mouseleave="hideTalentTooltip"
                       >
@@ -883,7 +916,7 @@ onMounted(() => {
             v-for="p in [...team0Players, ...team1Players]"
             :key="p.ToonHandle"
             class="card talent-player-card"
-            :class="{ 'highlighted-row': isPlayerHighlighted(p) }"
+            :class="[p.team === 0 ? 'talent-card-blue' : 'talent-card-red', { 'highlighted-row': isPlayerHighlighted(p) }]"
           >
             <div class="talent-card-header">
               <div class="player-info-wrap">
@@ -947,6 +980,31 @@ onMounted(() => {
                     class="talent-description"
                     v-html="formatTalentDescriptionHtml(getTalentInfo(tKey)?.description)"
                   ></div>
+
+                  <!-- Quest Progress / Tracking Stats -->
+                  <div
+                    v-if="getCorrelatedQuestStats(tKey, p.gameStats).length > 0"
+                    class="talent-quest-stats"
+                  >
+                    <div
+                      v-for="(stat, sIdx) in getCorrelatedQuestStats(tKey, p.gameStats)"
+                      :key="sIdx"
+                      class="talent-quest-badge"
+                      :class="{ 'quest-completed': stat.completed }"
+                    >
+                      <span class="quest-stat-icon">{{ getQuestIcon(stat.type) }}</span>
+                      <span class="quest-stat-text">{{ stat.displayText }}</span>
+                    </div>
+                  </div>
+                  <div
+                    v-else-if="isQuestTalent(tKey)"
+                    class="talent-quest-stats"
+                  >
+                    <div class="talent-quest-untracked">
+                      <span class="untracked-dot">•</span>
+                      <span>Quest hits not logged in replay</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1213,6 +1271,31 @@ onMounted(() => {
             <div v-else class="tooltip-desc empty-desc">
               Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }} talent was not reached or selected in this match.
             </div>
+
+            <!-- Quest Progress / Tracking Stats -->
+            <div
+              v-if="activeTooltip.player && getCorrelatedQuestStats(activeTooltip.talentKey, activeTooltip.player.gameStats).length > 0"
+              class="tooltip-quest-section"
+            >
+              <div
+                v-for="(stat, sIdx) in getCorrelatedQuestStats(activeTooltip.talentKey, activeTooltip.player.gameStats)"
+                :key="sIdx"
+                class="tooltip-quest-badge"
+                :class="{ 'quest-completed': stat.completed }"
+              >
+                <span class="quest-stat-icon">{{ getQuestIcon(stat.type) }}</span>
+                <span class="quest-stat-text">{{ stat.displayText }}</span>
+              </div>
+            </div>
+            <div
+              v-else-if="activeTooltip.player && isQuestTalent(activeTooltip.talentKey)"
+              class="tooltip-quest-section"
+            >
+              <div class="tooltip-quest-untracked">
+                <span class="untracked-dot">•</span>
+                <span>Quest hits not logged in replay</span>
+              </div>
+            </div>
           </div>
 
           <div class="tooltip-footer">
@@ -1337,18 +1420,189 @@ onMounted(() => {
   animation: float 3s ease-in-out infinite;
 }
 
+/* Unified Team Card Container */
 .team-section {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  margin-bottom: 2rem;
+  margin-bottom: 2.25rem;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s ease;
 }
 
+/* Outer borders matching winning or losing color */
+.team-section.team-winner {
+  border: 1px solid rgba(16, 185, 129, 0.55);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(16, 185, 129, 0.16);
+}
+
+.team-section.team-loser {
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 20px rgba(220, 38, 38, 0.12);
+}
+
+/* Team Header integrated into the top bar of the card */
 .team-section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 0.5rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+/* Nice emerald green top-accent and subtle victory wash for winner */
+.team-section-header.header-winner {
+  border-top: 3px solid #10b981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.14) 0%, rgba(5, 150, 105, 0.05) 50%, transparent 100%);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.team-section-header.header-winner .badge-win {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+}
+
+.team-section-header.header-winner .stat-pill {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(52, 211, 153, 0.28);
+  color: #ecfdf5;
+}
+
+.team-section-header.header-winner .ban-inline-pill {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(52, 211, 153, 0.22);
+  color: #a7f3d0;
+}
+
+.team-section-header.header-winner .bans-inline-label {
+  color: #34d399;
+}
+
+/* Sad red top-accent and subtle defeat wash for loser */
+.team-section-header.header-loser {
+  border-top: 3px solid rgba(220, 38, 38, 0.8);
+  background: linear-gradient(90deg, rgba(185, 28, 28, 0.12) 0%, rgba(127, 29, 29, 0.04) 50%, transparent 100%);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.team-section-header.header-loser .badge-loss {
+  background: rgba(185, 28, 28, 0.16);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  opacity: 0.9;
+}
+
+.team-section-header.header-loser .stat-pill {
+  background: rgba(185, 28, 28, 0.08);
+  border-color: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+  opacity: 0.85;
+}
+
+.team-section-header.header-loser .ban-inline-pill {
+  background: rgba(185, 28, 28, 0.06);
+  border-color: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  opacity: 0.85;
+}
+
+.team-section-header.header-loser .bans-inline-label {
+  color: #f87171;
+  opacity: 0.8;
+}
+
+/* Respective colors for team titles matching their dots */
+.team-title-blue {
+  color: var(--team-0) !important;
+  font-weight: 800;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+
+.team-title-red {
+  color: var(--team-1) !important;
+  font-weight: 800;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 12px rgba(244, 63, 94, 0.4);
+}
+
+/* Table inside the unified team card */
+.team-section .table-container {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Blue Team Themed Table */
+.team-0-section .table-container {
+  background: rgba(10, 18, 34, 0.98);
+}
+
+.team-0-section th {
+  background: rgba(14, 25, 48, 0.98);
+  color: #93c5fd;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+  font-size: 0.73rem;
+  letter-spacing: 0.05em;
+}
+
+.team-0-section tbody tr {
+  border-bottom: 1px solid rgba(56, 189, 248, 0.08);
+}
+
+.team-0-section tbody tr:hover {
+  background: rgba(56, 189, 248, 0.08) !important;
+}
+
+.team-0-section tfoot tr,
+.team-0-section tr.team-totals-row {
+  background: rgba(13, 23, 44, 0.98);
+  border-top: 2px solid rgba(56, 189, 248, 0.28);
+  color: #e0f2fe;
+}
+
+/* Red Team Themed Table */
+.team-1-section .table-container {
+  background: rgba(24, 11, 16, 0.98);
+}
+
+.team-1-section th {
+  background: rgba(33, 15, 23, 0.98);
+  color: #fda4af;
+  border-bottom: 1px solid rgba(244, 63, 94, 0.18);
+  font-size: 0.73rem;
+  letter-spacing: 0.05em;
+}
+
+.team-1-section tbody tr {
+  border-bottom: 1px solid rgba(244, 63, 94, 0.08);
+}
+
+.team-1-section tbody tr:hover {
+  background: rgba(244, 63, 94, 0.08) !important;
+}
+
+.team-1-section tfoot tr,
+.team-1-section tr.team-totals-row {
+  background: rgba(29, 13, 20, 0.98);
+  border-top: 2px solid rgba(244, 63, 94, 0.28);
+  color: #ffe4e6;
 }
 
 .team-title-group {
@@ -1527,6 +1781,16 @@ onMounted(() => {
   gap: 1rem;
 }
 
+.talent-player-card.talent-card-blue {
+  background: linear-gradient(180deg, rgba(14, 34, 61, 0.65) 0%, var(--bg-surface) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.talent-player-card.talent-card-red {
+  background: linear-gradient(180deg, rgba(55, 14, 25, 0.65) 0%, var(--bg-surface) 100%);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
 .talent-card-header {
   display: flex;
   justify-content: space-between;
@@ -1687,10 +1951,54 @@ onMounted(() => {
   gap: 0.75rem;
 }
 
+.draft-team-side.blue-side {
+  background: linear-gradient(180deg, rgba(14, 34, 61, 0.45) 0%, rgba(10, 20, 38, 0.25) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+}
+
+.draft-team-side.red-side {
+  background: linear-gradient(180deg, rgba(55, 14, 25, 0.45) 0%, rgba(32, 10, 18, 0.25) 100%);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+}
+
 .draft-side-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.draft-title-left {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.draft-title-left .badge-win {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+}
+
+.draft-title-left .badge-loss {
+  background: rgba(185, 28, 28, 0.16);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+  opacity: 0.9;
 }
 
 .team-label {

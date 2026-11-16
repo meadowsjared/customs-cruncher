@@ -206,24 +206,179 @@ export function formatTalentName(talentKey?: string): string {
   return cleaned.replace(/([A-Z])/g, ' $1').trim()
 }
 
+export function splitTalentDescriptionSections(description?: string): string[] {
+  if (!description) return []
+  const regex = /(?:^|\s+)((?:Repeatable\s+)?(?:Quest|Reward|Passive|Active|Gambit):)/g
+  let match: RegExpExecArray | null
+  const indices: { start: number; keyword: string }[] = []
+
+  while ((match = regex.exec(description)) !== null) {
+    const keywordStart = match.index + (match[0].length - match[1].length)
+    indices.push({ start: keywordStart, keyword: match[1] })
+  }
+
+  if (indices.length === 0) {
+    return [description.trim()]
+  }
+
+  const sections: string[] = []
+  if (indices[0].start > 0) {
+    const prefix = description.slice(0, indices[0].start).trim()
+    if (prefix) sections.push(prefix)
+  }
+
+  for (let i = 0; i < indices.length; i++) {
+    const start = indices[i].start
+    const end = i + 1 < indices.length ? indices[i + 1].start : description.length
+    sections.push(description.slice(start, end).trim())
+  }
+
+  return sections
+}
+
 export function getTalentTooltip(talentKey?: string, tierIndex: number = 0): string {
   const level = [1, 4, 7, 10, 13, 16, 20][tierIndex] || 1
   if (!talentKey) return `Level ${level}: Not reached or unselected`
   const info = talentsMap[talentKey]
   if (!info) return `Level ${level}: ${formatTalentName(talentKey)}`
   const typeStr = info.type ? ` [${info.type}]` : ''
-  const desc = info.description ? `\n\n${info.description}` : ''
+  const sections = splitTalentDescriptionSections(info.description)
+  const desc = sections.length > 0 ? `\n\n${sections.join('\n')}` : ''
   return `Level ${level}${typeStr}: ${info.name}${desc}`
 }
 
 export function formatTalentDescriptionHtml(description?: string): string {
   if (!description) return ''
-  return description
-    .replace(/(Quest:)/g, '<span class="tooltip-quest">$1</span>')
-    .replace(/(Reward:)/g, '<span class="tooltip-reward">$1</span>')
-    .replace(/(Passive:)/g, '<span class="tooltip-passive">$1</span>')
-    .replace(/(Active:)/g, '<span class="tooltip-active">$1</span>')
-    .replace(/(\b(?:[0-9]+(?:\.[0-9]+)?%|\+[0-9]+%|[0-9]+(?:\.[0-9]+)?\s*(?:seconds?|sec)|[0-9]+\s*Mana)\b)/g, '<span class="tooltip-num">$1</span>')
+  const sections = splitTalentDescriptionSections(description)
+
+  return sections
+    .map((section) => {
+      const formatted = section
+        .replace(/(Repeatable Quest:|Quest:)/g, '<span class="tooltip-quest">$1</span>')
+        .replace(/(Reward:)/g, '<span class="tooltip-reward">$1</span>')
+        .replace(/(Passive:)/g, '<span class="tooltip-passive">$1</span>')
+        .replace(/(Active:)/g, '<span class="tooltip-active">$1</span>')
+        .replace(/(Gambit:)/g, '<span class="tooltip-gambit">$1</span>')
+        .replace(/(\b(?:[0-9]+(?:\.[0-9]+)?%|\+[0-9]+%|[0-9]+(?:\.[0-9]+)?\s*(?:seconds?|sec)|[0-9]+\s*Mana)\b)/g, '<span class="tooltip-num">$1</span>')
+      return `<div class="tooltip-desc-line">${formatted}</div>`
+    })
+    .join('')
+}
+
+export interface CorrelatedQuestStat {
+  type: 'globe' | 'takedown' | 'minion'
+  label: string
+  current: number
+  target?: number
+  completed?: boolean
+  pct?: number
+  displayText: string
+}
+
+export function isQuestTalent(talentKey?: string): boolean {
+  if (!talentKey) return false
+  const info = talentsMap[talentKey]
+  if (!info || !info.description) return false
+  return /(?:^|\s+)((?:Repeatable\s+)?Quest:)/i.test(info.description)
+}
+
+export function getCorrelatedQuestStats(
+  talentKey?: string,
+  gameStats?: { RegenGlobes?: number; Takedowns?: number; MinionKills?: number }
+): CorrelatedQuestStat[] {
+  if (!talentKey || !gameStats) return []
+  const info = talentsMap[talentKey]
+  if (!info || !info.description) return []
+  const desc = info.description
+
+  const isQuest = /(?:^|\s+)((?:Repeatable\s+)?Quest:)/i.test(desc)
+  if (!isQuest) return []
+
+  const results: CorrelatedQuestStat[] = []
+
+  // 1. Globe Quests
+  if (/regeneration globe|regen globe|\bglobes?\b/i.test(desc)) {
+    const globes = gameStats.RegenGlobes || 0
+    const targetMatches = Array.from(
+      desc.matchAll(/(?:gather(?:ing)?|collect(?:ing)?|upon gathering|after gathering|after collecting|every)\s+([0-9]+)\s+(?:regeneration\s+globes?|regen\s+globes?|globes?)/gi)
+    )
+    let target: number | undefined
+    if (targetMatches.length > 0) {
+      const numbers: number[] = []
+      for (const m of targetMatches) {
+        const val = parseInt(m[1], 10)
+        if (!isNaN(val)) numbers.push(val)
+      }
+      if (numbers.length > 0) {
+        target = Math.max(...numbers)
+      }
+    }
+
+    if (target !== undefined) {
+      const completed = globes >= target
+      const pct = Math.min(100, Math.round((globes / target) * 100))
+      results.push({
+        type: 'globe',
+        label: 'Regen Globes',
+        current: globes,
+        target,
+        completed,
+        pct,
+        displayText: completed ? `${globes} / ${target} Globes (Completed ✓)` : `${globes} / ${target} Globes (${pct}%)`,
+      })
+    } else {
+      results.push({
+        type: 'globe',
+        label: 'Regen Globes',
+        current: globes,
+        displayText: `${globes} Globes Gathered`,
+      })
+    }
+  }
+
+  // 2. Takedowns
+  if (/\btakedowns?\b/i.test(desc)) {
+    const takedowns = gameStats.Takedowns || 0
+    const targetMatch = desc.match(/(?:participate in|reach|after)\s+([0-9]+)\s+(?:hero\s+)?takedowns?/i)
+    let target: number | undefined
+    if (targetMatch) {
+      const val = parseInt(targetMatch[1], 10)
+      if (!isNaN(val)) target = val
+    }
+    if (target !== undefined) {
+      const completed = takedowns >= target
+      const pct = Math.min(100, Math.round((takedowns / target) * 100))
+      results.push({
+        type: 'takedown',
+        label: 'Takedowns',
+        current: takedowns,
+        target,
+        completed,
+        pct,
+        displayText: completed ? `${takedowns} / ${target} Takedowns (Completed ✓)` : `${takedowns} / ${target} Takedowns (${pct}%)`,
+      })
+    } else {
+      results.push({
+        type: 'takedown',
+        label: 'Takedowns',
+        current: takedowns,
+        displayText: `${takedowns} Match Takedowns`,
+      })
+    }
+  }
+
+  // 3. Minion Kills
+  if (/minions?\b/i.test(desc) && /kill|die/i.test(desc)) {
+    const minionKills = gameStats.MinionKills || 0
+    results.push({
+      type: 'minion',
+      label: 'Minion Kills',
+      current: minionKills,
+      displayText: `${minionKills} Minions Killed`,
+    })
+  }
+
+  return results
 }
 
 export function getTalentBuildCode(player: { hero: string; gameStats?: { Tier1Talent?: number; Tier2Talent?: number; Tier3Talent?: number; Tier4Talent?: number; Tier5Talent?: number; Tier6Talent?: number; Tier7Talent?: number } }): string {
