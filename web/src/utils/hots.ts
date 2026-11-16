@@ -107,7 +107,7 @@ const heroAttrMap: Record<string, string> = {
   ZULJ: "Zul'jin",
 }
 
-export function resolveHeroName(rawOrCode: string): string {
+export function resolveHeroName(rawOrCode?: string | null): string {
   if (!rawOrCode) return ''
   return heroAttrMap[rawOrCode] || rawOrCode
 }
@@ -155,7 +155,7 @@ export function getMapImageUrl(mapName: string): string {
   return `/maps/${filename}.png`
 }
 
-export function getHeroImageUrl(heroName: string): string {
+export function getHeroImageUrl(heroName?: string | null): string {
   if (!heroName) return ''
   const resolved = resolveHeroName(heroName)
   const mappedFilename = heroMap[resolved] || heroMap[heroName]

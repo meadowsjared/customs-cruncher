@@ -132,10 +132,10 @@ export interface ReplayBanItem {
 }
 
 export interface ReplayPicks {
-  0?: string[]
-  1?: string[]
+  0?: (string | null)[]
+  1?: (string | null)[]
   first?: number
-  [key: string]: string[] | number | undefined
+  [key: string]: (string | null)[] | number | undefined
 }
 
 export interface ReplayDetail {

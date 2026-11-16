@@ -57,13 +57,13 @@ const team1Players = computed(() => {
 const team0Bans = computed<ReplayBanItem[]>(() => match.value?.bans?.['0'] || [])
 const team1Bans = computed<ReplayBanItem[]>(() => match.value?.bans?.['1'] || [])
 
-const team0Picks = computed<string[]>(() => {
+const team0Picks = computed<(string | null)[]>(() => {
   const p = match.value?.picks?.['0'] || match.value?.picks?.[0]
   if (Array.isArray(p)) return p
   return []
 })
 
-const team1Picks = computed<string[]>(() => {
+const team1Picks = computed<(string | null)[]>(() => {
   const p = match.value?.picks?.['1'] || match.value?.picks?.[1]
   if (Array.isArray(p)) return p
   return []
@@ -96,13 +96,39 @@ function getPickNumber(team: number, pickIndex: number): number {
     : (secondPickOrder[pickIndex] || pickIndex + 1)
 }
 
-function getPlayerPickOrder(heroName: string, team: number): number | null {
+function getPlayerPickOrder(heroName: string | undefined | null, team: number): number | null {
+  if (!heroName) return null
   const picks = team === 0 ? team0Picks.value : team1Picks.value
+  if (!picks.length) return null
+
   const cleanHero = resolveHeroName(heroName).toLowerCase()
-  const idx = picks.findIndex(p => {
+  let idx = picks.findIndex(p => {
+    if (!p) return false
     const pClean = resolveHeroName(p).toLowerCase()
     return pClean === cleanHero || p.toLowerCase() === heroName.toLowerCase()
   })
+
+  // If this hero wasn't directly matched and there is an unassigned (null) slot in picks,
+  // check if this player is the single remaining unmatched player on the team
+  if (idx === -1) {
+    const nullIdx = picks.findIndex(p => !p)
+    if (nullIdx !== -1) {
+      const players = team === 0 ? team0Players.value : team1Players.value
+      const unmatchedPlayers = players.filter(pl => {
+        if (!pl.hero) return false
+        const plClean = resolveHeroName(pl.hero).toLowerCase()
+        return !picks.some(p => {
+          if (!p) return false
+          const pClean = resolveHeroName(p).toLowerCase()
+          return pClean === plClean || p.toLowerCase() === pl.hero.toLowerCase()
+        })
+      })
+      if (unmatchedPlayers.length === 1 && unmatchedPlayers[0]?.hero === heroName) {
+        idx = nullIdx
+      }
+    }
+  }
+
   if (idx === -1) return null
   return getPickNumber(team, idx)
 }
@@ -258,10 +284,10 @@ const maxStats = computed(() => {
 function isPlayerHighlighted(player: ReplayPlayer): boolean {
   if (!targetAccount.value && !targetHero.value) return false
 
-  if (targetAccount.value) {
+  if (targetAccount.value && player.name) {
     const normName = player.name.toLowerCase()
-    const normTag = `${player.name}-${player.tag}`.toLowerCase()
-    const altTag = `${player.name}_${player.tag}`.toLowerCase()
+    const normTag = `${player.name}-${player.tag || ''}`.toLowerCase()
+    const altTag = `${player.name}_${player.tag || ''}`.toLowerCase()
     if (
       targetAccount.value === normName ||
       targetAccount.value === normTag ||
@@ -272,7 +298,7 @@ function isPlayerHighlighted(player: ReplayPlayer): boolean {
     }
   }
 
-  if (targetHero.value && player.hero.toLowerCase() === targetHero.value) {
+  if (targetHero.value && player.hero && player.hero.toLowerCase() === targetHero.value) {
     return true
   }
 
@@ -520,15 +546,15 @@ onMounted(() => {
                 <div class="draft-chips-wrap">
                   <div
                     v-for="(pick, pIdx) in team0Picks"
-                    :key="pick"
+                    :key="pick || pIdx"
                     class="pick-hero-chip"
-                    :title="`Pick #${getPickNumber(0, pIdx)}: ${resolveHeroName(pick)}`"
+                    :title="`Pick #${getPickNumber(0, pIdx)}: ${resolveHeroName(pick) || 'Unknown'}`"
                   >
                     <div class="pick-avatar-box">
-                      <img :src="getHeroImageUrl(pick)" :alt="pick" class="pick-hero-img" @error="hideBrokenImage" />
+                      <img :src="getHeroImageUrl(pick)" :alt="pick || 'Unknown'" class="pick-hero-img" @error="hideBrokenImage" />
                       <span class="pick-num-badge">#{{ getPickNumber(0, pIdx) }}</span>
                     </div>
-                    <span class="pick-hero-text">{{ resolveHeroName(pick) }}</span>
+                    <span class="pick-hero-text">{{ resolveHeroName(pick) || 'Unknown' }}</span>
                   </div>
                 </div>
               </div>
@@ -576,15 +602,15 @@ onMounted(() => {
                 <div class="draft-chips-wrap">
                   <div
                     v-for="(pick, pIdx) in team1Picks"
-                    :key="pick"
+                    :key="pick || pIdx"
                     class="pick-hero-chip"
-                    :title="`Pick #${getPickNumber(1, pIdx)}: ${resolveHeroName(pick)}`"
+                    :title="`Pick #${getPickNumber(1, pIdx)}: ${resolveHeroName(pick) || 'Unknown'}`"
                   >
                     <div class="pick-avatar-box">
-                      <img :src="getHeroImageUrl(pick)" :alt="pick" class="pick-hero-img" @error="hideBrokenImage" />
+                      <img :src="getHeroImageUrl(pick)" :alt="pick || 'Unknown'" class="pick-hero-img" @error="hideBrokenImage" />
                       <span class="pick-num-badge">#{{ getPickNumber(1, pIdx) }}</span>
                     </div>
-                    <span class="pick-hero-text">{{ resolveHeroName(pick) }}</span>
+                    <span class="pick-hero-text">{{ resolveHeroName(pick) || 'Unknown' }}</span>
                   </div>
                 </div>
               </div>
