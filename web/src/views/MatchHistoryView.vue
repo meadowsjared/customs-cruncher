@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import type { ReplaySummary, ReplaysApiResponse } from '../types'
 import {
   formatDuration,
@@ -11,13 +11,112 @@ import {
 } from '../utils/hots'
 
 const router = useRouter()
+const route = useRoute()
 const replays = ref<ReplaySummary[]>([])
 const loading = ref(true)
 const page = ref(1)
 const totalPages = ref(1)
 const total = ref(0)
+const limit = ref(15)
 const search = ref('')
 const selectedMap = ref('')
+const jumpPageInput = ref('')
+
+interface PaginationItem {
+  type: 'page' | 'ellipsis'
+  page?: number
+  label: string
+  active?: boolean
+  key: string
+}
+
+const paginationItems = computed<PaginationItem[]>(() => {
+  const current = page.value
+  const totalCount = totalPages.value
+  if (totalCount <= 1) return []
+
+  const items: PaginationItem[] = []
+
+  if (totalCount <= 7) {
+    for (let p = 1; p <= totalCount; p++) {
+      items.push({
+        type: 'page',
+        page: p,
+        label: String(p),
+        active: p === current,
+        key: `page-${p}`,
+      })
+    }
+    return items
+  }
+
+  // Always show first page
+  items.push({
+    type: 'page',
+    page: 1,
+    label: '1',
+    active: current === 1,
+    key: 'page-1',
+  })
+
+  // Determine window around current page
+  let start = Math.max(2, current - 2)
+  let end = Math.min(totalCount - 1, current + 2)
+
+  if (current <= 4) {
+    start = 2
+    end = Math.min(totalCount - 1, 5)
+  } else if (current >= totalCount - 3) {
+    start = Math.max(2, totalCount - 4)
+    end = totalCount - 1
+  }
+
+  // Left ellipsis
+  if (start > 2) {
+    items.push({
+      type: 'ellipsis',
+      label: '…',
+      key: 'ellipsis-left',
+    })
+  }
+
+  for (let p = start; p <= end; p++) {
+    items.push({
+      type: 'page',
+      page: p,
+      label: String(p),
+      active: p === current,
+      key: `page-${p}`,
+    })
+  }
+
+  // Right ellipsis
+  if (end < totalCount - 1) {
+    items.push({
+      type: 'ellipsis',
+      label: '…',
+      key: 'ellipsis-right',
+    })
+  }
+
+  // Always show last page
+  items.push({
+    type: 'page',
+    page: totalCount,
+    label: String(totalCount),
+    active: current === totalCount,
+    key: `page-${totalCount}`,
+  })
+
+  return items
+})
+
+const matchesRangeText = computed<string>(() => {
+  if (total.value === 0) return '0'
+  const start = (page.value - 1) * limit.value + 1
+  const end = Math.min(page.value * limit.value, total.value)
+  return `${start}–${end}`
+})
 
 const availableMaps = [
   'Alterac Pass',
@@ -43,7 +142,7 @@ async function fetchReplays() {
   try {
     const params = new URLSearchParams()
     params.set('page', page.value.toString())
-    params.set('limit', '15')
+    params.set('limit', limit.value.toString())
     if (search.value.trim()) params.set('search', search.value.trim())
     if (selectedMap.value) params.set('map', selectedMap.value)
 
@@ -53,6 +152,11 @@ async function fetchReplays() {
     replays.value = data.replays
     totalPages.value = data.pagination.totalPages
     total.value = data.pagination.total
+
+    // If query exceeded totalPages, clamp to totalPages
+    if (data.pagination.totalPages > 0 && page.value > data.pagination.totalPages) {
+      goToPage(data.pagination.totalPages)
+    }
   } catch (err) {
     console.error('Failed to load replays:', err)
   } finally {
@@ -60,24 +164,105 @@ async function fetchReplays() {
   }
 }
 
+function updateUrl(
+  params: { page?: number; search?: string; map?: string; limit?: number },
+  replace: boolean = false
+) {
+  const query: Record<string, string> = {}
+  const targetPage = params.page !== undefined ? params.page : page.value
+  const targetSearch = params.search !== undefined ? params.search : search.value
+  const targetMap = params.map !== undefined ? params.map : selectedMap.value
+  const targetLimit = params.limit !== undefined ? params.limit : limit.value
+
+  if (targetPage > 1) {
+    query.page = String(targetPage)
+  }
+  if (targetSearch.trim()) {
+    query.search = targetSearch.trim()
+  }
+  if (targetMap) {
+    query.map = targetMap
+  }
+  if (targetLimit !== 15) {
+    query.limit = String(targetLimit)
+  }
+
+  const currentQ = route.query
+  const isSame =
+    (currentQ.page || '1') === (query.page || '1') &&
+    (currentQ.search || '') === (query.search || '') &&
+    (currentQ.map || '') === (query.map || '') &&
+    (currentQ.limit || '15') === (query.limit || '15')
+
+  if (isSame) {
+    fetchReplays()
+    return
+  }
+
+  if (replace) {
+    router.replace({ path: '/matches', query })
+  } else {
+    router.push({ path: '/matches', query })
+  }
+}
+
+function goToPage(newPage: number) {
+  if (newPage < 1) newPage = 1
+  if (totalPages.value > 0 && newPage > totalPages.value) newPage = totalPages.value
+  if (newPage === page.value && replays.value.length > 0) return
+
+  page.value = newPage
+  updateUrl({ page: newPage }, false)
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function handleJumpPage() {
+  const parsed = parseInt(jumpPageInput.value.trim(), 10)
+  if (!isNaN(parsed)) {
+    goToPage(parsed)
+    jumpPageInput.value = ''
+  }
+}
+
 function onSearchInput() {
   if (searchTimeout) clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
-    page.value = 1
-    fetchReplays()
+    updateUrl({ page: 1, search: search.value }, true)
   }, 350)
 }
 
 function onMapChange() {
-  page.value = 1
-  fetchReplays()
+  updateUrl({ page: 1, map: selectedMap.value }, false)
 }
 
-function goToPage(newPage: number) {
-  if (newPage < 1 || newPage > totalPages.value) return
-  page.value = newPage
-  fetchReplays()
+function onLimitChange(newLimit: number) {
+  updateUrl({ page: 1, limit: newLimit }, false)
 }
+
+watch(
+  () => route.query,
+  newQuery => {
+    const qPage = parseInt(String(newQuery.page || '1'), 10)
+    const targetPage = !isNaN(qPage) && qPage >= 1 ? qPage : 1
+
+    const targetSearch = typeof newQuery.search === 'string' ? newQuery.search : ''
+    const targetMap = typeof newQuery.map === 'string' ? newQuery.map : ''
+    const qLimit = parseInt(String(newQuery.limit || '15'), 10)
+    const targetLimit = !isNaN(qLimit) && qLimit >= 1 && qLimit <= 100 ? qLimit : 15
+
+    page.value = targetPage
+    if (search.value !== targetSearch) {
+      search.value = targetSearch
+    }
+    selectedMap.value = targetMap
+    limit.value = targetLimit
+
+    fetchReplays()
+  },
+  { immediate: true }
+)
 
 function hideBrokenImage(event: Event) {
   const target = event.target
@@ -197,10 +382,6 @@ const tooltipStyle = computed(() => {
     top: `${top}px`,
   }
 })
-
-onMounted(() => {
-  fetchReplays()
-})
 </script>
 
 <template>
@@ -208,7 +389,10 @@ onMounted(() => {
     <div class="matches-header">
       <div>
         <h1 class="page-title">Match History</h1>
-        <p class="page-subtitle">Showing {{ total }} custom games recorded</p>
+        <p class="page-subtitle">
+          Showing <span class="highlight">{{ matchesRangeText }}</span> of <span class="highlight">{{ total }}</span> custom games recorded
+          <span v-if="totalPages > 1" class="page-pill-badge">Page {{ page }} of {{ totalPages }}</span>
+        </p>
       </div>
 
       <div class="filter-bar">
@@ -335,15 +519,100 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Pagination -->
-    <div v-if="totalPages > 1" class="pagination-bar">
-      <button :disabled="page <= 1" class="btn" @click="goToPage(page - 1)">
-        ← Previous
-      </button>
-      <span class="page-indicator">Page {{ page }} of {{ totalPages }}</span>
-      <button :disabled="page >= totalPages" class="btn" @click="goToPage(page + 1)">
-        Next →
-      </button>
+    <!-- Pagination Bar -->
+    <div v-if="totalPages > 1" class="pagination-container card">
+      <div class="pagination-main-row">
+        <div class="pagination-meta">
+          Showing matches <strong>{{ matchesRangeText }}</strong> of <strong>{{ total }}</strong>
+        </div>
+
+        <div class="pagination-controls">
+          <button
+            :disabled="page <= 1"
+            class="btn btn-page-nav"
+            title="First Page"
+            @click="goToPage(1)"
+          >
+            « First
+          </button>
+          <button
+            :disabled="page <= 1"
+            class="btn btn-page-nav"
+            title="Previous Page"
+            @click="goToPage(page - 1)"
+          >
+            ‹ Prev
+          </button>
+
+          <div class="page-numbers-group">
+            <template v-for="item in paginationItems" :key="item.key">
+              <span v-if="item.type === 'ellipsis'" class="page-ellipsis">…</span>
+              <button
+                v-else
+                class="btn-page-num"
+                :class="{ active: item.active }"
+                :title="`Page ${item.label}`"
+                @click="goToPage(item.page!)"
+              >
+                {{ item.label }}
+              </button>
+            </template>
+          </div>
+
+          <button
+            :disabled="page >= totalPages"
+            class="btn btn-page-nav"
+            title="Next Page"
+            @click="goToPage(page + 1)"
+          >
+            Next ›
+          </button>
+          <button
+            :disabled="page >= totalPages"
+            class="btn btn-page-nav"
+            title="Last Page"
+            @click="goToPage(totalPages)"
+          >
+            Last »
+          </button>
+        </div>
+      </div>
+
+      <div class="pagination-secondary-row">
+        <!-- Quick Jump Form -->
+        <form class="jump-form" @submit.prevent="handleJumpPage">
+          <label for="jump-input" class="jump-label">Go to page:</label>
+          <input
+            id="jump-input"
+            v-model="jumpPageInput"
+            type="number"
+            min="1"
+            :max="totalPages"
+            placeholder="Page #"
+            class="input-field jump-input"
+          />
+          <button type="submit" class="btn btn-jump" :disabled="!jumpPageInput">
+            Go
+          </button>
+        </form>
+
+        <!-- Per Page Limit Selector -->
+        <div class="per-page-selector">
+          <span class="per-page-label">Matches per page:</span>
+          <div class="per-page-pills">
+            <button
+              v-for="opt in [15, 25, 50]"
+              :key="opt"
+              type="button"
+              class="btn-limit-pill"
+              :class="{ active: limit === opt }"
+              @click="onLimitChange(opt)"
+            >
+              {{ opt }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Beautiful Floating Hero & Player Tooltip -->
@@ -614,18 +883,227 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.pagination-bar {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1.5rem;
-  margin-top: 2rem;
+.page-pill-badge {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: var(--accent-cyan);
+  border-radius: var(--radius-sm);
 }
 
-.page-indicator {
+.pagination-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 2.5rem;
+  padding: 1.25rem 1.75rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.pagination-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.pagination-meta {
   font-size: 0.9rem;
   color: var(--text-muted);
+}
+
+.pagination-meta strong {
+  color: var(--text-main);
   font-family: var(--font-mono);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.btn-page-nav {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  min-height: 36px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-page-nav:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.btn-page-nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.page-numbers-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-page-num {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-page-num:hover:not(.active) {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-focus);
+  color: var(--text-main);
+}
+
+.btn-page-num.active {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+  cursor: default;
+}
+
+.page-ellipsis {
+  padding: 0 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  user-select: none;
+}
+
+.pagination-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.jump-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.jump-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.jump-input {
+  width: 72px;
+  height: 32px;
+  padding: 0 0.4rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.jump-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.btn-jump {
+  height: 32px;
+  padding: 0 0.75rem;
+  font-size: 0.85rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-jump:hover:not(:disabled) {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.btn-jump:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.per-page-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.per-page-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.per-page-pills {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.btn-limit-pill {
+  height: 28px;
+  padding: 0 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-limit-pill:hover:not(.active) {
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
+}
+
+.btn-limit-pill.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: var(--accent-cyan);
 }
 
 .hero-avatar-wrapper {
@@ -790,6 +1268,19 @@ onMounted(() => {
   }
   .view-match-action {
     display: none;
+  }
+  .pagination-main-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .pagination-secondary-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .pagination-controls {
+    justify-content: center;
   }
 }
 </style>
