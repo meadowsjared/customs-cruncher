@@ -164,11 +164,18 @@ export interface LeaderboardPlayer {
   player_identity?: string
   toon_handle: string
   player_name: string
+  hots_battle_tag?: string
+  all_battle_tags?: string[]
+  all_row_ids?: number[]
   row_id?: number | null
   games_played: number
   wins: number
   losses: number
   win_rate_pct: number
+  total_takedowns?: number
+  total_solo_kills?: number
+  total_assists?: number
+  total_deaths?: number
   overall_kda: number
   avg_takedowns: number
   avg_deaths: number
@@ -177,13 +184,20 @@ export interface LeaderboardPlayer {
   avg_siege_damage: number
   avg_healing: number
   avg_damage_taken: number
+  avg_damage_soaked?: number
   avg_xp_contribution: number
+  avg_dpm?: number
+  avg_hpm?: number
+  avg_xpm?: number
+  avg_kill_participation_pct?: number
+  avg_time_spent_dead?: number
   total_bsteps: number
   total_sprays: number
   total_taunts: number
   total_dances: number
   total_voice_lines?: number
   recent_10_win_rate_pct?: number
+  recent_10_avg_dpm?: number
 }
 
 export interface PlayerSearchItem {

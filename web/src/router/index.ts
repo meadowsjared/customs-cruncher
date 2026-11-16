@@ -32,6 +32,16 @@ const router = createRouter({
       component: LeaderboardView,
     },
     {
+      path: '/leaderboard/player/:identifier',
+      name: 'leaderboard-player',
+      component: LeaderboardView,
+    },
+    {
+      path: '/leaderboard/:identifier',
+      name: 'leaderboard-identifier',
+      component: LeaderboardView,
+    },
+    {
       path: '/player/:identifier',
       name: 'player-profile',
       component: PlayerProfileView,

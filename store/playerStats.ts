@@ -104,6 +104,15 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
         MAX(mapped_battle_tag),
         MAX(hots_battle_tag)
       ) AS hots_battle_tag,
+      COALESCE(
+        ARRAY_AGG(DISTINCT mapped_battle_tag) FILTER (WHERE mapped_battle_tag IS NOT NULL),
+        ARRAY_AGG(DISTINCT hots_battle_tag) FILTER (WHERE hots_battle_tag IS NOT NULL),
+        '{}'::text[]
+      ) AS all_battle_tags,
+      COALESCE(
+        ARRAY_AGG(DISTINCT account_id) FILTER (WHERE account_id IS NOT NULL),
+        '{}'::int[]
+      ) AS all_row_ids,
       COUNT(*)::int AS games_played,
       COUNT(*) FILTER (WHERE win)::int AS wins,
       COUNT(*) FILTER (WHERE NOT win)::int AS losses,

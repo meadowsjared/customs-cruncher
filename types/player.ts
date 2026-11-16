@@ -321,6 +321,8 @@ export type PlayerAggregatedStats = {
   toon_handle: string
   player_name: string
   hots_battle_tag?: string
+  all_battle_tags?: string[]
+  all_row_ids?: number[]
   row_id?: number | null
   games_played: number
   wins: number

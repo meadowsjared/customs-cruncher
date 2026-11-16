@@ -1,14 +1,63 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import type { LeaderboardPlayer } from '../types'
 import { formatNumber } from '../utils/hots'
 
+interface TargetQuery {
+  type: 'rowId' | 'battleTag' | 'any'
+  value: string
+}
+
 const router = useRouter()
+const route = useRoute()
 const players = ref<LeaderboardPlayer[]>([])
 const loading = ref(true)
 const search = ref('')
 const minGames = ref(10)
+const viewMode = ref<'showcase' | 'table'>('showcase')
+
+function formatDeadTime(p: LeaderboardPlayer): string {
+  const avg = p.avg_time_spent_dead || 0
+  const totalSecs = Math.round(avg * p.games_played)
+  if (totalSecs < 60) return `${totalSecs}s`
+  const totalMins = Math.round(totalSecs / 60)
+  if (totalMins < 60) return `${totalMins} mins`
+  const hours = (totalSecs / 3600).toFixed(1)
+  return `${hours} hours`
+}
+
+function getPlayerRoastTitle(p: LeaderboardPlayer): string {
+  const avgDeaths = p.avg_deaths || 0
+  const wr = p.win_rate_pct || 0
+  const totalBm = getTotalBm(p)
+  const spongeRatio = (p.avg_damage_taken || 0) / Math.max(1, p.avg_hero_damage || 1)
+
+  if (avgDeaths >= 4.0) return 'Professional Gray Screen Enthusiast 💀'
+  if (spongeRatio >= 2.0) return 'Certified Damage Sponge 🧽'
+  if (wr < 38) return 'Chief Charity Elo Contributor 📉'
+  if (wr < 48) return 'Struggling Coinflip Veteran 🪙'
+  if (totalBm >= 300) return 'BM Connoisseur, Objective Skeptic 💃'
+  if (avgDeaths >= 3.0) return 'Cemetery Season Ticket Holder ⚰️'
+  if (p.total_bsteps === 0 && totalBm > 0) return 'All Spray, Zero B-Step 🎨'
+  return 'Tactical Feeder in Disguise 🎯'
+}
+
+function getDamageSpongeRatio(p: LeaderboardPlayer): string {
+  const dealt = Math.max(1, p.avg_hero_damage || 0)
+  const taken = p.avg_damage_taken || 0
+  return (taken / dealt).toFixed(1)
+}
+
+function getBmCommentary(p: LeaderboardPlayer): string {
+  const total = getTotalBm(p)
+  if (total === 0) return 'Completely BM-free. Playing like an NPC.'
+  if (p.total_bsteps === 0 && p.total_sprays > 0)
+    return 'Spraying without B-stepping — pure cowardly BM.'
+  if (p.total_dances > 50) return 'Spends more time dancing in lane than soaking XP.'
+  if (p.total_bsteps > 50) return 'Chronically B-stepping into enemy skillshots.'
+  return 'Never misses an opportunity to BM right before dying.'
+}
 
 type SortKey =
   | 'games_played'
@@ -30,6 +79,170 @@ type SortKey =
 const sortColumn = ref<SortKey>('games_played')
 const sortAsc = ref(false)
 
+const activeQuery = computed<TargetQuery | null>(() => {
+  const qRowId = route.query.rowId || route.query.row_id
+  if (typeof qRowId === 'string' && qRowId.trim()) {
+    return { type: 'rowId', value: qRowId.trim() }
+  }
+
+  const qBattleTag =
+    route.query.battleTag || route.query.battle_tag || route.query.battletag
+  if (typeof qBattleTag === 'string' && qBattleTag.trim()) {
+    return { type: 'battleTag', value: qBattleTag.trim() }
+  }
+
+  const qPlayer = route.query.player || route.query.q || route.query.search
+  if (typeof qPlayer === 'string' && qPlayer.trim()) {
+    return { type: 'any', value: qPlayer.trim() }
+  }
+
+  const paramId = route.params.identifier
+  if (typeof paramId === 'string' && paramId.trim()) {
+    return { type: 'any', value: decodeURIComponent(paramId).trim() }
+  }
+
+  return null
+})
+
+const hasRowIdMatch = computed(() => {
+  const target = activeQuery.value
+  if (!target) return false
+  const valNum = /^\d+$/.test(target.value.trim()) ? parseInt(target.value.trim(), 10) : null
+  if (valNum === null) return false
+  return players.value.some(
+    (p) => p.row_id === valNum || (p.all_row_ids && p.all_row_ids.includes(valNum))
+  )
+})
+
+function matchesTarget(p: LeaderboardPlayer, target: TargetQuery): boolean {
+  const val = target.value.trim()
+  const valNorm = val.replace('-', '#').toLowerCase()
+  const valNum = /^\d+$/.test(val) ? parseInt(val, 10) : null
+
+  if (target.type === 'rowId') {
+    if (valNum !== null) {
+      return (
+        p.row_id === valNum ||
+        Boolean(p.all_row_ids && p.all_row_ids.includes(valNum))
+      )
+    }
+    return false
+  }
+
+  if (target.type === 'battleTag') {
+    if (
+      p.hots_battle_tag &&
+      (p.hots_battle_tag.toLowerCase() === valNorm ||
+        p.hots_battle_tag.toLowerCase().includes(valNorm))
+    ) {
+      return true
+    }
+    if (
+      p.all_battle_tags &&
+      p.all_battle_tags.some(
+        (t) =>
+          t.toLowerCase() === valNorm || t.toLowerCase().includes(valNorm)
+      )
+    ) {
+      return true
+    }
+    return false
+  }
+
+  // target.type === 'any'
+  // If this numeric query matches player(s) by rowId, prioritize rowId match
+  if (valNum !== null && hasRowIdMatch.value) {
+    return (
+      p.row_id === valNum ||
+      Boolean(p.all_row_ids && p.all_row_ids.includes(valNum))
+    )
+  }
+
+  // Exact matches
+  if (p.hots_battle_tag && p.hots_battle_tag.toLowerCase() === valNorm) {
+    return true
+  }
+  if (
+    p.all_battle_tags &&
+    p.all_battle_tags.some((t) => t.toLowerCase() === valNorm)
+  ) {
+    return true
+  }
+  if (p.player_name.toLowerCase() === valNorm) {
+    return true
+  }
+
+  // Substring matches
+  if (
+    p.hots_battle_tag &&
+    p.hots_battle_tag.toLowerCase().includes(valNorm)
+  ) {
+    return true
+  }
+  if (
+    p.all_battle_tags &&
+    p.all_battle_tags.some((t) => t.toLowerCase().includes(valNorm))
+  ) {
+    return true
+  }
+  if (p.player_name.toLowerCase().includes(valNorm)) {
+    return true
+  }
+
+  return false
+}
+
+function matchesSearch(p: LeaderboardPlayer, q: string): boolean {
+  if (!q) return true
+  const qTrim = q.trim()
+  const qNorm = qTrim.replace('-', '#').toLowerCase()
+  const qNum = /^\d+$/.test(qTrim) ? parseInt(qTrim, 10) : null
+
+  if (p.player_name.toLowerCase().includes(qNorm)) return true
+  if (p.hots_battle_tag && p.hots_battle_tag.toLowerCase().includes(qNorm)) return true
+  if (
+    p.all_battle_tags &&
+    p.all_battle_tags.some((t) => t.toLowerCase().includes(qNorm))
+  ) {
+    return true
+  }
+  if (qNum !== null) {
+    if (p.row_id === qNum) return true
+    if (p.all_row_ids && p.all_row_ids.includes(qNum)) return true
+  }
+  return false
+}
+
+const activeFilterPlayer = computed(() => {
+  const target = activeQuery.value
+  if (!target) return null
+  return players.value.find((p) => matchesTarget(p, target)) || null
+})
+
+const activeFilterDescription = computed(() => {
+  const target = activeQuery.value
+  if (!target) return ''
+  const p = activeFilterPlayer.value
+  if (p) {
+    const details: string[] = []
+    if (p.hots_battle_tag) details.push(p.hots_battle_tag)
+    if (p.row_id) details.push(`Row #${p.row_id}`)
+    return details.length > 0 ? `${p.player_name} (${details.join(' · ')})` : p.player_name
+  }
+  if (target.type === 'rowId') {
+    return `Row ID #${target.value}`
+  }
+  if (target.type === 'battleTag') {
+    return `BattleTag "${target.value}"`
+  }
+  return `"${target.value}"`
+})
+
+function clearFilter() {
+  search.value = ''
+  router.push('/leaderboard')
+}
+
 async function fetchLeaderboard() {
   loading.value = true
   try {
@@ -47,6 +260,22 @@ async function fetchLeaderboard() {
 watch(minGames, () => {
   fetchLeaderboard()
 })
+
+watch(
+  [() => activeQuery.value, () => players.value],
+  () => {
+    if (activeQuery.value) {
+      viewMode.value = 'showcase'
+      if (players.value.length > 0) {
+        const match = activeFilterPlayer.value
+        if (match && match.games_played < minGames.value) {
+          minGames.value = 1
+        }
+      }
+    }
+  },
+  { immediate: true }
+)
 
 function setSort(col: SortKey) {
   if (sortColumn.value === col) {
@@ -74,26 +303,117 @@ function getSortValue(p: LeaderboardPlayer, key: SortKey): number {
   return p[key] ?? 0
 }
 
-const filteredPlayers = computed(() => {
+const sortedAllPlayers = computed(() => {
   const min = minGames.value
   const col = sortColumn.value
   const asc = sortAsc.value
-  const q = search.value.trim().toLowerCase()
 
-  let list = players.value.filter((p) => p.games_played >= min)
-
-  if (q) {
-    list = list.filter((p) => p.player_name.toLowerCase().includes(q))
-  }
+  const list = players.value.filter((p) => p.games_played >= min)
 
   return [...list].sort((a, b) => {
     if (col === 'recent_10_win_rate_pct') {
       const aVal =
-        a.games_played >= min && a.recent_10_win_rate_pct !== undefined && a.recent_10_win_rate_pct !== null
+        a.games_played >= min &&
+        a.recent_10_win_rate_pct !== undefined &&
+        a.recent_10_win_rate_pct !== null
           ? a.recent_10_win_rate_pct
           : null
       const bVal =
-        b.games_played >= min && b.recent_10_win_rate_pct !== undefined && b.recent_10_win_rate_pct !== null
+        b.games_played >= min &&
+        b.recent_10_win_rate_pct !== undefined &&
+        b.recent_10_win_rate_pct !== null
+          ? b.recent_10_win_rate_pct
+          : null
+
+      if (aVal === null && bVal === null) {
+        return b.games_played - a.games_played
+      }
+      if (aVal === null) return 1
+      if (bVal === null) return -1
+
+      if (aVal !== bVal) {
+        return asc ? aVal - bVal : bVal - aVal
+      }
+
+      if (a.games_played !== b.games_played) {
+        return b.games_played - a.games_played
+      }
+      if (a.win_rate_pct !== b.win_rate_pct) {
+        return b.win_rate_pct - a.win_rate_pct
+      }
+      return a.player_name.localeCompare(b.player_name)
+    }
+
+    const valA = getSortValue(a, col)
+    const valB = getSortValue(b, col)
+    if (valA !== valB) {
+      if (valA < valB) return asc ? -1 : 1
+      if (valA > valB) return asc ? 1 : -1
+    }
+
+    if (a.games_played !== b.games_played) {
+      return b.games_played - a.games_played
+    }
+    if (a.win_rate_pct !== b.win_rate_pct) {
+      return b.win_rate_pct - a.win_rate_pct
+    }
+    return a.player_name.localeCompare(b.player_name)
+  })
+})
+
+const playerRanks = computed(() => {
+  const map = new Map<string, number>()
+  sortedAllPlayers.value.forEach((p, idx) => {
+    const key = p.player_identity || p.toon_handle
+    map.set(key, idx + 1)
+  })
+  return map
+})
+
+function getPlayerRank(p: LeaderboardPlayer): number {
+  return playerRanks.value.get(p.player_identity || p.toon_handle) || 0
+}
+
+function getRankBadge(p: LeaderboardPlayer): string {
+  const rank = getPlayerRank(p)
+  if (rank === 1) return '🥇'
+  if (rank === 2) return '🥈'
+  if (rank === 3) return '🥉'
+  return rank > 0 ? `#${rank}` : '-'
+}
+
+const filteredPlayers = computed(() => {
+  const min = minGames.value
+  const col = sortColumn.value
+  const asc = sortAsc.value
+  const q = search.value.trim()
+  const target = activeQuery.value
+
+  let list = players.value.filter((p) => {
+    if (target && !matchesTarget(p, target)) {
+      return false
+    }
+    if (q && !matchesSearch(p, q)) {
+      return false
+    }
+    if (!target && p.games_played < min) {
+      return false
+    }
+    return true
+  })
+
+  return [...list].sort((a, b) => {
+    if (col === 'recent_10_win_rate_pct') {
+      const aVal =
+        a.games_played >= min &&
+        a.recent_10_win_rate_pct !== undefined &&
+        a.recent_10_win_rate_pct !== null
+          ? a.recent_10_win_rate_pct
+          : null
+      const bVal =
+        b.games_played >= min &&
+        b.recent_10_win_rate_pct !== undefined &&
+        b.recent_10_win_rate_pct !== null
           ? b.recent_10_win_rate_pct
           : null
 
@@ -135,13 +455,6 @@ const filteredPlayers = computed(() => {
   })
 })
 
-function getRankBadge(idx: number): string {
-  if (idx === 0) return '🥇'
-  if (idx === 1) return '🥈'
-  if (idx === 2) return '🥉'
-  return `#${idx + 1}`
-}
-
 function viewPlayerMatches(player: LeaderboardPlayer) {
   if (player.row_id) {
     router.push(`/player/${player.row_id}`)
@@ -167,7 +480,7 @@ onMounted(() => {
         <input
           v-model="search"
           type="text"
-          placeholder="Search player name..."
+          placeholder="Search player, tag, or row ID..."
           class="input-field search-input"
         />
 
@@ -178,6 +491,28 @@ onMounted(() => {
           <option :value="10">Min 10 Games</option>
           <option :value="20">Min 20 Games</option>
         </select>
+      </div>
+    </div>
+
+    <!-- Active Query / Pre-filter Banner -->
+    <div v-if="activeQuery" class="active-query-banner">
+      <div class="active-query-info">
+        <span class="active-query-icon">🎯</span>
+        <span class="active-query-text">
+          Leaderboard query: <strong>{{ activeFilterDescription }}</strong>
+        </span>
+      </div>
+      <div class="active-query-actions">
+        <button
+          v-if="activeFilterPlayer"
+          class="toggle-view-btn"
+          @click="viewMode = viewMode === 'showcase' ? 'table' : 'showcase'"
+        >
+          {{ viewMode === 'showcase' ? '📊 Switch to Table View' : '🤡 Switch to Player Roast Card' }}
+        </button>
+        <button class="clear-query-btn" title="View full leaderboard" @click="clearFilter">
+          ✕ Show Full Leaderboard
+        </button>
       </div>
     </div>
 
@@ -192,6 +527,254 @@ onMounted(() => {
       <span class="empty-icon">🏆</span>
       <h3>No players meet the filter criteria</h3>
       <p>Try reducing the minimum games filter</p>
+    </div>
+
+    <!-- Single Player Roast & Embarrassing Stats Showcase View -->
+    <div
+      v-else-if="activeFilterPlayer && viewMode === 'showcase'"
+      class="player-roast-showcase card"
+    >
+      <!-- Header / Identity Strip -->
+      <div class="roast-header">
+        <div class="roast-identity">
+          <div
+            class="roast-rank-circle"
+            :class="{ 'top-three': getPlayerRank(activeFilterPlayer) <= 3 && getPlayerRank(activeFilterPlayer) > 0 }"
+          >
+            {{ getRankBadge(activeFilterPlayer) }}
+          </div>
+          <div>
+            <div class="roast-name-row">
+              <h2 class="roast-player-name">{{ activeFilterPlayer.player_name }}</h2>
+              <span v-if="activeFilterPlayer.hots_battle_tag" class="roast-tag">
+                {{ activeFilterPlayer.hots_battle_tag }}
+              </span>
+              <span v-if="activeFilterPlayer.row_id" class="roast-row-id">
+                Row #{{ activeFilterPlayer.row_id }}
+              </span>
+            </div>
+            <div class="roast-title-badge">
+              <span>{{ getPlayerRoastTitle(activeFilterPlayer) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="roast-header-actions">
+          <button class="action-btn-primary" @click="viewPlayerMatches(activeFilterPlayer)">
+            ⚔️ View Full Match History →
+          </button>
+          <button class="action-btn-secondary" @click="viewMode = 'table'">
+            📊 View Table Row
+          </button>
+        </div>
+      </div>
+
+      <!-- The Hall of Shame (Mega Embarrassing Stat Cards) -->
+      <div class="hall-of-shame-grid">
+        <!-- 💀 Total Deaths -->
+        <div class="shame-card shame-deaths">
+          <div class="shame-card-header">
+            <span class="shame-icon">💀</span>
+            <span class="shame-label">FEED COUNTER</span>
+          </div>
+          <div class="shame-mega-value text-red">
+            {{ activeFilterPlayer.total_deaths ?? Math.round(activeFilterPlayer.avg_deaths * activeFilterPlayer.games_played) }}
+          </div>
+          <div class="shame-subtext">
+            <strong>{{ (activeFilterPlayer.avg_deaths ?? 0).toFixed(1) }}</strong> deaths per match
+          </div>
+          <div class="shame-quote">
+            "Feeding enemy heroes with alarming dedication across {{ activeFilterPlayer.games_played }} games."
+          </div>
+        </div>
+
+        <!-- ⚰️ Gray Screen Time -->
+        <div class="shame-card shame-time-dead">
+          <div class="shame-card-header">
+            <span class="shame-icon">⚰️</span>
+            <span class="shame-label">GRAY SCREEN SENTENCE</span>
+          </div>
+          <div class="shame-mega-value text-purple">
+            {{ formatDeadTime(activeFilterPlayer) }}
+          </div>
+          <div class="shame-subtext">
+            Avg <strong>{{ Math.round(activeFilterPlayer.avg_time_spent_dead ?? 0) }}s</strong> dead per match
+          </div>
+          <div class="shame-quote">
+            "Plenty of time spent dead to ponder life choices and watch YouTube positioning guides."
+          </div>
+        </div>
+
+        <!-- ❌ Loss Record & Win Rate -->
+        <div class="shame-card shame-losses">
+          <div class="shame-card-header">
+            <span class="shame-icon">📉</span>
+            <span class="shame-label">CHARITY RECORD</span>
+          </div>
+          <div class="shame-mega-value text-orange">
+            {{ activeFilterPlayer.losses }} Losses
+          </div>
+          <div class="shame-subtext">
+            <span :class="activeFilterPlayer.win_rate_pct >= 50 ? 'text-green' : 'text-red'">
+              {{ activeFilterPlayer.win_rate_pct.toFixed(1) }}% Win Rate
+            </span>
+            ({{ activeFilterPlayer.wins }}W - {{ activeFilterPlayer.losses }}L)
+          </div>
+          <div class="shame-quote">
+            {{
+              activeFilterPlayer.win_rate_pct < 50
+                ? "A true philanthropist: generously donating free wins to the opposing team."
+                : "Just barely clinging to a positive win rate against all tactical odds."
+            }}
+          </div>
+        </div>
+
+        <!-- 🧽 Damage Sponge -->
+        <div class="shame-card shame-sponge">
+          <div class="shame-card-header">
+            <span class="shame-icon">🧽</span>
+            <span class="shame-label">DAMAGE SPONGE INDEX</span>
+          </div>
+          <div class="shame-mega-value text-cyan">
+            {{ getDamageSpongeRatio(activeFilterPlayer) }}x
+          </div>
+          <div class="shame-subtext">
+            <strong>{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_taken || 0)) }}</strong> taken vs
+            <strong>{{ formatNumber(Math.round(activeFilterPlayer.avg_hero_damage || 0)) }}</strong> dealt
+          </div>
+          <div class="shame-quote">
+            "Body-blocking skillshots with their face so teammates don't have to."
+          </div>
+        </div>
+      </div>
+
+      <!-- BM & Emote Dossier -->
+      <div class="roast-section-card bm-dossier">
+        <div class="roast-section-title">
+          <span>🔥 Bad Manners & Flare Dossier</span>
+          <span class="bm-total-pill">Total BM: {{ getTotalBm(activeFilterPlayer) }}</span>
+        </div>
+        <div class="bm-quote-banner">
+          {{ getBmCommentary(activeFilterPlayer) }}
+        </div>
+        <div class="bm-stats-row">
+          <div class="bm-item">
+            <span class="bm-emoji">🎨</span>
+            <span class="bm-count">{{ activeFilterPlayer.total_sprays || 0 }}</span>
+            <span class="bm-name">Sprays Sprayed</span>
+          </div>
+          <div class="bm-item">
+            <span class="bm-emoji">👟</span>
+            <span class="bm-count">{{ activeFilterPlayer.total_bsteps || 0 }}</span>
+            <span class="bm-name">B-Steps Tapped</span>
+          </div>
+          <div class="bm-item">
+            <span class="bm-emoji">💃</span>
+            <span class="bm-count">{{ activeFilterPlayer.total_dances || 0 }}</span>
+            <span class="bm-name">Dances Performed</span>
+          </div>
+          <div class="bm-item">
+            <span class="bm-emoji">🗣️</span>
+            <span class="bm-count">{{ activeFilterPlayer.total_taunts || 0 }}</span>
+            <span class="bm-name">Taunts Thrown</span>
+          </div>
+          <div class="bm-item">
+            <span class="bm-emoji">🎙️</span>
+            <span class="bm-count">{{ activeFilterPlayer.total_voice_lines || 0 }}</span>
+            <span class="bm-name">Voice Lines Spammed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Performance & Macro Dossier -->
+      <div class="roast-section-card">
+        <div class="roast-section-title">
+          <span>📊 Full Career Combat & Macro Performance</span>
+          <span class="rank-standings-pill">
+            Leaderboard Standing: {{ getRankBadge(activeFilterPlayer) }} (Position {{ getPlayerRank(activeFilterPlayer) }} of {{ sortedAllPlayers.length }})
+          </span>
+        </div>
+
+        <div class="stat-dossier-grid">
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Overall KDA</span>
+            <span class="dossier-value" :class="(activeFilterPlayer.overall_kda || 0) < 3.0 ? 'text-red' : 'text-green'">
+              {{ (activeFilterPlayer.overall_kda || 0).toFixed(2) }}
+            </span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Total Takedowns</span>
+            <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_takedowns || 0) }}</span>
+            <span class="dossier-sub">{{ (activeFilterPlayer.avg_takedowns || 0).toFixed(1) }} / match</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Solo Kills</span>
+            <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_solo_kills || 0) }}</span>
+            <span class="dossier-sub">Eliminations without help</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Total Assists</span>
+            <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_assists || 0) }}</span>
+            <span class="dossier-sub">{{ (activeFilterPlayer.avg_assists || 0).toFixed(1) }} / match</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Avg Hero Damage</span>
+            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_hero_damage || 0)) }}</span>
+            <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_dpm || 0) }} DPM</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Avg Siege Damage</span>
+            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_siege_damage || 0)) }}</span>
+            <span class="dossier-sub">Minion & structure clear</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Avg Healing / Shield</span>
+            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_healing || 0)) }}</span>
+            <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_hpm || 0) }} HPM</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Avg Damage Soaked</span>
+            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_soaked || 0)) }}</span>
+            <span class="dossier-sub">Mitigated & healed</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Avg XP Contribution</span>
+            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_xp_contribution || 0)) }}</span>
+            <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_xpm || 0) }} XPM</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Kill Participation</span>
+            <span class="dossier-value">{{ (activeFilterPlayer.avg_kill_participation_pct || 0).toFixed(1) }}%</span>
+            <span class="dossier-sub">Team fight presence</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Recent {{ minGames }} Form</span>
+            <span
+              class="dossier-value"
+              :class="activeFilterPlayer.recent_10_win_rate_pct != null && activeFilterPlayer.recent_10_win_rate_pct >= 50 ? 'text-green' : 'text-red'"
+            >
+              {{ activeFilterPlayer.recent_10_win_rate_pct != null ? activeFilterPlayer.recent_10_win_rate_pct + '%' : 'N/A' }}
+            </span>
+            <span class="dossier-sub">Last {{ minGames }} games</span>
+          </div>
+
+          <div class="stat-dossier-item">
+            <span class="dossier-label">Total Custom Games</span>
+            <span class="dossier-value text-cyan">{{ activeFilterPlayer.games_played }}</span>
+            <span class="dossier-sub">{{ activeFilterPlayer.wins }}W - {{ activeFilterPlayer.losses }}L</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Leaderboard Table -->
@@ -276,8 +859,11 @@ onMounted(() => {
           >
             <!-- Rank -->
             <td class="rank-col">
-              <span class="rank-badge" :class="{ 'top-three': idx < 3 }">
-                {{ getRankBadge(idx) }}
+              <span
+                class="rank-badge"
+                :class="{ 'top-three': getPlayerRank(p) <= 3 && getPlayerRank(p) > 0 }"
+              >
+                {{ getRankBadge(p) }}
               </span>
             </td>
 
@@ -285,6 +871,9 @@ onMounted(() => {
             <td class="player-name-cell">
               <div class="player-name-wrapper">
                 <span class="player-title">{{ p.player_name }}</span>
+                <span v-if="p.hots_battle_tag" class="player-tag-hint">
+                  {{ p.hots_battle_tag }}
+                </span>
                 <span class="view-matches-hint">View Matches →</span>
               </div>
             </td>
@@ -576,6 +1165,449 @@ onMounted(() => {
   border: 1px solid rgba(245, 158, 11, 0.35);
   color: #fbbf24;
   font-weight: 700;
+}
+
+.player-tag-hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-weight: 500;
+  opacity: 0.7;
+  margin-top: 0.1rem;
+}
+
+.active-query-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.active-query-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.active-query-icon {
+  font-size: 1.2rem;
+}
+
+.active-query-text {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.active-query-text strong {
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.active-query-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.toggle-view-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #7dd3fc;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.toggle-view-btn:hover {
+  background: rgba(56, 189, 248, 0.3);
+  color: #ffffff;
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.clear-query-btn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.clear-query-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ffffff;
+  border-color: rgba(239, 68, 68, 0.7);
+}
+
+/* Player Roast Showcase Styles */
+.player-roast-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding: 2rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.roast-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.roast-identity {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.roast-rank-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  font-size: 1.75rem;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+}
+
+.roast-rank-circle.top-three {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+.roast-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.roast-player-name {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.roast-tag {
+  font-size: 1rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.roast-row-id {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.roast-title-badge {
+  margin-top: 0.35rem;
+}
+
+.roast-title-badge span {
+  display: inline-block;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+
+.roast-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.action-btn-primary {
+  background: var(--accent-cyan);
+  color: #0b0f19;
+  border: none;
+  font-weight: 700;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+}
+
+.action-btn-primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.45);
+}
+
+.action-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.action-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+/* Hall of Shame Grid */
+.hall-of-shame-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+}
+
+.shame-card {
+  background: rgba(15, 23, 42, 0.75);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.shame-card:hover {
+  transform: translateY(-2px);
+}
+
+.shame-deaths {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
+}
+
+.shame-time-dead {
+  border-color: rgba(168, 85, 247, 0.45);
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.15);
+}
+
+.shame-losses {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.15);
+}
+
+.shame-sponge {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+  box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);
+}
+
+.shame-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shame-icon {
+  font-size: 1.3rem;
+}
+
+.shame-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.shame-mega-value {
+  font-size: 2.4rem;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.text-purple {
+  color: #c084fc;
+}
+
+.text-orange {
+  color: #fb923c;
+}
+
+.text-cyan {
+  color: var(--accent-cyan);
+}
+
+.shame-subtext {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.shame-quote {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-dim);
+  line-height: 1.35;
+  margin-top: 0.25rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 0.5rem;
+}
+
+/* BM & Section Cards */
+.roast-section-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.roast-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.bm-total-pill {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+}
+
+.bm-quote-banner {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 3px solid #f59e0b;
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: #fef08a;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.bm-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 1rem;
+}
+
+.bm-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.25rem;
+}
+
+.bm-emoji {
+  font-size: 1.5rem;
+}
+
+.bm-count {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.bm-name {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.rank-standings-pill {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+}
+
+/* Stat Dossier Grid */
+.stat-dossier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.stat-dossier-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dossier-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dossier-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.dossier-sub {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  opacity: 0.85;
 }
 </style>
 

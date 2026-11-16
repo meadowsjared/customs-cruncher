@@ -331,10 +331,22 @@ export function createServer(): http.Server {
         return
       }
 
-      // GET /api/leaderboard
-      if (pathname === '/api/leaderboard') {
+      // GET /api/leaderboard, /api/leaderboard/:identifier, or /api/leaderboard/player/:identifier
+      const leaderboardMatch = pathname.match(/^\/api\/leaderboard(?:\/(?:player\/)?([^/]+))?$/)
+      if (leaderboardMatch) {
+        const pathIdentifier = leaderboardMatch[1] ? decodeURIComponent(leaderboardMatch[1]).trim() : null
+        const queryRowId = urlObj.searchParams.get('rowId') || urlObj.searchParams.get('row_id')
+        const queryBattleTag =
+          urlObj.searchParams.get('battleTag') ||
+          urlObj.searchParams.get('battle_tag') ||
+          urlObj.searchParams.get('battletag')
+        const queryPlayer =
+          urlObj.searchParams.get('player') ||
+          urlObj.searchParams.get('q') ||
+          urlObj.searchParams.get('search')
         const recentGames = parseInt(urlObj.searchParams.get('recent') || '10', 10) || 10
-        const stats = await getPlayerAggregatedStats({ recentGames })
+
+        let stats = await getPlayerAggregatedStats({ recentGames })
         const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
           SELECT id, hots_battle_tag FROM hots_accounts
         `
@@ -347,6 +359,50 @@ export function createServer(): http.Server {
             s.row_id = tagMap.get(s.hots_battle_tag.toLowerCase()) ?? null
           }
         }
+
+        if (queryRowId) {
+          const num = parseInt(queryRowId.trim(), 10)
+          if (!isNaN(num)) {
+            stats = stats.filter(
+              (s) => s.row_id === num || (s.all_row_ids && s.all_row_ids.includes(num))
+            )
+          }
+        } else if (queryBattleTag) {
+          const qTag = queryBattleTag.trim().replace('-', '#').toLowerCase()
+          stats = stats.filter(
+            (s) =>
+              (s.hots_battle_tag && s.hots_battle_tag.toLowerCase() === qTag) ||
+              (s.all_battle_tags && s.all_battle_tags.some((t) => t.toLowerCase() === qTag))
+          )
+        } else if (pathIdentifier || queryPlayer) {
+          const raw = (pathIdentifier || queryPlayer || '').trim()
+          const num = /^\d+$/.test(raw) ? parseInt(raw, 10) : null
+          if (num !== null) {
+            const byId = stats.filter(
+              (s) => s.row_id === num || (s.all_row_ids && s.all_row_ids.includes(num))
+            )
+            if (byId.length > 0) {
+              stats = byId
+            } else {
+              const norm = raw.toLowerCase()
+              stats = stats.filter(
+                (s) =>
+                  s.player_name.toLowerCase() === norm ||
+                  s.player_name.toLowerCase().includes(norm)
+              )
+            }
+          } else {
+            const norm = raw.replace('-', '#').toLowerCase()
+            stats = stats.filter(
+              (s) =>
+                s.player_name.toLowerCase() === norm ||
+                (s.hots_battle_tag && s.hots_battle_tag.toLowerCase() === norm) ||
+                (s.all_battle_tags && s.all_battle_tags.some((t) => t.toLowerCase() === norm)) ||
+                s.player_name.toLowerCase().includes(norm)
+            )
+          }
+        }
+
         sendJson(res, 200, {
           players: stats,
           total: stats.length,
