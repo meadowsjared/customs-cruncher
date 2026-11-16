@@ -12,6 +12,8 @@ const minGames = ref(3)
 
 type SortKey =
   | 'games_played'
+  | 'wins'
+  | 'losses'
   | 'win_rate_pct'
   | 'overall_kda'
   | 'avg_hero_damage'
@@ -19,6 +21,10 @@ type SortKey =
   | 'avg_siege_damage'
   | 'total_bsteps'
   | 'total_sprays'
+  | 'total_taunts'
+  | 'total_dances'
+  | 'total_voice_lines'
+  | 'total_bm'
 
 const sortColumn = ref<SortKey>('games_played')
 const sortAsc = ref(false)
@@ -46,6 +52,23 @@ function setSort(col: SortKey) {
   }
 }
 
+function getTotalBm(p: LeaderboardPlayer): number {
+  return (
+    (p.total_bsteps || 0) +
+    (p.total_sprays || 0) +
+    (p.total_taunts || 0) +
+    (p.total_dances || 0) +
+    (p.total_voice_lines || 0)
+  )
+}
+
+function getSortValue(p: LeaderboardPlayer, key: SortKey): number {
+  if (key === 'total_bm') {
+    return getTotalBm(p)
+  }
+  return p[key] ?? 0
+}
+
 const filteredPlayers = computed(() => {
   let list = players.value.filter((p) => p.games_played >= minGames.value)
 
@@ -55,8 +78,8 @@ const filteredPlayers = computed(() => {
   }
 
   return list.sort((a, b) => {
-    const valA = a[sortColumn.value] ?? 0
-    const valB = b[sortColumn.value] ?? 0
+    const valA = getSortValue(a, sortColumn.value)
+    const valB = getSortValue(b, sortColumn.value)
     if (valA < valB) return sortAsc.value ? -1 : 1
     if (valA > valB) return sortAsc.value ? 1 : -1
     return 0
@@ -84,7 +107,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="container">
+  <div class="container leaderboard-container">
     <div class="leaderboard-header">
       <div>
         <h1 class="page-title">Player Leaderboard</h1>
@@ -123,7 +146,7 @@ onMounted(() => {
     </div>
 
     <!-- Leaderboard Table -->
-    <div v-else class="table-container card">
+    <div v-else class="table-container card leaderboard-table-container">
       <table class="leaderboard-table">
         <thead>
           <tr>
@@ -132,7 +155,27 @@ onMounted(() => {
             <th class="sortable" @click="setSort('games_played')">
               Games {{ sortColumn === 'games_played' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
-            <th>W - L</th>
+            <th class="wl-header-th">
+              <div class="wl-header-wrap">
+                <span
+                  class="wl-clickable"
+                  :class="{ active: sortColumn === 'wins' }"
+                  title="Sort by Wins"
+                  @click="setSort('wins')"
+                >
+                  W{{ sortColumn === 'wins' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                </span>
+                <span class="wl-sep">-</span>
+                <span
+                  class="wl-clickable"
+                  :class="{ active: sortColumn === 'losses' }"
+                  title="Sort by Losses"
+                  @click="setSort('losses')"
+                >
+                  L{{ sortColumn === 'losses' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                </span>
+              </div>
+            </th>
             <th class="sortable" @click="setSort('win_rate_pct')">
               Win Rate {{ sortColumn === 'win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
@@ -153,6 +196,18 @@ onMounted(() => {
             </th>
             <th class="sortable" @click="setSort('total_sprays')">
               Sprays {{ sortColumn === 'total_sprays' ? (sortAsc ? '▲' : '▼') : '' }}
+            </th>
+            <th class="sortable" @click="setSort('total_taunts')">
+              Taunts {{ sortColumn === 'total_taunts' ? (sortAsc ? '▲' : '▼') : '' }}
+            </th>
+            <th class="sortable" @click="setSort('total_dances')">
+              Dances {{ sortColumn === 'total_dances' ? (sortAsc ? '▲' : '▼') : '' }}
+            </th>
+            <th class="sortable" @click="setSort('total_voice_lines')">
+              Voice {{ sortColumn === 'total_voice_lines' ? (sortAsc ? '▲' : '▼') : '' }}
+            </th>
+            <th class="sortable" @click="setSort('total_bm')">
+              Total BM {{ sortColumn === 'total_bm' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
             <th>Recent 10</th>
           </tr>
@@ -221,6 +276,30 @@ onMounted(() => {
             <!-- Sprays -->
             <td class="bm-cell">
               <span v-if="p.total_sprays > 0" class="bm-tag">🎨 {{ p.total_sprays }}</span>
+              <span v-else class="text-dim">-</span>
+            </td>
+
+            <!-- Taunts -->
+            <td class="bm-cell">
+              <span v-if="p.total_taunts > 0" class="bm-tag">🗣️ {{ p.total_taunts }}</span>
+              <span v-else class="text-dim">-</span>
+            </td>
+
+            <!-- Dances -->
+            <td class="bm-cell">
+              <span v-if="p.total_dances > 0" class="bm-tag">💃 {{ p.total_dances }}</span>
+              <span v-else class="text-dim">-</span>
+            </td>
+
+            <!-- Voice -->
+            <td class="bm-cell">
+              <span v-if="(p.total_voice_lines ?? 0) > 0" class="bm-tag">🎙️ {{ p.total_voice_lines }}</span>
+              <span v-else class="text-dim">-</span>
+            </td>
+
+            <!-- Total BM -->
+            <td class="bm-cell">
+              <span v-if="getTotalBm(p) > 0" class="bm-tag bm-total-tag">🔥 {{ getTotalBm(p) }}</span>
               <span v-else class="text-dim">-</span>
             </td>
 
@@ -357,8 +436,91 @@ onMounted(() => {
   align-items: center;
 }
 
+.leaderboard-container {
+  max-width: none;
+  width: 100%;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+.leaderboard-table-container {
+  overflow: visible;
+  width: 100%;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.leaderboard-table thead th {
+  position: sticky;
+  top: 64px;
+  z-index: 20;
+  background: var(--bg-surface-elevated);
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.leaderboard-table thead tr th:first-child {
+  border-top-left-radius: var(--radius-lg);
+}
+
+.leaderboard-table thead tr th:last-child {
+  border-top-right-radius: var(--radius-lg);
+}
+
+.leaderboard-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius-lg);
+}
+
+.leaderboard-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+.wl-header-th {
+  user-select: none;
+}
+
+.wl-header-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.wl-clickable {
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  font-weight: 700;
+}
+
+.wl-clickable:hover {
+  background: var(--bg-surface-hover);
+  color: #fff;
+}
+
+.wl-clickable.active {
+  color: var(--accent-cyan);
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.wl-sep {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
 .bm-cell {
   white-space: nowrap;
+}
+
+.bm-total-tag {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  font-weight: 700;
 }
 </style>
 

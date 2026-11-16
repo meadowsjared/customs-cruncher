@@ -131,12 +131,15 @@ function hideBrokenImage(event: Event) {
   }
 }
 
-async function fetchPlayerProfile(identifier: string) {
+async function fetchPlayerProfile(identifier: string, heroName?: string) {
   loading.value = true
   error.value = null
 
   try {
-    const res = await fetch(`/api/player/${encodeURIComponent(identifier)}`)
+    const url = heroName
+      ? `/api/player/${encodeURIComponent(identifier)}?hero=${encodeURIComponent(heroName)}`
+      : `/api/player/${encodeURIComponent(identifier)}`
+    const res = await fetch(url)
     if (!res.ok) {
       if (res.status === 404) {
         error.value = `Player "${identifier}" not found in customs match records.`
@@ -218,6 +221,9 @@ const activeHeroParam = computed<string>(() => {
 
 const playerHeroStats = computed(() => {
   if (!profileData.value || !activeHeroParam.value) return null
+  if (profileData.value.heroStats) {
+    return profileData.value.heroStats
+  }
   const target = activeHeroParam.value.toLowerCase().replace(/[^a-z0-9]/g, '')
   const matches = profileData.value.matches.filter(m => {
     const raw = m.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -309,10 +315,11 @@ watch(
 )
 
 watch(
-  () => route.params.identifier,
-  newId => {
+  [() => route.params.identifier, () => route.params.heroName],
+  ([newId, newHero]) => {
     if (typeof newId === 'string') {
-      fetchPlayerProfile(newId)
+      const heroStr = typeof newHero === 'string' ? newHero : undefined
+      fetchPlayerProfile(newId, heroStr)
     }
   },
   { immediate: true }
@@ -321,7 +328,8 @@ watch(
 onMounted(() => {
   const currentId = route.params.identifier
   if (typeof currentId === 'string' && !profileData.value) {
-    fetchPlayerProfile(currentId)
+    const heroStr = typeof route.params.heroName === 'string' ? route.params.heroName : undefined
+    fetchPlayerProfile(currentId, heroStr)
   }
 })
 </script>

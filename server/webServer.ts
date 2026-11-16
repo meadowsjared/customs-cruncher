@@ -365,7 +365,8 @@ export function createServer(): http.Server {
       const playerMatch = pathname.match(/^\/api\/players?\/([^/]+)$/)
       if (playerMatch) {
         const identifier = decodeURIComponent(playerMatch[1])
-        const profile = await getPlayerProfile(identifier)
+        const heroParam = urlObj.searchParams.get('hero') || undefined
+        const profile = await getPlayerProfile(identifier, heroParam)
 
         if (!profile) {
           sendJson(res, 404, { error: 'Player not found' })

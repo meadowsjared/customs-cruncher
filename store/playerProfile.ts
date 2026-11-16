@@ -64,9 +64,23 @@ export interface PlayerProfileMatch {
   talents: PlayerMatchTalents | null
 }
 
+export interface PlayerHeroSpecificStats {
+  hero: string
+  total: number
+  wins: number
+  losses: number
+  winRatePct: number
+  kda: number
+  avgHeroDamage: number
+  avgSiegeDamage: number
+  avgHealing: number
+  avgDamageTaken: number
+}
+
 export interface PlayerProfileResult {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
+  heroStats?: PlayerHeroSpecificStats | null
 }
 
 interface HotsAccountLookupRow {
@@ -110,7 +124,7 @@ export async function searchPlayers(query: string, limit = 12): Promise<PlayerSe
   `
 }
 
-export async function getPlayerProfile(identifier: string): Promise<PlayerProfileResult | null> {
+export async function getPlayerProfile(identifier: string, heroFilter?: string): Promise<PlayerProfileResult | null> {
   const decoded = decodeURIComponent(identifier).trim()
   if (!decoded) return null
 
@@ -199,50 +213,163 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
 
   const tagList = allTags.map(t => t.toLowerCase())
 
-  // Query player's matches with talents extracted from replay JSON
-  const matches = await sql<ReplayStatsMatchRow[]>`
-    SELECT s.replay_id, s.date, s.map, s.hero, s.win,
-           s.hots_battle_tag,
-           s.kda, s.solo_kills, s.assists, s.deaths, s.hero_damage, s.siege_damage,
-           s.healing, s.self_healing, s.damage_taken, s.xp_contribution,
-           s.length,
-           r.players->s.toon_handle->'talents' as talents
-    FROM mv_replay_player_stats s
-    JOIN replays r ON s.replay_id = r.id
-    WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
-    ORDER BY s.date DESC
-    LIMIT 100
+  // 1. Overall all-time player stats across all customs
+  const playerAggRow = await sql<Array<{
+    total_matches: string
+    wins: string
+    avg_kda: number | null
+    avg_hero_damage: number | null
+    avg_siege_damage: number | null
+    avg_healing: number | null
+    avg_damage_taken: number | null
+    avg_xp: number | null
+  }>>`
+    SELECT
+      COUNT(*) as total_matches,
+      SUM(CASE WHEN win THEN 1 ELSE 0 END) as wins,
+      AVG(kda) as avg_kda,
+      AVG(hero_damage) as avg_hero_damage,
+      AVG(siege_damage) as avg_siege_damage,
+      AVG(COALESCE(healing, 0) + COALESCE(self_healing, 0)) as avg_healing,
+      AVG(damage_taken) as avg_damage_taken,
+      AVG(xp_contribution) as avg_xp
+    FROM mv_replay_player_stats
+    WHERE LOWER(hots_battle_tag) IN ${sql(tagList)}
   `
 
-  const totalMatches = matches.length
-  const wins = matches.filter(m => m.win).length
+  const totalMatches = Number(playerAggRow[0]?.total_matches) || 0
+  const wins = Number(playerAggRow[0]?.wins) || 0
   const losses = totalMatches - wins
   const winRatePct = totalMatches > 0 ? Number(((wins / totalMatches) * 100).toFixed(1)) : 0
+  const overallKda = totalMatches > 0 ? Number((Number(playerAggRow[0]?.avg_kda) || 0).toFixed(2)) : 0
+  const avgHeroDamage = totalMatches > 0 ? Math.round(Number(playerAggRow[0]?.avg_hero_damage) || 0) : 0
+  const avgSiegeDamage = totalMatches > 0 ? Math.round(Number(playerAggRow[0]?.avg_siege_damage) || 0) : 0
+  const avgHealing = totalMatches > 0 ? Math.round(Number(playerAggRow[0]?.avg_healing) || 0) : 0
+  const avgDamageTaken = totalMatches > 0 ? Math.round(Number(playerAggRow[0]?.avg_damage_taken) || 0) : 0
+  const avgXp = totalMatches > 0 ? Math.round(Number(playerAggRow[0]?.avg_xp) || 0) : 0
 
-  let sumKda = 0
-  let sumHeroDmg = 0
-  let sumSiegeDmg = 0
-  let sumHealing = 0
-  let sumDmgTaken = 0
-  let sumXp = 0
+  // 2. All-time hero breakdown
+  const allHeroStatsRows = await sql<Array<{
+    hero: string
+    games: string
+    wins: string
+  }>>`
+    SELECT
+      hero,
+      COUNT(*) as games,
+      SUM(CASE WHEN win THEN 1 ELSE 0 END) as wins
+    FROM mv_replay_player_stats
+    WHERE LOWER(hots_battle_tag) IN ${sql(tagList)}
+    GROUP BY hero
+    ORDER BY COUNT(*) DESC
+  `
 
-  const heroStatsMap = new Map<string, { games: number; wins: number }>()
+  const allHeroStats: PlayerProfileTopHero[] = allHeroStatsRows.map(r => {
+    const g = Number(r.games) || 0
+    const w = Number(r.wins) || 0
+    return {
+      hero: r.hero,
+      games: g,
+      wins: w,
+      winRatePct: g > 0 ? Number(((w / g) * 100).toFixed(1)) : 0,
+    }
+  })
+
+  const topHeroes = allHeroStats.slice(0, 5)
+
+  let eligibleForWinrate = allHeroStats.filter(h => h.games >= 3)
+  if (eligibleForWinrate.length < 3) {
+    eligibleForWinrate = allHeroStats.filter(h => h.games >= 2)
+  }
+  if (eligibleForWinrate.length < 3) {
+    eligibleForWinrate = allHeroStats
+  }
+
+  const highestWinRateHeroes = [...eligibleForWinrate]
+    .sort((a, b) => b.winRatePct - a.winRatePct || b.games - a.games)
+    .slice(0, 5)
+
+  // 3. Query match history (filtered by hero if requested)
+  let matches: ReplayStatsMatchRow[] = []
+  let heroStats: PlayerHeroSpecificStats | null = null
+
+  const trimmedHero = (heroFilter || '').trim()
+  if (trimmedHero) {
+    const normHero = trimmedHero.toLowerCase().replace(/[^a-z0-9]/g, '')
+    matches = await sql<ReplayStatsMatchRow[]>`
+      SELECT s.replay_id, s.date, s.map, s.hero, s.win,
+             s.hots_battle_tag,
+             s.kda, s.solo_kills, s.assists, s.deaths, s.hero_damage, s.siege_damage,
+             s.healing, s.self_healing, s.damage_taken, s.xp_contribution,
+             s.length,
+             r.players->s.toon_handle->'talents' as talents
+      FROM mv_replay_player_stats s
+      JOIN replays r ON s.replay_id = r.id
+      WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
+        AND REGEXP_REPLACE(LOWER(s.hero), '[^a-z0-9]', '', 'g') = ${normHero}
+      ORDER BY s.date DESC
+      LIMIT 250
+    `
+
+    const heroAggRow = await sql<Array<{
+      games: string
+      wins: string
+      avg_kda: number | null
+      avg_hero_damage: number | null
+      avg_siege_damage: number | null
+      avg_healing: number | null
+      avg_damage_taken: number | null
+    }>>`
+      SELECT
+        COUNT(*) as games,
+        SUM(CASE WHEN win THEN 1 ELSE 0 END) as wins,
+        AVG(kda) as avg_kda,
+        AVG(hero_damage) as avg_hero_damage,
+        AVG(siege_damage) as avg_siege_damage,
+        AVG(COALESCE(healing, 0) + COALESCE(self_healing, 0)) as avg_healing,
+        AVG(damage_taken) as avg_damage_taken
+      FROM mv_replay_player_stats
+      WHERE LOWER(hots_battle_tag) IN ${sql(tagList)}
+        AND REGEXP_REPLACE(LOWER(hero), '[^a-z0-9]', '', 'g') = ${normHero}
+    `
+
+    if (heroAggRow.length > 0) {
+      const g = Number(heroAggRow[0].games) || 0
+      const w = Number(heroAggRow[0].wins) || 0
+      const l = g - w
+      const wr = g > 0 ? Number(((w / g) * 100).toFixed(1)) : 0
+      heroStats = {
+        hero: matches[0]?.hero || trimmedHero,
+        total: g,
+        wins: w,
+        losses: l,
+        winRatePct: wr,
+        kda: Number((Number(heroAggRow[0].avg_kda) || 0).toFixed(2)),
+        avgHeroDamage: Math.round(Number(heroAggRow[0].avg_hero_damage) || 0),
+        avgSiegeDamage: Math.round(Number(heroAggRow[0].avg_siege_damage) || 0),
+        avgHealing: Math.round(Number(heroAggRow[0].avg_healing) || 0),
+        avgDamageTaken: Math.round(Number(heroAggRow[0].avg_damage_taken) || 0),
+      }
+    }
+  } else {
+    matches = await sql<ReplayStatsMatchRow[]>`
+      SELECT s.replay_id, s.date, s.map, s.hero, s.win,
+             s.hots_battle_tag,
+             s.kda, s.solo_kills, s.assists, s.deaths, s.hero_damage, s.siege_damage,
+             s.healing, s.self_healing, s.damage_taken, s.xp_contribution,
+             s.length,
+             r.players->s.toon_handle->'talents' as talents
+      FROM mv_replay_player_stats s
+      JOIN replays r ON s.replay_id = r.id
+      WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
+      ORDER BY s.date DESC
+      LIMIT 100
+    `
+  }
 
   const formattedMatches: PlayerProfileMatch[] = []
 
   for (const m of matches) {
-    sumKda += Number(m.kda) || 0
-    sumHeroDmg += Number(m.hero_damage) || 0
-    sumSiegeDmg += Number(m.siege_damage) || 0
-    sumHealing += (Number(m.healing) || 0) + (Number(m.self_healing) || 0)
-    sumDmgTaken += Number(m.damage_taken) || 0
-    sumXp += Number(m.xp_contribution) || 0
-
-    const heroEntry = heroStatsMap.get(m.hero) || { games: 0, wins: 0 }
-    heroEntry.games++
-    if (m.win) heroEntry.wins++
-    heroStatsMap.set(m.hero, heroEntry)
-
     formattedMatches.push({
       replay_id: m.replay_id,
       date: m.date instanceof Date ? m.date.toISOString() : String(m.date),
@@ -264,37 +391,6 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
       talents: m.talents,
     })
   }
-
-  const allHeroStats: PlayerProfileTopHero[] = Array.from(heroStatsMap.entries())
-    .map(([hero, entry]) => ({
-      hero,
-      games: entry.games,
-      wins: entry.wins,
-      winRatePct: entry.games > 0 ? Number(((entry.wins / entry.games) * 100).toFixed(1)) : 0,
-    }))
-
-  const topHeroes = [...allHeroStats]
-    .sort((a, b) => b.games - a.games || b.winRatePct - a.winRatePct)
-    .slice(0, 5)
-
-  let eligibleForWinrate = allHeroStats.filter(h => h.games >= 3)
-  if (eligibleForWinrate.length < 3) {
-    eligibleForWinrate = allHeroStats.filter(h => h.games >= 2)
-  }
-  if (eligibleForWinrate.length < 3) {
-    eligibleForWinrate = allHeroStats
-  }
-
-  const highestWinRateHeroes = [...eligibleForWinrate]
-    .sort((a, b) => b.winRatePct - a.winRatePct || b.games - a.games)
-    .slice(0, 5)
-
-  const overallKda = totalMatches > 0 ? Number((sumKda / totalMatches).toFixed(2)) : 0
-  const avgHeroDamage = totalMatches > 0 ? Math.round(sumHeroDmg / totalMatches) : 0
-  const avgSiegeDamage = totalMatches > 0 ? Math.round(sumSiegeDmg / totalMatches) : 0
-  const avgHealing = totalMatches > 0 ? Math.round(sumHealing / totalMatches) : 0
-  const avgDamageTaken = totalMatches > 0 ? Math.round(sumDmgTaken / totalMatches) : 0
-  const avgXp = totalMatches > 0 ? Math.round(sumXp / totalMatches) : 0
 
   const [name, tag] = primaryAccount.hots_battle_tag.split('#')
 
@@ -319,6 +415,7 @@ export async function getPlayerProfile(identifier: string): Promise<PlayerProfil
       highestWinRateHeroes,
     },
     matches: formattedMatches,
+    heroStats,
   }
 }
 

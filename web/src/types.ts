@@ -181,6 +181,7 @@ export interface LeaderboardPlayer {
   total_sprays: number
   total_taunts: number
   total_dances: number
+  total_voice_lines?: number
   recent_10_win_rate_pct?: number
 }
 
@@ -238,9 +239,23 @@ export interface PlayerProfileMatch {
   talents: ReplayPlayerTalents | null
 }
 
+export interface PlayerHeroSpecificStats {
+  hero: string
+  total: number
+  wins: number
+  losses: number
+  winRatePct: number
+  kda: number
+  avgHeroDamage: number
+  avgSiegeDamage: number
+  avgHealing: number
+  avgDamageTaken: number
+}
+
 export interface PlayerProfileData {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
+  heroStats?: PlayerHeroSpecificStats | null
 }
 
 export interface HeroProfileTopPlayer {
