@@ -507,3 +507,236 @@ tbody tr:hover {
   background: var(--text-dim);
 }
 
+/* ==========================================================================
+   HotS In-Game Style Floating Talent Tooltip
+   ========================================================================== */
+.hots-talent-tooltip {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  width: 330px;
+  max-width: 90vw;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.85));
+  animation: tooltipFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tooltip-inner {
+  background: linear-gradient(160deg, rgba(20, 27, 45, 0.98) 0%, rgba(10, 14, 26, 0.98) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-top: 2px solid var(--accent-cyan);
+  border-radius: 8px;
+  backdrop-filter: blur(14px);
+  padding: 0.85rem;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.tooltip-inner.heroic-tier {
+  border-color: rgba(251, 191, 36, 0.45);
+  border-top: 2px solid var(--accent-gold);
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.tooltip-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.tooltip-talent-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tooltip-empty-lvl {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.tooltip-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.tooltip-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tooltip-lvl-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(56, 189, 248, 0.15);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.heroic-tier .tooltip-lvl-badge {
+  color: var(--accent-gold);
+  background: rgba(251, 191, 36, 0.15);
+}
+
+.tooltip-type-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.08rem 0.35rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+/* Ability key badge variants */
+.badge-key-q {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.badge-key-w {
+  background: rgba(129, 140, 248, 0.2);
+  color: #818cf8;
+  border: 1px solid rgba(129, 140, 248, 0.4);
+}
+
+.badge-key-e {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.badge-key-heroic {
+  background: rgba(251, 191, 36, 0.25);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.2);
+}
+
+.badge-key-trait {
+  background: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(192, 132, 252, 0.4);
+}
+
+.badge-key-active {
+  background: rgba(34, 211, 238, 0.2);
+  color: #22d3ee;
+  border: 1px solid rgba(34, 211, 238, 0.4);
+}
+
+.badge-key-passive {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.tooltip-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltip-body {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.55rem;
+}
+
+.tooltip-desc {
+  word-break: break-word;
+}
+
+.tooltip-desc.empty-desc {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* Highlighted keywords in descriptions */
+.tooltip-quest {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.tooltip-reward {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.tooltip-passive {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.tooltip-active {
+  color: #22d3ee;
+  font-weight: 700;
+}
+
+.tooltip-num {
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.tooltip-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.4rem;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+.tooltip-footer-tier {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tooltip-footer-hero {
+  color: var(--text-muted);
+}
+

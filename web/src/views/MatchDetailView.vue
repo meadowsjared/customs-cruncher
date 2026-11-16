@@ -14,6 +14,7 @@ import {
   getTalentTooltip,
   getTalentBuildCode,
   resolveHeroName,
+  formatTalentDescriptionHtml,
 } from '../utils/hots'
 
 const route = useRoute()
@@ -119,6 +120,90 @@ function getPlayerTalentList(player: ReplayPlayer): (string | undefined)[] {
     player.talents?.Tier7Choice,
   ]
 }
+
+interface ActiveTooltipState {
+  visible: boolean
+  talentKey?: string
+  tierIndex: number
+  heroName: string
+  x: number
+  y: number
+}
+
+const activeTooltip = ref<ActiveTooltipState>({
+  visible: false,
+  tierIndex: 0,
+  heroName: '',
+  x: 0,
+  y: 0,
+})
+
+function showTalentTooltip(event: MouseEvent, talentKey?: string, tierIndex: number = 0, heroName: string = '') {
+  activeTooltip.value = {
+    visible: true,
+    talentKey,
+    tierIndex,
+    heroName,
+    x: event.clientX,
+    y: event.clientY,
+  }
+}
+
+function updateTooltipPosition(event: MouseEvent) {
+  if (!activeTooltip.value.visible) return
+  activeTooltip.value.x = event.clientX
+  activeTooltip.value.y = event.clientY
+}
+
+function hideTalentTooltip() {
+  activeTooltip.value.visible = false
+}
+
+function getTooltipTalentName(talentKey?: string, tierIndex: number = 0): string {
+  if (!talentKey) {
+    const lvl = [1, 4, 7, 10, 13, 16, 20][tierIndex] || 1
+    return `Level ${lvl} Talent`
+  }
+  return formatTalentName(talentKey)
+}
+
+function getTypeBadgeClass(type?: string): string {
+  if (!type) return 'badge-key-passive'
+  const t = type.toLowerCase()
+  if (t === 'q') return 'badge-key-q'
+  if (t === 'w') return 'badge-key-w'
+  if (t === 'e') return 'badge-key-e'
+  if (t === 'r' || t === 'heroic') return 'badge-key-heroic'
+  if (t === 'trait' || t === 'd') return 'badge-key-trait'
+  if (t === 'active') return 'badge-key-active'
+  return 'badge-key-passive'
+}
+
+const tooltipStyle = computed(() => {
+  const padding = 16
+  const tooltipWidth = 330
+  const tooltipHeight = 170
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+
+  let left = activeTooltip.value.x + 16
+  let top = activeTooltip.value.y - 20
+
+  if (left + tooltipWidth > viewportWidth - padding) {
+    left = activeTooltip.value.x - tooltipWidth - 16
+  }
+  if (top + tooltipHeight > viewportHeight - padding) {
+    top = Math.max(padding, viewportHeight - tooltipHeight - padding)
+  }
+  if (top < padding) {
+    top = padding
+  }
+
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+  }
+})
 
 async function copyBuildCode(player: ReplayPlayer) {
   const code = getTalentBuildCode(player)
@@ -565,7 +650,9 @@ onMounted(() => {
                         v-for="(tKey, idx) in getPlayerTalentList(p)"
                         :key="idx"
                         class="talent-mini-slot"
-                        :title="getTalentTooltip(tKey, idx)"
+                        @mouseenter="showTalentTooltip($event, tKey, idx, p.hero)"
+                        @mousemove="updateTooltipPosition($event)"
+                        @mouseleave="hideTalentTooltip"
                       >
                         <img
                           v-if="tKey"
@@ -714,7 +801,9 @@ onMounted(() => {
                         v-for="(tKey, idx) in getPlayerTalentList(p)"
                         :key="idx"
                         class="talent-mini-slot"
-                        :title="getTalentTooltip(tKey, idx)"
+                        @mouseenter="showTalentTooltip($event, tKey, idx, p.hero)"
+                        @mousemove="updateTooltipPosition($event)"
+                        @mouseleave="hideTalentTooltip"
                       >
                         <img
                           v-if="tKey"
@@ -845,11 +934,19 @@ onMounted(() => {
                 <div class="talent-choice-detail">
                   <div class="talent-name-row">
                     <span class="talent-choice-name">{{ formatTalentName(tKey) || 'Not Reached / Selected' }}</span>
-                    <span v-if="getTalentInfo(tKey)?.type" class="talent-type-badge">{{ getTalentInfo(tKey)?.type }}</span>
+                    <span
+                      v-if="getTalentInfo(tKey)?.type"
+                      class="talent-type-badge"
+                      :class="getTypeBadgeClass(getTalentInfo(tKey)?.type)"
+                    >
+                      {{ getTalentInfo(tKey)?.type }}
+                    </span>
                   </div>
-                  <p v-if="getTalentInfo(tKey)?.description" class="talent-description">
-                    {{ getTalentInfo(tKey)?.description }}
-                  </p>
+                  <div
+                    v-if="getTalentInfo(tKey)?.description"
+                    class="talent-description"
+                    v-html="formatTalentDescriptionHtml(getTalentInfo(tKey)?.description)"
+                  ></div>
                 </div>
               </div>
             </div>
@@ -1059,6 +1156,74 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Custom Floating HotS Talent Tooltip -->
+    <Teleport to="body">
+      <div
+        v-if="activeTooltip.visible"
+        class="hots-talent-tooltip"
+        :style="tooltipStyle"
+      >
+        <div
+          class="tooltip-inner"
+          :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }"
+        >
+          <div class="tooltip-header">
+            <div class="tooltip-icon-wrap">
+              <img
+                v-if="activeTooltip.talentKey"
+                :src="getTalentImageUrl(activeTooltip.talentKey)"
+                :alt="getTooltipTalentName(activeTooltip.talentKey, activeTooltip.tierIndex)"
+                class="tooltip-talent-img"
+                @error="hideBrokenImage"
+              />
+              <span v-else class="tooltip-empty-lvl">
+                {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
+              </span>
+            </div>
+
+            <div class="tooltip-header-info">
+              <div class="tooltip-badges-row">
+                <span class="tooltip-lvl-badge">
+                  Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
+                </span>
+                <span
+                  v-if="getTalentInfo(activeTooltip.talentKey)?.type"
+                  class="tooltip-type-badge"
+                  :class="getTypeBadgeClass(getTalentInfo(activeTooltip.talentKey)?.type)"
+                >
+                  {{ getTalentInfo(activeTooltip.talentKey)?.type }}
+                </span>
+              </div>
+              <h4 class="tooltip-title">
+                {{ getTooltipTalentName(activeTooltip.talentKey, activeTooltip.tierIndex) }}
+              </h4>
+            </div>
+          </div>
+
+          <div class="tooltip-body">
+            <div
+              v-if="getTalentInfo(activeTooltip.talentKey)?.description"
+              class="tooltip-desc"
+              v-html="formatTalentDescriptionHtml(getTalentInfo(activeTooltip.talentKey)?.description)"
+            ></div>
+            <div v-else-if="activeTooltip.talentKey" class="tooltip-desc fallback-desc">
+              {{ formatTalentName(activeTooltip.talentKey) }}
+            </div>
+            <div v-else class="tooltip-desc empty-desc">
+              Level {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }} talent was not reached or selected in this match.
+            </div>
+          </div>
+
+          <div class="tooltip-footer">
+            <span class="tooltip-footer-tier">Tier {{ activeTooltip.tierIndex + 1 }}</span>
+            <span v-if="getTalentInfo(activeTooltip.talentKey)?.hero || activeTooltip.heroName" class="tooltip-footer-hero">
+              {{ getTalentInfo(activeTooltip.talentKey)?.hero || activeTooltip.heroName }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

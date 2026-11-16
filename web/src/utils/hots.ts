@@ -216,6 +216,16 @@ export function getTalentTooltip(talentKey?: string, tierIndex: number = 0): str
   return `Level ${level}${typeStr}: ${info.name}${desc}`
 }
 
+export function formatTalentDescriptionHtml(description?: string): string {
+  if (!description) return ''
+  return description
+    .replace(/(Quest:)/g, '<span class="tooltip-quest">$1</span>')
+    .replace(/(Reward:)/g, '<span class="tooltip-reward">$1</span>')
+    .replace(/(Passive:)/g, '<span class="tooltip-passive">$1</span>')
+    .replace(/(Active:)/g, '<span class="tooltip-active">$1</span>')
+    .replace(/(\b(?:[0-9]+(?:\.[0-9]+)?%|\+[0-9]+%|[0-9]+(?:\.[0-9]+)?\s*(?:seconds?|sec)|[0-9]+\s*Mana)\b)/g, '<span class="tooltip-num">$1</span>')
+}
+
 export function getTalentBuildCode(player: { hero: string; gameStats?: { Tier1Talent?: number; Tier2Talent?: number; Tier3Talent?: number; Tier4Talent?: number; Tier5Talent?: number; Tier6Talent?: number; Tier7Talent?: number } }): string {
   const stats = player.gameStats
   if (!stats) return ''
