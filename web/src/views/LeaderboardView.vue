@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { LeaderboardPlayer } from '../types'
 import { formatNumber } from '../utils/hots'
@@ -25,6 +25,7 @@ type SortKey =
   | 'total_dances'
   | 'total_voice_lines'
   | 'total_bm'
+  | 'recent_10_win_rate_pct'
 
 const sortColumn = ref<SortKey>('games_played')
 const sortAsc = ref(false)
@@ -32,7 +33,7 @@ const sortAsc = ref(false)
 async function fetchLeaderboard() {
   loading.value = true
   try {
-    const res = await fetch('/api/leaderboard')
+    const res = await fetch(`/api/leaderboard?recent=${minGames.value}`)
     const text = await res.text()
     const data: { players: LeaderboardPlayer[] } = JSON.parse(text)
     players.value = data.players || []
@@ -42,6 +43,10 @@ async function fetchLeaderboard() {
     loading.value = false
   }
 }
+
+watch(minGames, () => {
+  fetchLeaderboard()
+})
 
 function setSort(col: SortKey) {
   if (sortColumn.value === col) {
@@ -70,19 +75,63 @@ function getSortValue(p: LeaderboardPlayer, key: SortKey): number {
 }
 
 const filteredPlayers = computed(() => {
-  let list = players.value.filter((p) => p.games_played >= minGames.value)
+  const min = minGames.value
+  const col = sortColumn.value
+  const asc = sortAsc.value
+  const q = search.value.trim().toLowerCase()
 
-  if (search.value.trim()) {
-    const q = search.value.trim().toLowerCase()
+  let list = players.value.filter((p) => p.games_played >= min)
+
+  if (q) {
     list = list.filter((p) => p.player_name.toLowerCase().includes(q))
   }
 
-  return list.sort((a, b) => {
-    const valA = getSortValue(a, sortColumn.value)
-    const valB = getSortValue(b, sortColumn.value)
-    if (valA < valB) return sortAsc.value ? -1 : 1
-    if (valA > valB) return sortAsc.value ? 1 : -1
-    return 0
+  return [...list].sort((a, b) => {
+    if (col === 'recent_10_win_rate_pct') {
+      const aVal =
+        a.games_played >= min && a.recent_10_win_rate_pct !== undefined && a.recent_10_win_rate_pct !== null
+          ? a.recent_10_win_rate_pct
+          : null
+      const bVal =
+        b.games_played >= min && b.recent_10_win_rate_pct !== undefined && b.recent_10_win_rate_pct !== null
+          ? b.recent_10_win_rate_pct
+          : null
+
+      if (aVal === null && bVal === null) {
+        return b.games_played - a.games_played
+      }
+      if (aVal === null) return 1
+      if (bVal === null) return -1
+
+      if (aVal !== bVal) {
+        return asc ? aVal - bVal : bVal - aVal
+      }
+
+      // Tie-breaker: games_played DESC, then win_rate_pct DESC, then name
+      if (a.games_played !== b.games_played) {
+        return b.games_played - a.games_played
+      }
+      if (a.win_rate_pct !== b.win_rate_pct) {
+        return b.win_rate_pct - a.win_rate_pct
+      }
+      return a.player_name.localeCompare(b.player_name)
+    }
+
+    const valA = getSortValue(a, col)
+    const valB = getSortValue(b, col)
+    if (valA !== valB) {
+      if (valA < valB) return asc ? -1 : 1
+      if (valA > valB) return asc ? 1 : -1
+    }
+
+    // Tie-breaker: games_played DESC, then win_rate_pct DESC, then name
+    if (a.games_played !== b.games_played) {
+      return b.games_played - a.games_played
+    }
+    if (a.win_rate_pct !== b.win_rate_pct) {
+      return b.win_rate_pct - a.win_rate_pct
+    }
+    return a.player_name.localeCompare(b.player_name)
   })
 })
 
@@ -209,13 +258,19 @@ onMounted(() => {
             <th class="sortable" @click="setSort('total_bm')">
               Total BM {{ sortColumn === 'total_bm' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
-            <th>Recent 10</th>
+            <th
+              class="sortable"
+              :title="`Win rate over the player's last ${minGames} games`"
+              @click="setSort('recent_10_win_rate_pct')"
+            >
+              Recent {{ minGames }} {{ sortColumn === 'recent_10_win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="(p, idx) in filteredPlayers"
-            :key="p.toon_handle"
+            :key="p.player_identity || p.toon_handle || ('p_' + idx)"
             class="player-row"
             @click="viewPlayerMatches(p)"
           >
@@ -303,10 +358,10 @@ onMounted(() => {
               <span v-else class="text-dim">-</span>
             </td>
 
-            <!-- Recent 10 -->
+            <!-- Recent {{ minGames }} -->
             <td>
               <span
-                v-if="p.recent_10_win_rate_pct !== undefined && p.recent_10_win_rate_pct !== null"
+                v-if="p.games_played >= minGames && p.recent_10_win_rate_pct !== undefined && p.recent_10_win_rate_pct !== null"
                 class="badge"
                 :class="p.recent_10_win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'"
               >

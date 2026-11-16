@@ -161,6 +161,7 @@ export interface ReplayDetail {
 }
 
 export interface LeaderboardPlayer {
+  player_identity?: string
   toon_handle: string
   player_name: string
   row_id?: number | null

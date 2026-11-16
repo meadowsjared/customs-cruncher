@@ -49,29 +49,61 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
   const playerName = filter.playerName ?? null
   const hero = filter.hero ?? null
   const map = filter.map ?? null
+  const recentGames = Math.max(1, Math.min(filter.recentGames ?? 10, 50))
 
   return await sql<PlayerAggregatedStats[]>`
-    WITH ranked_games AS (
+    WITH player_mappings AS (
+      SELECT
+        m.*,
+        COALESCE(
+          'discord_' || MAX(ha.discord_id) OVER (PARTITION BY m.toon_handle),
+          'discord_' || ha.discord_id,
+          'toon_' || m.toon_handle
+        ) AS player_identity,
+        ha.id AS account_id,
+        ha.is_primary,
+        ha.hots_battle_tag AS mapped_battle_tag
+      FROM mv_replay_player_stats m
+      LEFT JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(m.hots_battle_tag)
+      WHERE (${toonHandle}::text IS NULL OR m.toon_handle = ${toonHandle})
+        AND (${playerName}::text IS NULL OR m.player_name ILIKE ${playerName})
+        AND (${hero}::text IS NULL OR m.hero = ${hero})
+        AND (${map}::text IS NULL OR m.map = ${map})
+    ),
+    ranked_games AS (
       SELECT
         *,
         ROW_NUMBER() OVER (
-          PARTITION BY toon_handle
+          PARTITION BY player_identity
           ORDER BY date DESC
         ) AS recency_rank,
         FIRST_VALUE(player_name) OVER (
-          PARTITION BY toon_handle
+          PARTITION BY player_identity
           ORDER BY date DESC
-        ) AS latest_player_name
-      FROM mv_replay_player_stats
-      WHERE (${toonHandle}::text IS NULL OR toon_handle = ${toonHandle})
-        AND (${playerName}::text IS NULL OR player_name ILIKE ${playerName})
-        AND (${hero}::text IS NULL OR hero = ${hero})
-        AND (${map}::text IS NULL OR map = ${map})
+        ) AS latest_player_name,
+        FIRST_VALUE(toon_handle) OVER (
+          PARTITION BY player_identity
+          ORDER BY date DESC
+        ) AS latest_toon_handle
+      FROM player_mappings
     )
     SELECT
-      toon_handle,
-      MAX(latest_player_name) AS player_name,
-      MAX(hots_battle_tag) AS hots_battle_tag,
+      player_identity,
+      MAX(latest_toon_handle) AS toon_handle,
+      COALESCE(
+        MAX(CASE WHEN is_primary THEN split_part(mapped_battle_tag, '#', 1) END),
+        MAX(split_part(mapped_battle_tag, '#', 1)),
+        MAX(latest_player_name)
+      ) AS player_name,
+      COALESCE(
+        MAX(CASE WHEN is_primary THEN account_id END),
+        MIN(account_id)
+      ) AS row_id,
+      COALESCE(
+        MAX(CASE WHEN is_primary THEN mapped_battle_tag END),
+        MAX(mapped_battle_tag),
+        MAX(hots_battle_tag)
+      ) AS hots_battle_tag,
       COUNT(*)::int AS games_played,
       COUNT(*) FILTER (WHERE win)::int AS wins,
       COUNT(*) FILTER (WHERE NOT win)::int AS losses,
@@ -101,16 +133,24 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
       SUM(taunts_count)::int AS total_taunts,
       SUM(dances_count)::int AS total_dances,
       SUM(voice_lines_count)::int AS total_voice_lines,
-      ROUND(
-        100.0 * (AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END) FILTER (WHERE recency_rank <= 10))::numeric,
-        2
-      )::double precision AS recent_10_win_rate_pct,
-      ROUND(
-        (AVG(dpm) FILTER (WHERE recency_rank <= 10))::numeric,
-        1
-      )::double precision AS recent_10_avg_dpm
+      CASE
+        WHEN COUNT(*) >= ${recentGames} THEN
+          ROUND(
+            100.0 * (AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END) FILTER (WHERE recency_rank <= ${recentGames}))::numeric,
+            2
+          )::double precision
+        ELSE NULL
+      END AS recent_10_win_rate_pct,
+      CASE
+        WHEN COUNT(*) >= ${recentGames} THEN
+          ROUND(
+            (AVG(dpm) FILTER (WHERE recency_rank <= ${recentGames}))::numeric,
+            1
+          )::double precision
+        ELSE NULL
+      END AS recent_10_avg_dpm
     FROM ranked_games
-    GROUP BY toon_handle
+    GROUP BY player_identity
     ORDER BY games_played DESC, win_rate_pct DESC
   `
 }

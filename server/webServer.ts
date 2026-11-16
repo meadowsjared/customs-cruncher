@@ -333,7 +333,8 @@ export function createServer(): http.Server {
 
       // GET /api/leaderboard
       if (pathname === '/api/leaderboard') {
-        const stats = await getPlayerAggregatedStats()
+        const recentGames = parseInt(urlObj.searchParams.get('recent') || '10', 10) || 10
+        const stats = await getPlayerAggregatedStats({ recentGames })
         const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
           SELECT id, hots_battle_tag FROM hots_accounts
         `
@@ -342,7 +343,7 @@ export function createServer(): http.Server {
           tagMap.set(a.hots_battle_tag.toLowerCase(), a.id)
         }
         for (const s of stats) {
-          if (s.hots_battle_tag) {
+          if (!s.row_id && s.hots_battle_tag) {
             s.row_id = tagMap.get(s.hots_battle_tag.toLowerCase()) ?? null
           }
         }

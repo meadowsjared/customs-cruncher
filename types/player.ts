@@ -317,6 +317,7 @@ export type ReplayPlayerStatRow = {
  * Aggregated player statistics across matches.
  */
 export type PlayerAggregatedStats = {
+  player_identity?: string
   toon_handle: string
   player_name: string
   hots_battle_tag?: string
@@ -359,6 +360,7 @@ export type PlayerStatsFilter = {
   playerName?: string
   hero?: string
   map?: string
+  recentGames?: number
 }
 
 /**
