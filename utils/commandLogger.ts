@@ -194,7 +194,9 @@ function formatOptions(options: readonly CommandOptionLike[]): string {
 
 export function formatInteraction(interaction: LoggableInteraction): string {
   const timestamp = new Date().toISOString()
-  const serverStr = interaction.guild ? `${interaction.guild.name} (ID: ${interaction.guild.id})` : 'Direct Message (DM)'
+  const serverStr = interaction.guild
+    ? `${interaction.guild.name} (ID: ${interaction.guild.id})`
+    : 'Direct Message (DM)'
   const user = `${interaction.user.tag} (ID: ${interaction.user.id})`
 
   let detail = 'Unknown Interaction'
@@ -344,10 +346,14 @@ export async function logCommandInteraction(interaction: Interaction<CacheType>)
     return
   }
 
-  const [fileLoggingEnabled, dmRecipients] = await Promise.all([
+  const [fileLoggingEnabled, rawDmRecipients] = await Promise.all([
     isLoggingEnabledForGuild(interaction.guildId),
     getDmRecipientsForGuild(interaction.guildId),
   ])
+
+  // Do not send DM notification to the user who ran the command
+  const callerId = interaction.user?.id
+  const dmRecipients = callerId ? rawDmRecipients.filter(id => id !== callerId) : rawDmRecipients
 
   if (!fileLoggingEnabled && dmRecipients.length === 0) {
     return
