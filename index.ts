@@ -19,6 +19,7 @@ import { botChannelName, CommandIds } from './constants'
 import { setSetting } from './store/settings'
 import { getBotChannel } from './utils/channel'
 import { startWebServer, stopWebServer } from './server/webServer'
+import { initCommandLogger } from './utils/commandLogger'
 
 export const client = new Client({
   intents: [
@@ -78,6 +79,8 @@ client.on('guildCreate', async guild => {
 })
 
 client.once('clientReady', async () => {
+  void initCommandLogger().catch(err => console.error('[CommandLogger] Initialization error:', err))
+
   // Set bot status/activity
   client.user?.setPresence({
     status: 'online',

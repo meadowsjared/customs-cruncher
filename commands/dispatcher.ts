@@ -69,6 +69,7 @@ import {
 } from './replays'
 import { handleScanLobbyCommand } from './scanLobby'
 import { handleChannelCommand, handleDeleteMessageCommand, handleGuideCommand, handleTwitchCommand } from './shared'
+import { logCommandInteraction } from '../utils/commandLogger'
 import {
   handleCheckTeamsCommand,
   handleFairSwapButton,
@@ -547,6 +548,9 @@ export async function dispatchInteraction(interaction: Interaction<CacheType>): 
     }
     return
   }
+
+  // Record command/interaction to file if logging is enabled
+  void logCommandInteraction(interaction)
 
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('lookup_replay_select:')) {
     await handleLookupReplaySelect(interaction)
