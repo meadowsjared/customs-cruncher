@@ -348,6 +348,14 @@ export async function handleRegisterCommand(
   await handleAddHotsAccount(interaction, targetDiscordId, hotsBattleTag)
 }
 
+export function getWebBaseUrl(): string {
+  const envUrl = process.env.MATCH_VIEWER_BASE_URL || process.env.WEB_BASE_URL || process.env.WEB_URL
+  if (envUrl && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/$/, '')
+  }
+  return 'https://storm-stats.duckdns.org'
+}
+
 export async function handleLookupCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {
@@ -393,8 +401,22 @@ export async function handleLookupCommand(
       const notFoundMessage = isSelf
         ? 'You are not registered in the database yet. Use `/register` to add your BattleTag!'
         : `<@${targetDiscordId}> is not registered in the database yet. Use \`/register\` to add them.`
+      const baseUrl = getWebBaseUrl()
+      const webButtonsRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setLabel('Website / Matches')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`${baseUrl}/matches`)
+          .setEmoji('⚔️'),
+        new ButtonBuilder()
+          .setLabel('Leaderboard')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`${baseUrl}/leaderboard`)
+          .setEmoji('🏆')
+      )
       await safeReply(interaction, {
         content: notFoundMessage,
+        components: [webButtonsRow],
         flags: MessageFlags.Ephemeral,
       })
       return
@@ -456,10 +478,24 @@ export async function handleLookupCommand(
           text: `To link this account, run: /register battle-tag:${exactUnlinked.hotsBattleTag} user:@User`,
         })
 
+        const baseUrl = getWebBaseUrl()
+        const webButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setLabel(`View ${exactUnlinked.hotsBattleTag} on Web`)
+            .setStyle(ButtonStyle.Link)
+            .setURL(`${baseUrl}/player/${encodeURIComponent(exactUnlinked.hotsBattleTag)}`)
+            .setEmoji('🌐'),
+          new ButtonBuilder()
+            .setLabel('Match History')
+            .setStyle(ButtonStyle.Link)
+            .setURL(`${baseUrl}/matches`)
+            .setEmoji('⚔️')
+        )
+
         if (publish) {
-          await announce(interaction, { embeds: [embed] })
+          await announce(interaction, { embeds: [embed], components: [webButtonRow] })
         } else {
-          await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral })
+          await safeReply(interaction, { embeds: [embed], components: [webButtonRow], flags: MessageFlags.Ephemeral })
         }
         return
       }
@@ -496,10 +532,25 @@ export async function handleLookupCommand(
           )
           .setFooter({ text: 'To link this account to a Discord user, run /register with this BattleTag.' })
 
+        const baseUrl = getWebBaseUrl()
+        const guestIdentifier = matchedAccounts[0]?.id ?? matchedAccounts[0]?.hotsBattleTag ?? matchedTag
+        const webButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setLabel(`View ${matchedTag} on Web`)
+            .setStyle(ButtonStyle.Link)
+            .setURL(`${baseUrl}/player/${encodeURIComponent(String(guestIdentifier))}`)
+            .setEmoji('🌐'),
+          new ButtonBuilder()
+            .setLabel('Match History')
+            .setStyle(ButtonStyle.Link)
+            .setURL(`${baseUrl}/matches`)
+            .setEmoji('⚔️')
+        )
+
         if (publish) {
-          await announce(interaction, { embeds: [embed] })
+          await announce(interaction, { embeds: [embed], components: [webButtonRow] })
         } else {
-          await safeReply(interaction, { embeds: [embed], flags: MessageFlags.Ephemeral })
+          await safeReply(interaction, { embeds: [embed], components: [webButtonRow], flags: MessageFlags.Ephemeral })
         }
         return
       }
@@ -617,10 +668,18 @@ async function handleLookupCommandSub(
     const numHeroes = interaction.options.getInteger(CommandIds.NUM_HEROES, false) ?? 6
     const matchStats = await getPlayerMatchStats(discordId, limit, minHeroGames, numHeroes)
 
+    const baseUrl = getWebBaseUrl()
+    const primaryAccount = player?.usernames.accounts?.find(a => a.isPrimary) ?? player?.usernames.accounts?.[0]
+    const playerIdentifier = primaryAccount?.id ?? primaryAccount?.hotsBattleTag ?? hotsBattleTag ?? discordId
+    const playerWebUrl = `${baseUrl}/player/${encodeURIComponent(String(playerIdentifier))}`
+    const matchesWebUrl = `${baseUrl}/matches`
+    const leaderboardWebUrl = `${baseUrl}/leaderboard`
+    const webLinksHeader = `[🌐 View Web Profile](${playerWebUrl}) • [⚔️ Match History](${matchesWebUrl}) • [🏆 Leaderboard](${leaderboardWebUrl})`
+
     const embed = new EmbedBuilder()
       .setTitle(`Player Lookup: ${discordData.discordDisplayName || discordData.discordName}`)
       .setColor(0x3498db)
-      .setDescription(`<@${discordId}>\n${message}`)
+      .setDescription(`<@${discordId}>\n${message}\n\n${webLinksHeader}`)
       .addFields(
         {
           name: '👤 Discord Info',
@@ -670,7 +729,6 @@ async function handleLookupCommandSub(
 
             const queryParams = [heroPart, mapPart, datePart, tagPart].filter(Boolean).join('&')
             const matchId = m.replayId ? `${m.replayId}` : 'custom'
-            const baseUrl = process.env.MATCH_VIEWER_BASE_URL?.replace(/\/$/, '') || 'https://storm-stats.duckdns.org'
             const url = `<${baseUrl}/replay/${matchId}?${queryParams}>`
             return `[${m.win ? '🟩' : '🟥'}](${url})`
           })
@@ -829,7 +887,27 @@ async function handleLookupCommandSub(
       }
     }
 
-    const components: ActionRowBuilder<StringSelectMenuBuilder>[] = []
+    const components: (ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>)[] = []
+
+    const webButtonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setLabel('View on Web')
+        .setStyle(ButtonStyle.Link)
+        .setURL(playerWebUrl)
+        .setEmoji('🌐'),
+      new ButtonBuilder()
+        .setLabel('Match History')
+        .setStyle(ButtonStyle.Link)
+        .setURL(matchesWebUrl)
+        .setEmoji('⚔️'),
+      new ButtonBuilder()
+        .setLabel('Leaderboard')
+        .setStyle(ButtonStyle.Link)
+        .setURL(leaderboardWebUrl)
+        .setEmoji('🏆')
+    )
+    components.push(webButtonRow)
+
     if (matchStats && matchStats.recentMatches && matchStats.recentMatches.length > 0) {
       const seenReplayIds = new Set<number>()
       const selectOptions: { label: string; description: string; value: string }[] = []
