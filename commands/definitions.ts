@@ -60,7 +60,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
   {
     name: CommandIds.DELETE_MESSAGE,
     description: 'Delete a message by ID',
-    defaultMemberPermissions: minimumAdminPermissions,
+    dmPermission: true,
     options: [
       {
         name: CommandIds.MESSAGE_ID,

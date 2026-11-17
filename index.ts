@@ -10,12 +10,12 @@ process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error)
 })
 
-import { ActivityType, ChannelType, Client, GatewayIntentBits, PresenceUpdateStatus } from 'discord.js'
+import { ActivityType, ChannelType, Client, GatewayIntentBits, Partials, PresenceUpdateStatus } from 'discord.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { dispatchInteraction } from './commands/dispatcher'
 import { slashCommands } from './commands/definitions'
-import { botChannelName, CommandIds } from './constants'
+import { adminUserIds, botChannelName, CommandIds } from './constants'
 import { setSetting } from './store/settings'
 import { getBotChannel } from './utils/channel'
 import { startWebServer, stopWebServer } from './server/webServer'
@@ -29,11 +29,35 @@ export const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessageReactions,
   ],
+  partials: [Partials.Channel, Partials.Message],
 })
 
 // reply to direct messages
-client.on('messageCreate', msg => {
-  if (msg.channel.type == ChannelType.DM) {
+client.on('messageCreate', async msg => {
+  if (msg.author.bot) return
+  if (msg.channel.type === ChannelType.DM) {
+    const text = msg.content.trim()
+    const deleteMatch = text.match(/^(?:\/|!)?(?:delete(?:-message|_message)?)\s+(\d{17,20})$/i)
+    if (deleteMatch) {
+      const targetId = deleteMatch[1]
+      if (!adminUserIds.includes(msg.author.id)) {
+        await msg.reply('You do not have permission to delete messages.')
+        return
+      }
+      try {
+        const targetMsg = await msg.channel.messages.fetch(targetId)
+        if (targetMsg.author.id !== client.user?.id) {
+          await msg.reply('Discord only allows bots to delete their own messages in DMs.')
+          return
+        }
+        await targetMsg.delete()
+        await msg.reply(`Deleted message: \`${targetId}\``)
+      } catch {
+        await msg.reply(`Could not find message with ID \`${targetId}\` in this DM.`)
+      }
+      return
+    }
+
     msg.author.send('You are DMing me now!')
   }
 })
@@ -100,6 +124,11 @@ client.once('clientReady', async () => {
     const botChannel = await getBotChannel(guild)
     const channelName = botChannel && 'name' in botChannel ? botChannel.name : 'None/Not Found'
     console.log(`Guild: ${guild.name} (ID: ${guild.id}) - Bot Channel: ${channelName}`)
+  })
+
+  // Register global application commands for DM slash command support
+  client.application?.commands.set(slashCommands).catch(err => {
+    console.error('Error setting global application commands:', err)
   })
 
   // List all commands in first server for debugging

@@ -394,9 +394,26 @@ async function deleteMessage(
       }
     }
 
+    if (!message && interaction.user) {
+      try {
+        const dmChannel = interaction.user.dmChannel ?? (await interaction.user.createDM())
+        message = await dmChannel.messages.fetch(messageId)
+      } catch {
+        // Message not found in user DM channel
+      }
+    }
+
     if (!message) {
       await safeReply(interaction, {
-        content: `Failed to delete message. Could not find message with ID \`${messageId}\` in this channel or server.`,
+        content: `Failed to delete message. Could not find message with ID \`${messageId}\` in this channel, server, or your DM.`,
+        flags: MessageFlags.Ephemeral,
+      })
+      return
+    }
+
+    if (message.channel.isDMBased() && message.author.id !== interaction.client.user?.id) {
+      await safeReply(interaction, {
+        content: `Failed to delete message. Discord only allows bots to delete their own messages in DMs.`,
         flags: MessageFlags.Ephemeral,
       })
       return
