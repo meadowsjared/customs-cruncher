@@ -14,9 +14,14 @@ interface CacheEntry<T> {
 const guildCache = new Map<string, CacheEntry<boolean | null>>()
 let globalCache: CacheEntry<boolean> | null = null
 
+const guildDmCache = new Map<string, CacheEntry<string[] | null>>()
+let globalDmCache: CacheEntry<string[]> | null = null
+
 export function clearLoggingCache(): void {
   guildCache.clear()
   globalCache = null
+  guildDmCache.clear()
+  globalDmCache = null
 }
 
 export function getCommandLogPath(): string {
@@ -67,8 +72,69 @@ export async function isLoggingEnabledForGuild(guildId?: string | null): Promise
   return await getGlobalLoggingSetting()
 }
 
+function parseUserIds(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map(s => s.trim().replace(/[<@!>]/g, ''))
+    .filter(s => /^\d{17,20}$/.test(s))
+}
+
+async function resolveDmRecipientsFromDb(guildId: string): Promise<string[] | null> {
+  const val = await getSetting('command_logging_dm', guildId)
+  if (val === undefined) {
+    return null
+  }
+  const trimmed = val.trim().toLowerCase()
+  if (trimmed === 'false' || trimmed === '0' || trimmed === 'off') {
+    return []
+  }
+  if (trimmed === 'true' || trimmed === '1' || trimmed === 'on') {
+    const userIdVal = await getSetting('command_logging_dm_user_id', guildId)
+    return parseUserIds(userIdVal)
+  }
+  return parseUserIds(val)
+}
+
+export async function getDmRecipientsForGuild(guildId?: string | null): Promise<string[]> {
+  if (guildId) {
+    const cached = guildDmCache.get(guildId)
+    if (cached && Date.now() < cached.expiresAt) {
+      if (cached.value !== null) return cached.value
+    } else {
+      try {
+        const guildResult = await resolveDmRecipientsFromDb(guildId)
+        guildDmCache.set(guildId, { value: guildResult, expiresAt: Date.now() + CACHE_TTL_MS })
+        if (guildResult !== null) return guildResult
+      } catch {
+        if (cached && cached.value !== null) return cached.value
+      }
+    }
+  }
+
+  if (globalDmCache && Date.now() < globalDmCache.expiresAt) {
+    return globalDmCache.value
+  }
+
+  try {
+    const globalResult = await resolveDmRecipientsFromDb('global')
+    const finalResult = globalResult !== null ? globalResult : parseUserIds(process.env.COMMAND_LOGGING_DM_USER_ID)
+    globalDmCache = { value: finalResult, expiresAt: Date.now() + CACHE_TTL_MS }
+    return finalResult
+  } catch {
+    const fallback = parseUserIds(process.env.COMMAND_LOGGING_DM_USER_ID)
+    globalDmCache = { value: fallback, expiresAt: Date.now() + CACHE_TTL_MS }
+    return fallback
+  }
+}
+
+export async function isDmLoggingEnabledForGuild(guildId?: string | null): Promise<boolean> {
+  const recipients = await getDmRecipientsForGuild(guildId)
+  return recipients.length > 0
+}
+
 export async function initCommandLogger(): Promise<void> {
-  await getGlobalLoggingSetting()
+  await Promise.all([getGlobalLoggingSetting(), getDmRecipientsForGuild()])
 }
 
 export function isCommandLoggingEnabled(guildId?: string | null): boolean {
@@ -139,6 +205,44 @@ export function formatInteraction(interaction: LoggableInteraction): string {
   }
 
   return `[${timestamp}] Server: ${serverStr} | User: ${user} | Command: ${detail}`
+}
+
+function formatOptionsForDm(options: readonly CommandOptionLike[]): string {
+  return options
+    .map(opt => {
+      if (opt.options && opt.options.length > 0) {
+        return `${opt.name} ${formatOptionsForDm(opt.options)}`
+      }
+      if (typeof opt.value === 'string' && /^\d{17,20}$/.test(opt.value)) {
+        return `${opt.name}: <@${opt.value}>`
+      }
+      if (opt.userName && opt.value !== undefined) {
+        return `${opt.name}: <@${String(opt.value)}>`
+      }
+      return opt.value !== undefined ? `${opt.name}: \`${String(opt.value)}\`` : opt.name
+    })
+    .join(' ')
+}
+
+export function formatInteractionForDm(interaction: LoggableInteraction): string {
+  const serverStr = interaction.guild ? ` in **${interaction.guild.name}**` : ' in **Direct Message**'
+  const userMention = `<@${interaction.user.id}>`
+
+  let detail = 'Unknown Interaction'
+
+  if (interaction.isChatInputCommand?.()) {
+    const opts = interaction.options?.data ? formatOptionsForDm(interaction.options.data) : ''
+    detail = `\`/${interaction.commandName ?? 'unknown'}\`${opts ? ` ${opts}` : ''}`
+  } else if (interaction.isButton?.()) {
+    detail = `Button: \`${interaction.customId ?? ''}\``
+  } else if (interaction.isStringSelectMenu?.()) {
+    const values = (interaction.values ?? []).map(v => `"${v}"`).join(', ')
+    detail = `Select: \`${interaction.customId ?? ''}\` [${values}]`
+  } else if (interaction.isModalSubmit?.()) {
+    detail = `Modal: \`${interaction.customId ?? ''}\``
+  }
+
+  return `${userMention}${serverStr}:\n${detail}`
 }
 
 function extractOptions(
@@ -233,22 +337,43 @@ export async function logCommandInteraction(interaction: Interaction<CacheType>)
     return
   }
 
-  const enabled = await isLoggingEnabledForGuild(interaction.guildId)
-  if (!enabled) {
+  const [fileLoggingEnabled, dmRecipients] = await Promise.all([
+    isLoggingEnabledForGuild(interaction.guildId),
+    getDmRecipientsForGuild(interaction.guildId),
+  ])
+
+  if (!fileLoggingEnabled && dmRecipients.length === 0) {
     return
   }
 
   const loggable = extractLoggableFromDiscordInteraction(interaction)
-  const line = formatInteraction(loggable)
-  const logFile = getCommandLogPath()
 
-  try {
-    const dir = path.dirname(logFile)
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
+  if (fileLoggingEnabled) {
+    const line = formatInteraction(loggable)
+    const logFile = getCommandLogPath()
+
+    try {
+      const dir = path.dirname(logFile)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      await fs.promises.appendFile(logFile, line + '\n', 'utf8')
+    } catch (err) {
+      console.error(`[CommandLogger] Failed to write to ${logFile}:`, err)
     }
-    await fs.promises.appendFile(logFile, line + '\n', 'utf8')
-  } catch (err) {
-    console.error(`[CommandLogger] Failed to write to ${logFile}:`, err)
+  }
+
+  if (dmRecipients.length > 0) {
+    const dmText = formatInteractionForDm(loggable)
+    for (const recipientId of dmRecipients) {
+      try {
+        const recipient = await interaction.client.users.fetch(recipientId)
+        if (recipient) {
+          await recipient.send(dmText)
+        }
+      } catch (err) {
+        console.error(`[CommandLogger] Failed to send DM notification to ${recipientId}:`, err)
+      }
+    }
   }
 }

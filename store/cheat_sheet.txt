@@ -281,6 +281,16 @@ INSERT INTO settings (guild_id, key, value) VALUES ('global', 'command_logging',
 # Turn logging off
 Update settings SET value = 'false' WHERE key = 'command_logging' and guild_id = 'global';
 # note: logging is also supported per-server
+# check on logging dm's
+SELECT * FROM settings WHERE key = 'command_logging_dm';
+# Turn on logging DM's to me for JUST Nor's server
+INSERT INTO settings (guild_id, key, value) VALUES ('706998529582956654', 'command_logging_dm', '243668219712372736') ON CONFLICT (guild_id, key) DO UPDATE SET value = '243668219712372736';
+# Turn on logging DM's globally to me and Nor
+INSERT INTO settings (guild_id, key, value) VALUES ('global', 'command_logging_dm', '243668219712372736, 192116769870184448') ON CONFLICT (guild_id, key) DO UPDATE SET value = '243668219712372736, 192116769870184448';
+# Turn on logging DM's globally to just me
+INSERT INTO settings (guild_id, key, value) VALUES ('global', 'command_logging_dm', '243668219712372736') ON CONFLICT (guild_id, key) DO UPDATE SET value = '243668219712372736';
+# Turn DM alerts OFF
+UPDATE settings SET value = 'false' WHERE key = 'command_logging_dm';
 
 # ==============================================================================
 # 6. SCRIPTS & MIGRATION COMMANDS
