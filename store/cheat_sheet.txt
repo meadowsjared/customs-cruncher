@@ -274,6 +274,14 @@ DELETE FROM account_substitutions WHERE substitute_discord_id = '137646597655154
 DELETE FROM hots_accounts WHERE discord_id = '1376465976551542845';
 DELETE FROM players WHERE discord_id = '1376465976551542845';
 
+# Check on logging
+SELECT guild_id,key, value FROM settings WHERE key = 'command_logging';
+# Turn logging on
+INSERT INTO settings (guild_id, key, value) VALUES ('global', 'command_logging', 'true') ON CONFLICT (guild_id, key) DO UPDATE SET value = 'true';
+# Turn logging off
+Update settings SET value = 'false' WHERE key = 'command_logging' and guild_id = 'global';
+# note: logging is also supported per-server
+
 # ==============================================================================
 # 6. SCRIPTS & MIGRATION COMMANDS
 # ==============================================================================
