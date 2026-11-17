@@ -35,7 +35,7 @@
     "csv-parse": "^7.0.3",
     "discord.js": "^14.27.0",
     "dotenv": "^18.0.9",
-    "hots-parser": "^7.55.7",
+    "hots-parser": "github:meadowsjared/hots-parser",
     "postgres": "^4.0.0",
     "puppeteer": "^25.16.0",
     "puppeteer-real-browser": "^1.4.4",

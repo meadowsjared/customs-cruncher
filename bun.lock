@@ -8,7 +8,7 @@
         "csv-parse": "^7.0.3",
         "discord.js": "^14.27.0",
         "dotenv": "^18.0.9",
-        "hots-parser": "^7.55.7",
+        "hots-parser": "github:meadowsjared/hots-parser",
         "postgres": "^4.0.0",
         "puppeteer": "^25.16.0",
         "puppeteer-real-browser": "^1.4.4",
@@ -685,7 +685,7 @@
 
     "hookified": ["hookified@1.15.1", "", {}, "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg=="],
 
-    "hots-parser": ["hots-parser@7.55.7", "", { "dependencies": { "heroprotocol": "github:GaryIrick/heroprotocol", "pino": "^4.17.5", "xregexp": "^4.2.0" } }, "sha512-93Anu1oUvmiFy86uG6ipjjODsjIJKJP7hX2vnRqBxD9Uv07A9sVg1++wZpDVFRN6BLALG7EwuYqwByh1t7VQxw=="],
+    "hots-parser": ["hots-parser@github:meadowsjared/hots-parser#b908575", { "dependencies": { "heroprotocol": "GaryIrick/heroprotocol", "pino": "^4.17.5", "xregexp": "^4.2.0" } }, "meadowsjared-hots-parser-b908575", "sha512-nJcyQDJrmRnoim5MjbUIk/4rmit+HjxzqaxSb+L0cp4p0UkCMryVdJOSSV2o5b5jQdihwFbCed/ugWLjFezu/A=="],
 
     "http-proxy-agent": ["http-proxy-agent@7.0.2", "", { "dependencies": { "agent-base": "^7.1.0", "debug": "^4.3.4" } }, "sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig=="],
 
