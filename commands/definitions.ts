@@ -1,7 +1,9 @@
 import {
   ApplicationCommandDataResolvable,
   ApplicationCommandOptionType,
+  ApplicationIntegrationType,
   ChannelType,
+  InteractionContextType,
   PermissionsBitField,
 } from 'discord.js'
 import { CommandIds, roleMap } from '../constants'
@@ -61,6 +63,8 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     name: CommandIds.DELETE_MESSAGE,
     description: 'Delete a message by ID',
     dmPermission: true,
+    contexts: [InteractionContextType.Guild, InteractionContextType.BotDM],
+    integrationTypes: [ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall],
     options: [
       {
         name: CommandIds.MESSAGE_ID,

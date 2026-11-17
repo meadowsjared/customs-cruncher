@@ -1,5 +1,5 @@
 import { ButtonInteraction, CacheType, ChatInputCommandInteraction, Interaction, MessageFlags } from 'discord.js'
-import { CommandIds, roleMap } from '../constants'
+import { adminUserIds, CommandIds, roleMap } from '../constants'
 import { safeReply } from '../utils/interaction'
 import {
   handleAdminAddHotsAccountButton,
@@ -558,6 +558,18 @@ export async function dispatchInteraction(interaction: Interaction<CacheType>): 
   }
 
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return
+
+  if (interaction.isButton() && interaction.customId === 'delete_dm_message') {
+    if (interaction.channel?.isDMBased() || adminUserIds.includes(interaction.user.id)) {
+      try {
+        await interaction.deferUpdate().catch(() => {})
+        await interaction.message.delete()
+      } catch (err) {
+        console.error('Failed to delete DM message via dismiss button:', err)
+      }
+    }
+    return
+  }
 
   if (interaction.isButton() && interaction.customId.startsWith('admin_unlinked_')) {
     await handleAdminUnlinkedButton(interaction)

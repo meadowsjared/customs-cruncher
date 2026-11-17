@@ -37,7 +37,7 @@ client.on('messageCreate', async msg => {
   if (msg.author.bot) return
   if (msg.channel.type === ChannelType.DM) {
     const text = msg.content.trim()
-    const deleteMatch = text.match(/^(?:\/|!)?(?:delete(?:-message|_message)?)\s+(\d{17,20})$/i)
+    const deleteMatch = text.match(/^(?:\/|!)?(?:delete(?:-message|_message)?)\s*:?\s*(\d{17,20})$/i)
     if (deleteMatch) {
       const targetId = deleteMatch[1]
       if (!adminUserIds.includes(msg.author.id)) {

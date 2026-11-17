@@ -1,6 +1,13 @@
 import fs from 'fs'
 import path from 'path'
-import type { CacheType, CommandInteractionOption, Interaction } from 'discord.js'
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  type CacheType,
+  type CommandInteractionOption,
+  type Interaction,
+} from 'discord.js'
 import { getSetting } from '../store/settings'
 
 const DEFAULT_LOG_PATH = path.join(process.cwd(), 'logs', 'commands.log')
@@ -365,11 +372,21 @@ export async function logCommandInteraction(interaction: Interaction<CacheType>)
 
   if (dmRecipients.length > 0) {
     const dmText = formatInteractionForDm(loggable)
+    const dismissRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('delete_dm_message')
+        .setLabel('Dismiss')
+        .setEmoji('🗑️')
+        .setStyle(ButtonStyle.Secondary)
+    )
     for (const recipientId of dmRecipients) {
       try {
         const recipient = await interaction.client.users.fetch(recipientId)
         if (recipient) {
-          await recipient.send(dmText)
+          await recipient.send({
+            content: dmText,
+            components: [dismissRow],
+          })
         }
       } catch (err) {
         console.error(`[CommandLogger] Failed to send DM notification to ${recipientId}:`, err)
