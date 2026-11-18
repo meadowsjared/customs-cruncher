@@ -664,6 +664,12 @@ export function createServer(): http.Server {
         return
       }
 
+      // API 404 handler - Never fall through to SPA HTML for /api routes
+      if (pathname.startsWith('/api/')) {
+        sendJson(res, 404, { error: 'API endpoint not found' })
+        return
+      }
+
       // Serve static frontend from web/dist
       const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '')
       const safePath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '')

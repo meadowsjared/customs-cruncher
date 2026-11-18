@@ -30,9 +30,17 @@ const jumpPageInput = ref('')
 const isAdmin = ref(false)
 const servers = ref<ServerInfo[]>([])
 const selectedReplayIds = ref<number[]>([])
-const bulkTargetServer = ref('')
+const bulkTargetServer = ref(
+  typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('crunch_last_target_server') || '' : ''
+)
 const assigning = ref(false)
 const assignSuccessMessage = ref('')
+
+watch(bulkTargetServer, val => {
+  if (typeof sessionStorage !== 'undefined' && val) {
+    sessionStorage.setItem('crunch_last_target_server', val)
+  }
+})
 
 // Add Server Modal State
 const showAddServerModal = ref(false)
@@ -394,7 +402,7 @@ async function executeBulkAssign() {
       const targetName = targetGuild ? getServerName(targetGuild) : 'Unassigned'
       assignSuccessMessage.value = `Assigned ${selectedReplayIds.value.length} match(es) to ${targetName}!`
       selectedReplayIds.value = []
-      bulkTargetServer.value = ''
+      // Keep bulkTargetServer.value to remember choice for subsequent selections
       setTimeout(() => {
         assignSuccessMessage.value = ''
       }, 4000)
@@ -410,8 +418,12 @@ async function executeBulkAssign() {
 function logoutAdmin() {
   localStorage.removeItem('crunch_admin_token')
   localStorage.removeItem('crunch_admin_expires')
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem('crunch_last_target_server')
+  }
   isAdmin.value = false
   selectedReplayIds.value = []
+  bulkTargetServer.value = ''
 }
 
 function openAddServerModal() {
@@ -1333,9 +1345,25 @@ const tooltipStyle = computed(() => {
 }
 
 .unassigned-badge {
-  background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
-  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.65);
+  animation: pulseRed 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulseRed {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.16);
+    color: #f87171;
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.35);
+    border-color: rgba(248, 113, 113, 0.95);
+    background: rgba(239, 68, 68, 0.28);
+    color: #fca5a5;
+  }
 }
 
 .floating-admin-bar {
