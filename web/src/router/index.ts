@@ -4,6 +4,7 @@ import MatchDetailView from '../views/MatchDetailView.vue'
 import LeaderboardView from '../views/LeaderboardView.vue'
 import PlayerProfileView from '../views/PlayerProfileView.vue'
 import HeroProfileView from '../views/HeroProfileView.vue'
+import CrunchGateView from '../views/CrunchGateView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -11,6 +12,16 @@ const router = createRouter({
     {
       path: '/',
       redirect: '/matches',
+    },
+    {
+      path: '/gate/:slug',
+      name: 'crunch-gate',
+      component: CrunchGateView,
+    },
+    {
+      path: '/:slug([a-f0-9]{16,64})',
+      name: 'crunch-gate-direct',
+      component: CrunchGateView,
     },
     {
       path: '/matches',

@@ -388,6 +388,7 @@ export type ReplayData = {
   team0Players: string
   team1Players: string
   file: string
+  guildId?: string | null
 }
 
 export type Replay = ReplayData
@@ -423,6 +424,7 @@ export type ReplayRow = {
   team1_players: string
   file: string
   filename: string
+  guild_id?: string | null
   status: number
   first_pick_win: boolean
   first_objective: number | null
@@ -477,6 +479,7 @@ export const REPLAYS_TABLE_SCHEMA_SQL = `
     team1_players TEXT NOT NULL,
     file TEXT NOT NULL,
     filename TEXT NOT NULL,
+    guild_id TEXT,
     status INTEGER NOT NULL DEFAULT 1,
     first_pick_win BOOLEAN NOT NULL DEFAULT FALSE,
     first_objective INTEGER,
@@ -514,6 +517,9 @@ export const REPLAYS_TABLE_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_replays_file
     ON replays (file);
 
+  CREATE INDEX IF NOT EXISTS idx_replays_guild_id
+    ON replays (guild_id);
+
   CREATE INDEX IF NOT EXISTS idx_replays_player_ids_gin
     ON replays USING GIN (player_ids);
 
@@ -548,6 +554,7 @@ export function toReplayRow(replayData: ReplayData): ReplayRowInsert {
     team1_players: replayData.team1Players ?? '',
     file: replayData.file ?? match.filename ?? '',
     filename: match.filename ?? replayData.file ?? '',
+    guild_id: replayData.guildId ?? null,
     status: status ?? 1,
     first_pick_win: Boolean(match.firstPickWin),
     first_objective: match.firstObjective ?? null,
@@ -635,5 +642,6 @@ export function fromReplayRow(row: ReplayRow): ReplayData {
     team0Players: row.team0_players,
     team1Players: row.team1_players,
     file: row.file,
+    guildId: row.guild_id ?? null,
   }
 }

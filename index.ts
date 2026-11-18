@@ -17,6 +17,7 @@ import { dispatchInteraction } from './commands/dispatcher'
 import { slashCommands } from './commands/definitions'
 import { adminUserIds, botChannelName, CommandIds } from './constants'
 import { setSetting } from './store/settings'
+import { sql } from './store/db'
 import { getBotChannel } from './utils/channel'
 import { startWebServer, stopWebServer } from './server/webServer'
 import { initCommandLogger } from './utils/commandLogger'
@@ -124,6 +125,15 @@ client.once('clientReady', async () => {
     const botChannel = await getBotChannel(guild)
     const channelName = botChannel && 'name' in botChannel ? botChannel.name : 'None/Not Found'
     console.log(`Guild: ${guild.name} (ID: ${guild.id}) - Bot Channel: ${channelName}`)
+    try {
+      await sql`
+        INSERT INTO guilds (id, name, updated_at)
+        VALUES (${guild.id}, ${guild.name}, CURRENT_TIMESTAMP)
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
+      `
+    } catch (err) {
+      console.error(`[Guilds] Error syncing guild ${guild.name} to DB:`, err)
+    }
   })
 
   // Register global application commands for DM slash command support

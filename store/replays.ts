@@ -57,6 +57,7 @@ export async function insertReplays(
       team1_players = EXCLUDED.team1_players,
       file = EXCLUDED.file,
       filename = EXCLUDED.filename,
+      guild_id = COALESCE(EXCLUDED.guild_id, replays.guild_id),
       status = EXCLUDED.status,
       first_pick_win = EXCLUDED.first_pick_win,
       first_objective = EXCLUDED.first_objective,

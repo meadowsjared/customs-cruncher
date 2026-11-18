@@ -55,6 +55,9 @@ export async function saveReplayToDb(
   guildId: string,
   options?: SaveReplayOptions
 ): Promise<number> {
+  if (guildId) {
+    parsedReplay.guildId = guildId
+  }
   const inserted = await insertReplays([parsedReplay], options)
   const replayRow = inserted[0]
   if (!replayRow) {

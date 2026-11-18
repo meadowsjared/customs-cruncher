@@ -5,6 +5,14 @@ import { sql } from '../store/db'
 import { getPlayerAggregatedStats, getPlayerMatchHistory } from '../store/playerStats'
 import { searchPlayers, getPlayerProfile } from '../store/playerProfile'
 import { getHeroProfile } from '../store/heroProfile'
+import {
+  checkAdminGateSlug,
+  checkAdminPassword,
+  checkAdminUsername,
+  createAdminToken,
+  extractBearerToken,
+  verifyAdminToken,
+} from './auth'
 
 export const WEB_PORT = Number(process.env.WEB_PORT || 3002)
 
@@ -35,11 +43,43 @@ function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): 
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Cache-Control': 'no-cache',
   })
   res.end(json)
+}
+
+async function parseJsonBody(req: http.IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.on('data', chunk => {
+      body += chunk
+      if (body.length > 1024 * 1024) {
+        reject(new Error('Payload Too Large'))
+      }
+    })
+    req.on('end', () => {
+      if (!body.trim()) {
+        resolve({})
+        return
+      }
+      try {
+        resolve(JSON.parse(body))
+      } catch (err) {
+        reject(err)
+      }
+    })
+    req.on('error', err => reject(err))
+  })
+}
+
+function isLoginBody(data: unknown): data is { password?: unknown; username?: unknown; slug?: unknown } {
+  return typeof data === 'object' && data !== null && 'password' in data
+}
+
+function isAssignBody(data: unknown): data is { replayIds?: unknown; guildId?: unknown } {
+  return typeof data === 'object' && data !== null && 'replayIds' in data
 }
 
 function sendFile(res: http.ServerResponse, filePath: string, isHead: boolean = false): void {
@@ -87,14 +127,14 @@ export function createServer(): http.Server {
       if (req.method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         })
         res.end()
         return
       }
 
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
+      if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') {
         res.writeHead(405, { 'Content-Type': 'text/plain' })
         res.end('Method Not Allowed')
         return
@@ -154,6 +194,113 @@ export function createServer(): http.Server {
         return
       }
 
+      // GET /api/servers - List all known Discord guilds
+      if (pathname === '/api/servers' && (req.method === 'GET' || req.method === 'HEAD')) {
+        const rows = await sql<Array<{ id: string; name: string; icon: string | null }>>`
+          SELECT id, name, icon
+          FROM guilds
+          ORDER BY name ASC
+        `
+        sendJson(res, 200, { servers: rows })
+        return
+      }
+
+      // GET /api/admin/gate/:slug - Validate secret entry gate slug
+      const gateMatch = pathname.match(/^\/api\/admin\/gate\/([^/]+)$/)
+      if (gateMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+        const slug = gateMatch[1]
+        if (!checkAdminGateSlug(slug)) {
+          sendJson(res, 404, { error: 'Not Found' })
+          return
+        }
+        sendJson(res, 200, { valid: true })
+        return
+      }
+
+      // POST /api/admin/login - Authenticate with admin password
+      if (pathname === '/api/admin/login' && req.method === 'POST') {
+        try {
+          const body = await parseJsonBody(req)
+          if (!isLoginBody(body) || typeof body.password !== 'string') {
+            sendJson(res, 400, { error: 'Password is required' })
+            return
+          }
+          if (typeof body.slug === 'string' && !checkAdminGateSlug(body.slug)) {
+            sendJson(res, 401, { error: 'Invalid admin credentials' })
+            return
+          }
+          if (typeof body.username === 'string' && !checkAdminUsername(body.username)) {
+            sendJson(res, 401, { error: 'Invalid admin credentials' })
+            return
+          }
+          if (!checkAdminPassword(body.password)) {
+            sendJson(res, 401, { error: 'Invalid admin password' })
+            return
+          }
+          const { token, expiresAt } = createAdminToken()
+          sendJson(res, 200, { success: true, token, expiresAt })
+          return
+        } catch {
+          sendJson(res, 400, { error: 'Bad Request' })
+          return
+        }
+      }
+
+      // GET /api/admin/verify - Verify admin bearer token
+      if (pathname === '/api/admin/verify' && (req.method === 'GET' || req.method === 'HEAD')) {
+        const token = extractBearerToken(req.headers.authorization)
+        if (!verifyAdminToken(token)) {
+          sendJson(res, 401, { valid: false, error: 'Unauthorized' })
+          return
+        }
+        sendJson(res, 200, { valid: true })
+        return
+      }
+
+      // POST /api/admin/replays/assign - Assign matches to a server
+      if (pathname === '/api/admin/replays/assign' && req.method === 'POST') {
+        const token = extractBearerToken(req.headers.authorization)
+        if (!verifyAdminToken(token)) {
+          sendJson(res, 401, { error: 'Unauthorized' })
+          return
+        }
+        try {
+          const body = await parseJsonBody(req)
+          if (!isAssignBody(body) || !Array.isArray(body.replayIds) || body.replayIds.length === 0) {
+            sendJson(res, 400, { error: 'replayIds array is required' })
+            return
+          }
+          const validIds: number[] = []
+          for (const rawId of body.replayIds) {
+            const num = Number(rawId)
+            if (Number.isInteger(num) && num > 0) {
+              validIds.push(num)
+            }
+          }
+          if (validIds.length === 0) {
+            sendJson(res, 400, { error: 'No valid numeric replayIds provided' })
+            return
+          }
+
+          let targetGuildId: string | null = null
+          if (typeof body.guildId === 'string' && body.guildId.trim()) {
+            targetGuildId = body.guildId.trim()
+          }
+
+          await sql`
+            UPDATE replays
+            SET guild_id = ${targetGuildId}
+            WHERE id = ANY(${validIds})
+          `
+
+          sendJson(res, 200, { success: true, count: validIds.length, guildId: targetGuildId })
+          return
+        } catch {
+          sendJson(res, 400, { error: 'Bad Request' })
+          return
+        }
+      }
+
       // GET /api/replays
       if (pathname === '/api/replays') {
         const page = Math.max(1, parseInt(urlObj.searchParams.get('page') || '1', 10) || 1)
@@ -161,6 +308,7 @@ export function createServer(): http.Server {
         const offset = (page - 1) * limit
         const mapFilter = urlObj.searchParams.get('map') || null
         const modeFilter = urlObj.searchParams.get('mode')?.trim().toLowerCase() || null
+        const guildFilter = urlObj.searchParams.get('guild_id')?.trim() || null
         const search = urlObj.searchParams.get('search')?.trim() || null
 
         // Query list of replays with summary fields
@@ -176,6 +324,7 @@ export function createServer(): http.Server {
           team1_players: string
           heroes: string[]
           player_ids: string[]
+          guild_id: string | null
           total_count: number
         }>>`
           SELECT
@@ -190,6 +339,7 @@ export function createServer(): http.Server {
             team1_players,
             heroes,
             player_ids,
+            guild_id,
             COUNT(*) OVER()::int AS total_count
           FROM replays
           WHERE
@@ -199,6 +349,12 @@ export function createServer(): http.Server {
               OR ${modeFilter} = ''
               OR (${modeFilter} = 'aram' AND map = ANY(${ARAM_MAPS}))
               OR (${modeFilter} = 'standard' AND NOT (map = ANY(${ARAM_MAPS})))
+            )
+            AND (
+              ${guildFilter}::text IS NULL
+              OR ${guildFilter} = ''
+              OR (${guildFilter} = 'unassigned' AND guild_id IS NULL)
+              OR (guild_id = ${guildFilter})
             )
             AND (
               ${search}::text IS NULL
@@ -226,6 +382,7 @@ export function createServer(): http.Server {
             team0_players: r.team0_players.split(',').map(s => s.trim()).filter(Boolean),
             team1_players: r.team1_players.split(',').map(s => s.trim()).filter(Boolean),
             heroes: r.heroes,
+            guild_id: r.guild_id ?? null,
           })),
           pagination: {
             page,
@@ -251,6 +408,7 @@ export function createServer(): http.Server {
           team1_takedowns: number
           team0_players: string
           team1_players: string
+          guild_id: string | null
           first_pick_win: boolean
           first_objective: number | null
           first_objective_win: boolean
@@ -281,6 +439,7 @@ export function createServer(): http.Server {
             team1_takedowns,
             team0_players,
             team1_players,
+            guild_id,
             first_pick_win,
             first_objective,
             first_objective_win,

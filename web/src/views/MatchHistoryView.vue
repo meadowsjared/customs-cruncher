@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import type { ReplaySummary, ReplaysApiResponse } from '../types'
+import type { ReplaySummary, ReplaysApiResponse, ServerInfo } from '../types'
 import {
   formatDuration,
   formatDateRelative,
@@ -22,7 +22,16 @@ const limit = ref(15)
 const search = ref('')
 const selectedMap = ref('')
 const selectedMode = ref('')
+const selectedServer = ref('')
 const jumpPageInput = ref('')
+
+// Admin State
+const isAdmin = ref(false)
+const servers = ref<ServerInfo[]>([])
+const selectedReplayIds = ref<number[]>([])
+const bulkTargetServer = ref('')
+const assigning = ref(false)
+const assignSuccessMessage = ref('')
 
 interface PaginationItem {
   type: 'page' | 'ellipsis'
@@ -169,6 +178,7 @@ async function fetchReplays() {
     if (search.value.trim()) params.set('search', search.value.trim())
     if (selectedMap.value) params.set('map', selectedMap.value)
     if (selectedMode.value) params.set('mode', selectedMode.value)
+    if (selectedServer.value) params.set('guild_id', selectedServer.value)
 
     const res = await fetch(`/api/replays?${params.toString()}`)
     const text = await res.text()
@@ -189,7 +199,7 @@ async function fetchReplays() {
 }
 
 function updateUrl(
-  params: { page?: number; search?: string; map?: string; mode?: string; limit?: number },
+  params: { page?: number; search?: string; map?: string; mode?: string; server?: string; limit?: number },
   replace: boolean = false
 ) {
   const query: Record<string, string> = {}
@@ -197,6 +207,7 @@ function updateUrl(
   const targetSearch = params.search !== undefined ? params.search : search.value
   const targetMap = params.map !== undefined ? params.map : selectedMap.value
   const targetMode = params.mode !== undefined ? params.mode : selectedMode.value
+  const targetServer = params.server !== undefined ? params.server : selectedServer.value
   const targetLimit = params.limit !== undefined ? params.limit : limit.value
 
   if (targetPage > 1) {
@@ -211,6 +222,9 @@ function updateUrl(
   if (targetMode) {
     query.mode = targetMode
   }
+  if (targetServer) {
+    query.server = targetServer
+  }
   if (targetLimit !== 15) {
     query.limit = String(targetLimit)
   }
@@ -221,6 +235,7 @@ function updateUrl(
     (currentQ.search || '') === (query.search || '') &&
     (currentQ.map || '') === (query.map || '') &&
     (currentQ.mode || '') === (query.mode || '') &&
+    (currentQ.server || '') === (query.server || '') &&
     (currentQ.limit || '15') === (query.limit || '15')
 
   if (isSame) {
@@ -263,7 +278,7 @@ function onSearchInput() {
 }
 
 function onMapChange() {
-  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value }, false)
+  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value, server: selectedServer.value }, false)
 }
 
 function onModeChange() {
@@ -272,11 +287,123 @@ function onModeChange() {
   } else if (selectedMode.value === 'standard' && !STANDARD_MAPS.includes(selectedMap.value)) {
     selectedMap.value = ''
   }
-  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value }, false)
+  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value, server: selectedServer.value }, false)
+}
+
+function onServerChange() {
+  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value, server: selectedServer.value }, false)
 }
 
 function onLimitChange(newLimit: number) {
   updateUrl({ page: 1, limit: newLimit }, false)
+}
+
+async function checkAdminStatus() {
+  const token = localStorage.getItem('crunch_admin_token')
+  if (!token) {
+    isAdmin.value = false
+    return
+  }
+  try {
+    const res = await fetch('/api/admin/verify', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) {
+      isAdmin.value = true
+    } else {
+      localStorage.removeItem('crunch_admin_token')
+      localStorage.removeItem('crunch_admin_expires')
+      isAdmin.value = false
+    }
+  } catch {
+    isAdmin.value = false
+  }
+}
+
+async function fetchServers() {
+  try {
+    const res = await fetch('/api/servers')
+    if (res.ok) {
+      const data: { servers: ServerInfo[] } = await res.json()
+      servers.value = data.servers
+    }
+  } catch (err) {
+    console.error('Failed to load servers:', err)
+  }
+}
+
+onMounted(() => {
+  checkAdminStatus()
+  fetchServers()
+})
+
+function getServerName(guildId: string | null | undefined): string {
+  if (!guildId) return 'Unassigned'
+  const match = servers.value.find(s => s.id === guildId)
+  return match ? match.name : guildId
+}
+
+const allOnPageSelected = computed(() => {
+  return replays.value.length > 0 && replays.value.every(r => selectedReplayIds.value.includes(r.id))
+})
+
+function toggleSelectAll() {
+  if (allOnPageSelected.value) {
+    const pageIds = new Set(replays.value.map(r => r.id))
+    selectedReplayIds.value = selectedReplayIds.value.filter(id => !pageIds.has(id))
+  } else {
+    const combined = new Set([...selectedReplayIds.value, ...replays.value.map(r => r.id)])
+    selectedReplayIds.value = Array.from(combined)
+  }
+}
+
+function toggleSelectReplay(id: number) {
+  if (selectedReplayIds.value.includes(id)) {
+    selectedReplayIds.value = selectedReplayIds.value.filter(x => x !== id)
+  } else {
+    selectedReplayIds.value.push(id)
+  }
+}
+
+async function executeBulkAssign() {
+  if (selectedReplayIds.value.length === 0 || !bulkTargetServer.value) return
+  assigning.value = true
+  try {
+    const token = localStorage.getItem('crunch_admin_token')
+    const targetGuild = bulkTargetServer.value === 'unassigned' ? null : bulkTargetServer.value
+    const res = await fetch('/api/admin/replays/assign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        replayIds: selectedReplayIds.value,
+        guildId: targetGuild,
+      }),
+    })
+    if (res.ok) {
+      const targetName = targetGuild ? getServerName(targetGuild) : 'Unassigned'
+      assignSuccessMessage.value = `Assigned ${selectedReplayIds.value.length} match(es) to ${targetName}!`
+      selectedReplayIds.value = []
+      bulkTargetServer.value = ''
+      setTimeout(() => {
+        assignSuccessMessage.value = ''
+      }, 4000)
+      await fetchReplays()
+    }
+  } catch (err) {
+    console.error('Assign failed:', err)
+  } finally {
+    assigning.value = false
+  }
+}
+
+function logoutAdmin() {
+  localStorage.removeItem('crunch_admin_token')
+  localStorage.removeItem('crunch_admin_expires')
+  isAdmin.value = false
+  selectedReplayIds.value = []
 }
 
 watch(
@@ -289,6 +416,7 @@ watch(
     const targetMap = typeof newQuery.map === 'string' ? newQuery.map : ''
     const rawMode = typeof newQuery.mode === 'string' ? newQuery.mode.toLowerCase() : ''
     const targetMode = rawMode === 'aram' || rawMode === 'standard' ? rawMode : ''
+    const targetServer = typeof newQuery.server === 'string' ? newQuery.server : ''
     const qLimit = parseInt(String(newQuery.limit || '15'), 10)
     const targetLimit = !isNaN(qLimit) && qLimit >= 1 && qLimit <= 100 ? qLimit : 15
 
@@ -298,6 +426,7 @@ watch(
     }
     selectedMap.value = targetMap
     selectedMode.value = targetMode
+    selectedServer.value = targetServer
     limit.value = targetLimit
 
     fetchReplays()
@@ -428,8 +557,15 @@ const tooltipStyle = computed(() => {
 <template>
   <div class="container">
     <div class="matches-header">
-      <div>
-        <h1 class="page-title">Match History</h1>
+      <div class="header-left">
+        <div class="title-with-admin">
+          <h1 class="page-title">Match History</h1>
+          <div v-if="isAdmin" class="admin-status-pill">
+            <span class="admin-icon">🔓</span>
+            <span>Admin Active</span>
+            <button class="admin-logout-btn" title="Exit Admin Mode" @click.stop="logoutAdmin">Log Out</button>
+          </div>
+        </div>
         <p class="page-subtitle">
           Showing <span class="highlight">{{ matchesRangeText }}</span> of <span class="highlight">{{ total }}</span> custom games recorded
           <span v-if="totalPages > 1" class="page-pill-badge">Page {{ page }} of {{ totalPages }}</span>
@@ -455,7 +591,37 @@ const tooltipStyle = computed(() => {
           <option value="standard">Standard</option>
           <option value="aram">ARAM</option>
         </select>
+
+        <select v-model="selectedServer" class="input-field server-select" @change="onServerChange">
+          <option value="">All Servers</option>
+          <option v-for="server in servers" :key="server.id" :value="server.id">{{ server.name }}</option>
+          <option value="unassigned">Unassigned</option>
+        </select>
       </div>
+    </div>
+
+    <!-- Admin Assign Success Toast -->
+    <div v-if="assignSuccessMessage" class="assign-toast">
+      <span>✅ {{ assignSuccessMessage }}</span>
+    </div>
+
+    <!-- Admin Select All Bar -->
+    <div v-if="isAdmin && replays.length > 0" class="admin-toolbar">
+      <label class="select-all-label">
+        <input
+          type="checkbox"
+          :checked="allOnPageSelected"
+          class="match-checkbox"
+          @change="toggleSelectAll"
+        />
+        <span>Select all on page ({{ replays.length }} matches)</span>
+      </label>
+      <span v-if="selectedReplayIds.length > 0" class="selected-count-badge">
+        {{ selectedReplayIds.length }} match(es) selected
+      </span>
+      <button v-if="selectedReplayIds.length > 0" class="clear-btn" @click="selectedReplayIds = []">
+        Clear selection
+      </button>
     </div>
 
     <!-- Loading Skeleton -->
@@ -477,8 +643,19 @@ const tooltipStyle = computed(() => {
         v-for="match in replays"
         :key="match.id"
         class="match-card card"
+        :class="{ 'admin-card': isAdmin }"
         @click="openMatch(match.id)"
       >
+        <!-- Admin Checkbox Column -->
+        <div v-if="isAdmin" class="admin-checkbox-col" @click.stop>
+          <input
+            type="checkbox"
+            :checked="selectedReplayIds.includes(match.id)"
+            class="match-checkbox"
+            @change="toggleSelectReplay(match.id)"
+          />
+        </div>
+
         <!-- Map Banner / Info -->
         <div class="map-thumb-wrapper">
           <img
@@ -492,6 +669,9 @@ const tooltipStyle = computed(() => {
             <span class="map-name">{{ match.map }}</span>
             <span class="match-meta">#{{ match.id }} • {{ formatDuration(match.length) }}</span>
             <span v-if="isAramMap(match.map)" class="aram-badge">ARAM</span>
+            <span v-if="isAdmin" class="server-badge" :class="{ 'unassigned-badge': !match.guild_id }">
+              {{ getServerName(match.guild_id) }}
+            </span>
           </div>
         </div>
 
@@ -704,6 +884,29 @@ const tooltipStyle = computed(() => {
         </div>
       </div>
     </Teleport>
+    <!-- Floating Admin Bulk Action Bar -->
+    <div v-if="isAdmin && selectedReplayIds.length > 0" class="floating-admin-bar">
+      <div class="admin-bar-inner">
+        <span class="admin-bar-summary">
+          <strong>{{ selectedReplayIds.length }}</strong> match(es) selected
+        </span>
+        <div class="admin-bar-actions">
+          <select v-model="bulkTargetServer" class="input-field admin-server-select">
+            <option value="" disabled>Choose target server...</option>
+            <option v-for="s in servers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option value="unassigned">Remove Server (Unassign)</option>
+          </select>
+          <button
+            class="assign-btn"
+            :disabled="!bulkTargetServer || assigning"
+            @click="executeBulkAssign"
+          >
+            <span v-if="assigning" class="spinner-small"></span>
+            <span v-else>Assign Matches</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -717,15 +920,59 @@ const tooltipStyle = computed(() => {
   gap: 1.25rem;
 }
 
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.title-with-admin {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+  padding: 0.25rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.admin-logout-btn {
+  background: none;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 0.75rem;
+  margin-left: 0.35rem;
+  padding: 0;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.admin-logout-btn:hover {
+  color: #ef4444;
+}
+
 .page-title {
   font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.03em;
+  margin: 0;
 }
 
 .page-subtitle {
   color: var(--text-muted);
   font-size: 0.95rem;
+  margin: 0;
 }
 
 .filter-bar {
@@ -746,6 +993,70 @@ const tooltipStyle = computed(() => {
   min-width: 140px;
 }
 
+.server-select {
+  min-width: 160px;
+}
+
+.assign-toast {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid var(--border-subtle, #334155);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.selected-count-badge {
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.clear-btn:hover {
+  color: var(--text-primary, #f8fafc);
+}
+
 .matches-list {
   display: flex;
   flex-direction: column;
@@ -760,7 +1071,126 @@ const tooltipStyle = computed(() => {
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  padding: 0;
+}
+
+.match-card.admin-card {
+  grid-template-columns: 36px 200px 1fr 120px;
+}
+
+.admin-checkbox-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.match-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+.server-badge {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  max-width: fit-content;
+}
+
+.unassigned-badge {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.floating-admin-bar {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: #111827;
+  border: 1px solid #3b82f6;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 20px rgba(59, 130, 246, 0.25);
+  padding: 0.85rem 1.5rem;
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-bar-summary {
+  font-size: 0.95rem;
+  color: #f8fafc;
+}
+
+.admin-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-server-select {
+  min-width: 200px;
+  background: #1f2937;
+  border-color: #374151;
+  color: #f9fafb;
+}
+
+.assign-btn {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  padding: 0.55rem 1.15rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.assign-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.assign-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translate(-50%, 20px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
 }
 
 .match-card:hover {

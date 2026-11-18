@@ -9,6 +9,13 @@ export interface ReplaySummary {
   team0_players: string[]
   team1_players: string[]
   heroes: string[]
+  guild_id?: string | null
+}
+
+export interface ServerInfo {
+  id: string
+  name: string
+  icon?: string | null
 }
 
 export interface ReplaysApiResponse {
