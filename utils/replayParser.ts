@@ -1,4 +1,5 @@
 import { createRequire } from 'module'
+import { isMainThread, parentPort } from 'node:worker_threads'
 import type { HotSReplayObject, ReplayData } from '../types/replay'
 
 const require = createRequire(import.meta.url)
@@ -46,7 +47,8 @@ export function parseReplaySync(file: string): ReplayData | null {
 
     const players = Object.values(replay.players)
 
-    // Check if any player has an unknown or missing hero (e.g. from Auto-Select in custom lobbies)
+    // Always sync authoritative hero names from DETAILS (Blizzard replay header)
+    // because hots-parser TrackerEvent 4002 often overwrites heroes with draft/ARAM pre-selection slots
     try {
       const heroprotocol: {
         DETAILS: string
@@ -55,17 +57,18 @@ export function parseReplaySync(file: string): ReplayData | null {
       const details = heroprotocol.get(heroprotocol.DETAILS, file)
       if (details && Array.isArray(details.m_playerList)) {
         for (const player of players) {
-          if (!player.hero || player.hero === 'Unknown' || player.hero === 'RAND' || player.hero === 'Auto') {
-            const match = details.m_playerList.find(p => {
-              const nameStr = p.m_name ? (typeof p.m_name === 'string' ? p.m_name : p.m_name.toString('utf8')) : ''
-              return nameStr === player.name
-            })
-            if (match && match.m_hero) {
-              let heroName = typeof match.m_hero === 'string' ? match.m_hero : match.m_hero.toString('utf8')
-              if (heroName === 'Lúcio') heroName = 'Lucio'
-              player.hero = heroName
-            }
+          const match = details.m_playerList.find(p => {
+            const nameStr = p.m_name ? (typeof p.m_name === 'string' ? p.m_name : p.m_name.toString('utf8')) : ''
+            return nameStr === player.name
+          })
+          if (match && match.m_hero) {
+            let heroName = typeof match.m_hero === 'string' ? match.m_hero : match.m_hero.toString('utf8')
+            if (heroName === 'Lúcio') heroName = 'Lucio'
+            player.hero = heroName
           }
+        }
+        if (replay.match && Array.isArray(replay.match.heroes)) {
+          replay.match.heroes = players.map(p => p.hero).filter((h): h is string => Boolean(h))
         }
       }
     } catch {
@@ -112,3 +115,20 @@ export function parseReplaySync(file: string): ReplayData | null {
 export async function parseReplay(file: string): Promise<ReplayData | null> {
   return parseReplaySync(file)
 }
+
+interface WorkerMessage {
+  id: number
+  file: string
+}
+
+if (!isMainThread && parentPort) {
+  parentPort.on('message', (msg: WorkerMessage) => {
+    try {
+      const data = parseReplaySync(msg.file)
+      parentPort?.postMessage({ id: msg.id, file: msg.file, data })
+    } catch (err) {
+      parentPort?.postMessage({ id: msg.id, file: msg.file, data: null, error: String(err) })
+    }
+  })
+}
+

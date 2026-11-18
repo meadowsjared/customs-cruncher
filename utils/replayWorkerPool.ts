@@ -28,11 +28,11 @@ interface WorkerMessagePayload {
 
 function resolveWorkerScriptPath(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url))
-  const cjsCandidate = path.join(currentDir, 'replayWorker.cjs')
-  if (fs.existsSync(cjsCandidate)) {
-    return cjsCandidate
+  const tsCandidate = path.join(currentDir, 'replayParser.ts')
+  if (fs.existsSync(tsCandidate)) {
+    return tsCandidate
   }
-  return path.resolve('utils/replayWorker.cjs')
+  return path.resolve('utils/replayParser.ts')
 }
 
 /**
