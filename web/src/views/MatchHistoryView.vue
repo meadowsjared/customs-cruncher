@@ -59,7 +59,7 @@ interface PaginationItem {
 
 const paginationItems = computed<PaginationItem[]>(() => {
   const current = page.value
-  const totalCount = totalPages.value
+  const totalCount = Math.max(totalPages.value, current > 1 ? current : 0)
   if (totalCount <= 1) return []
 
   const items: PaginationItem[] = []
@@ -139,9 +139,10 @@ const paginationItems = computed<PaginationItem[]>(() => {
 })
 
 const matchesRangeText = computed<string>(() => {
-  if (total.value === 0) return '0'
+  if (total.value === 0 || replays.value.length === 0) return '0'
   const start = (page.value - 1) * limit.value + 1
   const end = Math.min(page.value * limit.value, total.value)
+  if (start > end) return '0'
   return `${start}–${end}`
 })
 
@@ -654,7 +655,7 @@ const tooltipStyle = computed(() => {
         </div>
         <p class="page-subtitle">
           Showing <span class="highlight">{{ matchesRangeText }}</span> of <span class="highlight">{{ total }}</span> custom games recorded
-          <span v-if="totalPages > 1" class="page-pill-badge">Page {{ page }} of {{ totalPages }}</span>
+          <span v-if="totalPages > 1 || page > 1" class="page-pill-badge">Page {{ page }} of {{ Math.max(totalPages, 1) }}</span>
         </p>
       </div>
 
@@ -730,7 +731,18 @@ const tooltipStyle = computed(() => {
     <div v-else-if="replays.length === 0" class="empty-state card">
       <span class="empty-icon">🛡️</span>
       <h3>No matches found</h3>
-      <p>Try adjusting your search filters</p>
+      <p v-if="page > 1">
+        There are no matches on page {{ page }}. Earlier pages may still have matches.
+      </p>
+      <p v-else>Try adjusting your search filters</p>
+      <div v-if="page > 1" class="empty-state-nav">
+        <button type="button" class="btn btn-page-nav" @click="goToPage(page - 1)">
+          ‹ Go back to page {{ page - 1 }}
+        </button>
+        <button type="button" class="btn btn-page-nav" @click="goToPage(1)">
+          « Go to page 1
+        </button>
+      </div>
     </div>
 
     <!-- Match Cards List -->
@@ -868,7 +880,7 @@ const tooltipStyle = computed(() => {
     </div>
 
     <!-- Pagination Bar -->
-    <div v-if="totalPages > 1" class="pagination-container card">
+    <div v-if="totalPages > 1 || page > 1" class="pagination-container card">
       <div class="pagination-main-row">
         <div class="pagination-meta">
           Showing matches <strong>{{ matchesRangeText }}</strong> of <strong>{{ total }}</strong>
@@ -908,7 +920,7 @@ const tooltipStyle = computed(() => {
           </div>
 
           <button
-            :disabled="page >= totalPages"
+            :disabled="totalPages <= 1 || page >= totalPages"
             class="btn btn-page-nav"
             title="Next Page"
             @click="goToPage(page + 1)"
@@ -916,10 +928,10 @@ const tooltipStyle = computed(() => {
             Next ›
           </button>
           <button
-            :disabled="page >= totalPages"
+            :disabled="totalPages <= 1 || page >= totalPages"
             class="btn btn-page-nav"
             title="Last Page"
-            @click="goToPage(totalPages)"
+            @click="goToPage(Math.max(totalPages, 1))"
           >
             Last »
           </button>
@@ -935,7 +947,7 @@ const tooltipStyle = computed(() => {
             v-model="jumpPageInput"
             type="number"
             min="1"
-            :max="totalPages"
+            :max="Math.max(totalPages, page)"
             placeholder="Page #"
             class="input-field jump-input"
           />
@@ -1851,6 +1863,14 @@ const tooltipStyle = computed(() => {
   text-align: center;
   padding: 4rem 2rem;
   color: var(--text-muted);
+}
+
+.empty-state-nav {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
 }
 
 .spinner {
