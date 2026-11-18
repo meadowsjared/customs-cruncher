@@ -41,6 +41,23 @@ export async function insertReplays(
 
   const rows = items.map(item => toReplayRow(isReplayDataFile(item) ? item.replayData : item))
 
+  // Deduplicate against existing replays where client clocks drifted slightly (different milliseconds/seconds)
+  for (const row of rows) {
+    if (row.map && row.loop_length) {
+      const existing = await sql<Array<{ id: number; date: Date }>>`
+        SELECT id, date
+        FROM replays
+        WHERE map = ${row.map}
+          AND loop_length = ${row.loop_length}
+          AND ABS(EXTRACT(EPOCH FROM (date - ${row.date}::timestamptz))) < 300
+        LIMIT 1
+      `
+      if (existing.length > 0 && existing[0]) {
+        row.date = existing[0].date
+      }
+    }
+  }
+
   const inserted = await sql<ReplayRow[]>`
     INSERT INTO replays ${sql(rows)}
     ON CONFLICT (map, date, loop_length) DO UPDATE SET
