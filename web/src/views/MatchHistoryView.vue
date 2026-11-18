@@ -5,6 +5,7 @@ import type { ReplaySummary, ReplaysApiResponse, ServerInfo } from '../types'
 import {
   formatDuration,
   formatDateRelative,
+  formatDateFull,
   getHeroImageUrl,
   getMapImageUrl,
   isAramMap,
@@ -561,7 +562,7 @@ const tooltipStyle = computed(() => {
         <div class="title-with-admin">
           <h1 class="page-title">Match History</h1>
           <div v-if="isAdmin" class="admin-status-pill">
-            <span class="admin-icon">🔓</span>
+            <span class="admin-icon">🔒</span>
             <span>Admin Active</span>
             <button class="admin-logout-btn" title="Exit Admin Mode" @click.stop="logoutAdmin">Log Out</button>
           </div>
@@ -647,12 +648,24 @@ const tooltipStyle = computed(() => {
         @click="openMatch(match.id)"
       >
         <!-- Admin Checkbox Column -->
-        <div v-if="isAdmin" class="admin-checkbox-col" @click.stop>
+        <div
+          v-if="isAdmin"
+          class="admin-checkbox-col"
+          :class="{ 'is-selected': selectedReplayIds.includes(match.id) }"
+          role="checkbox"
+          :aria-checked="selectedReplayIds.includes(match.id)"
+          tabindex="0"
+          title="Click to toggle selection"
+          @click.stop="toggleSelectReplay(match.id)"
+          @keydown.space.prevent="toggleSelectReplay(match.id)"
+          @keydown.enter.prevent="toggleSelectReplay(match.id)"
+        >
           <input
             type="checkbox"
             :checked="selectedReplayIds.includes(match.id)"
             class="match-checkbox"
-            @change="toggleSelectReplay(match.id)"
+            tabindex="-1"
+            aria-hidden="true"
           />
         </div>
 
@@ -702,13 +715,19 @@ const tooltipStyle = computed(() => {
               </div>
             </div>
             <div class="players-subtext">
-              {{ match.team0_players.join(', ') }}
+              <span
+                v-for="(player, idx) in match.team0_players"
+                :key="idx"
+                class="player-entry"
+              >
+                {{ player }}<span v-if="idx < match.team0_players.length - 1" class="player-sep">,</span>
+              </span>
             </div>
           </div>
 
           <div class="versus-divider">
             <span class="vs-text">VS</span>
-            <span class="date-text">{{ formatDateRelative(match.date) }}</span>
+            <span class="date-text" :title="formatDateFull(match.date)">{{ formatDateRelative(match.date) }}</span>
           </div>
 
           <!-- Team 1 (Red) -->
@@ -736,7 +755,13 @@ const tooltipStyle = computed(() => {
               </div>
             </div>
             <div class="players-subtext">
-              {{ match.team1_players.join(', ') }}
+              <span
+                v-for="(player, idx) in match.team1_players"
+                :key="idx"
+                class="player-entry"
+              >
+                {{ player }}<span v-if="idx < match.team1_players.length - 1" class="player-sep">,</span>
+              </span>
             </div>
           </div>
         </div>
@@ -1074,20 +1099,47 @@ const tooltipStyle = computed(() => {
 }
 
 .match-card.admin-card {
-  grid-template-columns: 36px 200px 1fr 120px;
+  padding-left: 0;
+  grid-template-columns: 56px 200px 1fr 120px;
 }
 
 .admin-checkbox-col {
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  margin-top: -1.25rem;
+  margin-bottom: -1.25rem;
+  margin-right: -1.5rem;
+  padding-right: 1.5rem;
+  padding-left: 0.25rem;
+  user-select: none;
+  background: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.admin-checkbox-col:hover {
+  background-color: rgba(59, 130, 246, 0.14);
+}
+
+.admin-checkbox-col.is-selected {
+  background-color: rgba(59, 130, 246, 0.18);
+  box-shadow: inset 3px 0 0 #3b82f6;
+}
+
+.admin-checkbox-col.is-selected:hover {
+  background-color: rgba(59, 130, 246, 0.26);
 }
 
 .match-checkbox {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   accent-color: #3b82f6;
+  pointer-events: none;
 }
 
 .server-badge {
@@ -1317,10 +1369,19 @@ const tooltipStyle = computed(() => {
 .players-subtext {
   font-size: 0.75rem;
   color: var(--text-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.35rem;
+  line-height: 1.4;
+}
+
+.player-entry {
+  display: inline-flex;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 280px;
+}
+
+.player-sep {
+  margin-right: 0.1rem;
 }
 
 .versus-divider {
@@ -1343,6 +1404,15 @@ const tooltipStyle = computed(() => {
 .date-text {
   font-size: 0.75rem;
   color: var(--text-dim);
+  cursor: help;
+  text-decoration: underline dotted rgba(255, 255, 255, 0.2);
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.date-text:hover {
+  color: var(--text-main);
+  text-decoration-color: var(--primary);
 }
 
 .view-match-action {
@@ -1760,6 +1830,10 @@ const tooltipStyle = computed(() => {
 @media (max-width: 900px) {
   .match-card {
     grid-template-columns: 1fr;
+  }
+  .match-card.admin-card {
+    grid-template-columns: 52px 1fr;
+    padding-left: 0;
   }
   .teams-versus {
     grid-template-columns: 1fr;

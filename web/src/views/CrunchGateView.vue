@@ -112,7 +112,9 @@ async function handleLogin() {
         <p class="gate-subtitle">Administrative Management Gateway</p>
       </div>
 
-      <form class="gate-form"
+      <form method="post"
+            action="#"
+            class="gate-form"
             @submit.prevent="handleLogin">
         <div v-if="errorMessage"
              class="error-banner">
@@ -124,6 +126,7 @@ async function handleLogin() {
           <label for="admin-user"
                  class="input-label">Username</label>
           <input id="admin-user"
+                 name="username"
                  v-model="username"
                  type="text"
                  class="gate-input"
@@ -137,6 +140,7 @@ async function handleLogin() {
           <label for="admin-pass"
                  class="input-label">Password</label>
           <input id="admin-pass"
+                 name="password"
                  v-model="password"
                  type="password"
                  class="gate-input"
