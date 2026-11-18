@@ -82,6 +82,10 @@ function isAssignBody(data: unknown): data is { replayIds?: unknown; guildId?: u
   return typeof data === 'object' && data !== null && 'replayIds' in data
 }
 
+function isAddServerBody(data: unknown): data is { name?: unknown; id?: unknown } {
+  return typeof data === 'object' && data !== null && 'name' in data
+}
+
 function sendFile(res: http.ServerResponse, filePath: string, isHead: boolean = false): void {
   try {
     const stat = fs.statSync(filePath)
@@ -297,6 +301,49 @@ export function createServer(): http.Server {
           return
         } catch {
           sendJson(res, 400, { error: 'Bad Request' })
+          return
+        }
+      }
+
+      // POST /api/admin/servers - Add or update a server/guild manually
+      if (pathname === '/api/admin/servers' && req.method === 'POST') {
+        const token = extractBearerToken(req.headers.authorization)
+        if (!verifyAdminToken(token)) {
+          sendJson(res, 401, { error: 'Unauthorized' })
+          return
+        }
+        try {
+          const body = await parseJsonBody(req)
+          if (!isAddServerBody(body) || typeof body.name !== 'string' || !body.name.trim()) {
+            sendJson(res, 400, { error: 'Server name is required' })
+            return
+          }
+          const name = body.name.trim()
+          let id: string
+          if (typeof body.id === 'string' && body.id.trim()) {
+            id = body.id.trim()
+          } else {
+            const slug = name
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '_')
+              .replace(/^_+|_+$/g, '')
+            id = slug ? `custom_${slug}_${Date.now()}` : `custom_${Date.now()}`
+          }
+
+          await sql`
+            INSERT INTO guilds (id, name, updated_at)
+            VALUES (${id}, ${name}, CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
+          `
+
+          sendJson(res, 200, {
+            success: true,
+            server: { id, name },
+          })
+          return
+        } catch (err) {
+          console.error('[WebServer] Error adding server:', err)
+          sendJson(res, 500, { error: 'Failed to add server' })
           return
         }
       }

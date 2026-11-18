@@ -34,6 +34,13 @@ const bulkTargetServer = ref('')
 const assigning = ref(false)
 const assignSuccessMessage = ref('')
 
+// Add Server Modal State
+const showAddServerModal = ref(false)
+const newServerName = ref('')
+const newServerId = ref('')
+const addingServer = ref(false)
+const addServerError = ref('')
+
 interface PaginationItem {
   type: 'page' | 'ellipsis'
   page?: number
@@ -407,6 +414,72 @@ function logoutAdmin() {
   selectedReplayIds.value = []
 }
 
+function openAddServerModal() {
+  newServerName.value = ''
+  newServerId.value = ''
+  addServerError.value = ''
+  showAddServerModal.value = true
+}
+
+function closeAddServerModal() {
+  if (addingServer.value) return
+  showAddServerModal.value = false
+}
+
+interface AddServerApiResponse {
+  success?: boolean
+  server?: ServerInfo
+  error?: string
+}
+
+async function handleAddServer() {
+  if (!newServerName.value.trim()) {
+    addServerError.value = 'Please enter a server name.'
+    return
+  }
+
+  addingServer.value = true
+  addServerError.value = ''
+  try {
+    const token = localStorage.getItem('crunch_admin_token')
+    const res = await fetch('/api/admin/servers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: newServerName.value.trim(),
+        id: newServerId.value.trim() || undefined,
+      }),
+    })
+
+    if (!res.ok) {
+      const errData: AddServerApiResponse = await res.json().catch(() => ({ error: 'Failed to create server' }))
+      addServerError.value = errData.error || 'Failed to create server'
+      return
+    }
+
+    const data: AddServerApiResponse = await res.json()
+    if (data.server) {
+      await fetchServers()
+      if (selectedReplayIds.value.length > 0) {
+        bulkTargetServer.value = data.server.id
+      }
+      assignSuccessMessage.value = `Server "${data.server.name}" added successfully!`
+      setTimeout(() => {
+        assignSuccessMessage.value = ''
+      }, 4000)
+      showAddServerModal.value = false
+    }
+  } catch (err) {
+    console.error('Error adding server:', err)
+    addServerError.value = 'Network error while adding server.'
+  } finally {
+    addingServer.value = false
+  }
+}
+
 watch(
   () => route.query,
   newQuery => {
@@ -598,6 +671,16 @@ const tooltipStyle = computed(() => {
           <option v-for="server in servers" :key="server.id" :value="server.id">{{ server.name }}</option>
           <option value="unassigned">Unassigned</option>
         </select>
+
+        <button
+          v-if="isAdmin"
+          type="button"
+          class="add-server-btn"
+          title="Manually register a Discord server"
+          @click="openAddServerModal"
+        >
+          ➕ Add Server
+        </button>
       </div>
     </div>
 
@@ -929,9 +1012,101 @@ const tooltipStyle = computed(() => {
             <span v-if="assigning" class="spinner-small"></span>
             <span v-else>Assign Matches</span>
           </button>
+          <button
+            type="button"
+            class="add-server-bar-btn"
+            title="Register new server"
+            @click="openAddServerModal"
+          >
+            ➕
+          </button>
         </div>
       </div>
     </div>
+
+    <!-- Add Server Modal -->
+    <Teleport to="body">
+      <div v-if="showAddServerModal" class="modal-backdrop" @click.self="closeAddServerModal">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <span class="modal-icon">🏰</span>
+              <h3>Add Discord Server</h3>
+            </div>
+            <button
+              type="button"
+              class="modal-close-btn"
+              :disabled="addingServer"
+              @click="closeAddServerModal"
+            >
+              ✕
+            </button>
+          </div>
+
+          <p class="modal-desc">
+            Register a Discord server to filter and assign match replays, even if the bot is not yet present in that server.
+          </p>
+
+          <form class="modal-form" @submit.prevent="handleAddServer">
+            <div v-if="addServerError" class="modal-error-banner">
+              <span>⚠️ {{ addServerError }}</span>
+            </div>
+
+            <div class="form-group">
+              <label for="new-server-name" class="form-label">
+                Server Name <span class="required">*</span>
+              </label>
+              <input
+                id="new-server-name"
+                v-model="newServerName"
+                type="text"
+                class="input-field modal-input"
+                placeholder="e.g. Nexus In-Houses"
+                :disabled="addingServer"
+                autofocus
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="new-server-id" class="form-label">
+                Discord Server ID <span class="label-hint">(optional)</span>
+              </label>
+              <input
+                id="new-server-id"
+                v-model="newServerId"
+                type="text"
+                class="input-field modal-input"
+                placeholder="e.g. 1051325819403894785"
+                :disabled="addingServer"
+              />
+              <p class="field-hint">
+                Leave blank to automatically generate an internal unique ID.
+              </p>
+            </div>
+
+            <div class="modal-actions">
+              <button
+                type="button"
+                class="btn-cancel"
+                :disabled="addingServer"
+                @click="closeAddServerModal"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn-submit-server"
+                :disabled="addingServer || !newServerName.trim()"
+              >
+                <span v-if="addingServer" class="spinner-small"></span>
+                <span v-else>Save Server</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1222,6 +1397,218 @@ const tooltipStyle = computed(() => {
 .assign-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.add-server-btn {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.add-server-btn:hover {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.add-server-bar-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-server-bar-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: #3b82f6;
+}
+
+/* Modal styles */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 29, 0.8);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-card {
+  background: #111827;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  width: 100%;
+  max-width: 460px;
+  padding: 1.75rem;
+  animation: popIn 0.25s ease-out;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.modal-icon {
+  font-size: 1.35rem;
+}
+
+.modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.modal-close-btn:hover {
+  color: #f8fafc;
+}
+
+.modal-desc {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 1.25rem;
+  line-height: 1.45;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.modal-error-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.required {
+  color: #f87171;
+}
+
+.label-hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.modal-input {
+  width: 100%;
+}
+
+.field-hint {
+  font-size: 0.73rem;
+  color: #64748b;
+  margin: 0.2rem 0 0 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+.btn-submit-server {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  border: none;
+  color: #fff;
+  padding: 0.55rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-submit-server:hover:not(:disabled) {
+  opacity: 0.92;
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-submit-server:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .spinner-small {
