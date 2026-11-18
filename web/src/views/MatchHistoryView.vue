@@ -7,6 +7,7 @@ import {
   formatDateRelative,
   getHeroImageUrl,
   getMapImageUrl,
+  isAramMap,
   resolveHeroName,
 } from '../utils/hots'
 
@@ -20,6 +21,7 @@ const total = ref(0)
 const limit = ref(15)
 const search = ref('')
 const selectedMap = ref('')
+const selectedMode = ref('')
 const jumpPageInput = ref('')
 
 interface PaginationItem {
@@ -118,15 +120,24 @@ const matchesRangeText = computed<string>(() => {
   return `${start}–${end}`
 })
 
-const availableMaps = [
+const ARAM_MAPS = [
+  'Braxis Outpost',
+  'Industrial District',
+  'Lost Cavern',
+  'Silver City',
+]
+
+const STANDARD_MAPS = [
   'Alterac Pass',
   'Battlefield of Eternity',
-  'Blackheart\'s Bay',
+  "Blackheart's Bay",
   'Braxis Holdout',
   'Cursed Hollow',
   'Dragon Shire',
   'Garden of Terror',
+  'Garden of Terror Classic',
   'Hanamura Temple',
+  'Haunted Mines',
   'Infernal Shrines',
   'Sky Temple',
   'Tomb of the Spider Queen',
@@ -134,6 +145,18 @@ const availableMaps = [
   'Volskaya Foundry',
   'Warhead Junction',
 ]
+
+const ALL_MAPS = [...STANDARD_MAPS, ...ARAM_MAPS].sort()
+
+const displayedMaps = computed<string[]>(() => {
+  if (selectedMode.value === 'aram') {
+    return ARAM_MAPS
+  }
+  if (selectedMode.value === 'standard') {
+    return STANDARD_MAPS
+  }
+  return ALL_MAPS
+})
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -145,6 +168,7 @@ async function fetchReplays() {
     params.set('limit', limit.value.toString())
     if (search.value.trim()) params.set('search', search.value.trim())
     if (selectedMap.value) params.set('map', selectedMap.value)
+    if (selectedMode.value) params.set('mode', selectedMode.value)
 
     const res = await fetch(`/api/replays?${params.toString()}`)
     const text = await res.text()
@@ -165,13 +189,14 @@ async function fetchReplays() {
 }
 
 function updateUrl(
-  params: { page?: number; search?: string; map?: string; limit?: number },
+  params: { page?: number; search?: string; map?: string; mode?: string; limit?: number },
   replace: boolean = false
 ) {
   const query: Record<string, string> = {}
   const targetPage = params.page !== undefined ? params.page : page.value
   const targetSearch = params.search !== undefined ? params.search : search.value
   const targetMap = params.map !== undefined ? params.map : selectedMap.value
+  const targetMode = params.mode !== undefined ? params.mode : selectedMode.value
   const targetLimit = params.limit !== undefined ? params.limit : limit.value
 
   if (targetPage > 1) {
@@ -183,6 +208,9 @@ function updateUrl(
   if (targetMap) {
     query.map = targetMap
   }
+  if (targetMode) {
+    query.mode = targetMode
+  }
   if (targetLimit !== 15) {
     query.limit = String(targetLimit)
   }
@@ -192,6 +220,7 @@ function updateUrl(
     (currentQ.page || '1') === (query.page || '1') &&
     (currentQ.search || '') === (query.search || '') &&
     (currentQ.map || '') === (query.map || '') &&
+    (currentQ.mode || '') === (query.mode || '') &&
     (currentQ.limit || '15') === (query.limit || '15')
 
   if (isSame) {
@@ -234,7 +263,16 @@ function onSearchInput() {
 }
 
 function onMapChange() {
-  updateUrl({ page: 1, map: selectedMap.value }, false)
+  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value }, false)
+}
+
+function onModeChange() {
+  if (selectedMode.value === 'aram' && !ARAM_MAPS.includes(selectedMap.value)) {
+    selectedMap.value = ''
+  } else if (selectedMode.value === 'standard' && !STANDARD_MAPS.includes(selectedMap.value)) {
+    selectedMap.value = ''
+  }
+  updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value }, false)
 }
 
 function onLimitChange(newLimit: number) {
@@ -249,6 +287,8 @@ watch(
 
     const targetSearch = typeof newQuery.search === 'string' ? newQuery.search : ''
     const targetMap = typeof newQuery.map === 'string' ? newQuery.map : ''
+    const rawMode = typeof newQuery.mode === 'string' ? newQuery.mode.toLowerCase() : ''
+    const targetMode = rawMode === 'aram' || rawMode === 'standard' ? rawMode : ''
     const qLimit = parseInt(String(newQuery.limit || '15'), 10)
     const targetLimit = !isNaN(qLimit) && qLimit >= 1 && qLimit <= 100 ? qLimit : 15
 
@@ -257,6 +297,7 @@ watch(
       search.value = targetSearch
     }
     selectedMap.value = targetMap
+    selectedMode.value = targetMode
     limit.value = targetLimit
 
     fetchReplays()
@@ -406,7 +447,13 @@ const tooltipStyle = computed(() => {
 
         <select v-model="selectedMap" class="input-field map-select" @change="onMapChange">
           <option value="">All Battlegrounds</option>
-          <option v-for="map in availableMaps" :key="map" :value="map">{{ map }}</option>
+          <option v-for="map in displayedMaps" :key="map" :value="map">{{ map }}</option>
+        </select>
+
+        <select v-model="selectedMode" class="input-field mode-select" @change="onModeChange">
+          <option value="">All Modes</option>
+          <option value="standard">Standard</option>
+          <option value="aram">ARAM</option>
         </select>
       </div>
     </div>
@@ -444,6 +491,7 @@ const tooltipStyle = computed(() => {
           <div class="map-text">
             <span class="map-name">{{ match.map }}</span>
             <span class="match-meta">#{{ match.id }} • {{ formatDuration(match.length) }}</span>
+            <span v-if="isAramMap(match.map)" class="aram-badge">ARAM</span>
           </div>
         </div>
 
@@ -694,6 +742,10 @@ const tooltipStyle = computed(() => {
   min-width: 180px;
 }
 
+.mode-select {
+  min-width: 140px;
+}
+
 .matches-list {
   display: flex;
   flex-direction: column;
@@ -762,6 +814,23 @@ const tooltipStyle = computed(() => {
   font-size: 0.8rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.aram-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+  margin-top: 0.25rem;
 }
 
 .teams-versus {

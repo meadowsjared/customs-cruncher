@@ -8,6 +8,7 @@ import {
   formatNumber,
   getHeroImageUrl,
   getMapImageUrl,
+  isAramMap,
   getTalentInfo,
   getTalentImageUrl,
   formatTalentName,
@@ -464,7 +465,10 @@ onMounted(() => {
 
         <div class="banner-content">
           <div class="banner-left">
-            <span class="match-id-pill">MATCH #{{ match.id }}</span>
+            <div class="banner-title-row">
+              <span class="match-id-pill">MATCH #{{ match.id }}</span>
+              <span v-if="isAramMap(match.map)" class="aram-badge">ARAM</span>
+            </div>
             <h1 class="banner-map-title">{{ match.map }}</h1>
             <div class="banner-meta-row">
               <span class="meta-item">⏱️ {{ formatDuration(match.length) }}</span>
@@ -1509,6 +1513,27 @@ onMounted(() => {
   background: rgba(56, 189, 248, 0.15);
   padding: 0.2rem 0.6rem;
   border-radius: var(--radius-full);
+}
+
+.banner-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.aram-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
 }
 
 .banner-map-title {

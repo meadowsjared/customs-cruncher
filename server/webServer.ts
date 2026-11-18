@@ -28,6 +28,8 @@ const MIME_TYPES: Record<string, string> = {
 
 let serverInstance: http.Server | null = null
 
+const ARAM_MAPS = ['Silver City', 'Lost Cavern', 'Braxis Outpost', 'Industrial District']
+
 function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
   const json = JSON.stringify(data)
   res.writeHead(statusCode, {
@@ -158,6 +160,7 @@ export function createServer(): http.Server {
         const limit = Math.min(100, Math.max(1, parseInt(urlObj.searchParams.get('limit') || '20', 10) || 20))
         const offset = (page - 1) * limit
         const mapFilter = urlObj.searchParams.get('map') || null
+        const modeFilter = urlObj.searchParams.get('mode')?.trim().toLowerCase() || null
         const search = urlObj.searchParams.get('search')?.trim() || null
 
         // Query list of replays with summary fields
@@ -191,6 +194,12 @@ export function createServer(): http.Server {
           FROM replays
           WHERE
             (${mapFilter}::text IS NULL OR map ILIKE ${'%' + (mapFilter || '') + '%'})
+            AND (
+              ${modeFilter}::text IS NULL
+              OR ${modeFilter} = ''
+              OR (${modeFilter} = 'aram' AND map = ANY(${ARAM_MAPS}))
+              OR (${modeFilter} = 'standard' AND NOT (map = ANY(${ARAM_MAPS})))
+            )
             AND (
               ${search}::text IS NULL
               OR team0_players ILIKE ${'%' + (search || '') + '%'}

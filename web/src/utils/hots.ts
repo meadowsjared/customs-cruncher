@@ -145,6 +145,18 @@ export function formatNumber(num?: number): string {
   return new Intl.NumberFormat().format(Math.round(num))
 }
 
+export const ARAM_MAPS: readonly string[] = [
+  'Braxis Outpost',
+  'Industrial District',
+  'Lost Cavern',
+  'Silver City',
+]
+
+export function isAramMap(mapName?: string | null): boolean {
+  if (!mapName) return false
+  return ARAM_MAPS.some(m => m.toLowerCase() === mapName.trim().toLowerCase())
+}
+
 export function getMapImageUrl(mapName: string): string {
   if (!mapName) return ''
   const filename = mapName
