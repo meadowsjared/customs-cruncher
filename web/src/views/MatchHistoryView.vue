@@ -789,7 +789,7 @@ const tooltipStyle = computed(() => {
             <span class="map-name">{{ match.map }}</span>
             <span class="match-meta">#{{ match.id }} • {{ formatDuration(match.length) }}</span>
             <span v-if="isAramMap(match.map)" class="aram-badge">ARAM</span>
-            <span v-if="isAdmin" class="server-badge" :class="{ 'unassigned-badge': !match.guild_id }">
+            <span v-if="!selectedServer" class="server-badge" :class="{ 'unassigned-badge': !match.guild_id }">
               {{ getServerName(match.guild_id) }}
             </span>
           </div>
