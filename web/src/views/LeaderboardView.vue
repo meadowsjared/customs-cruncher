@@ -1124,8 +1124,9 @@ onMounted(() => {
 
 .player-name-wrapper {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
 }
 
 .player-title {
@@ -1171,6 +1172,7 @@ onMounted(() => {
 .leaderboard-container {
   max-width: none;
   width: 100%;
+  min-width: min-content;
   padding-left: 2rem;
   padding-right: 2rem;
 }
@@ -1178,12 +1180,19 @@ onMounted(() => {
 .leaderboard-table-container {
   overflow: visible;
   width: 100%;
+  padding: 0;
+  border-radius: var(--radius-lg);
 }
 
 .leaderboard-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+  padding: 0.6rem 0.65rem;
 }
 
 .leaderboard-table thead th {
