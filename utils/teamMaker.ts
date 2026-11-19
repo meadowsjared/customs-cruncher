@@ -282,14 +282,21 @@ export function getCombinations<T>(array: T[], k: number): T[][] {
   return [...withFirst, ...withoutFirst]
 }
 
+export interface CreateTeamsOptions {
+  forceRoles?: boolean
+  anchorTopTwo?: boolean
+}
+
 /**
  * Creates globally optimal teams by evaluating all possible 5v5 combinations.
- * First filters/penalizes by role coverage (Tanks, Healers, Flex),
- * then minimizes the total team MMR difference.
+ * By default (forceRoles=false), MMR & team balance is primary, anchoring Ranks 1 & 2
+ * to opposite teams to prevent carry-stacking, using role balance as a safe tiebreaker.
+ * When forceRoles=true, strict role coverage is prioritized first.
  */
 export function createOptimalTeams(
   sortedPlayers: Player[],
-  maxPlayersPerTeam: number = 5
+  maxPlayersPerTeam: number = 5,
+  options: CreateTeamsOptions = {}
 ): TeamDraftResult {
   const totalSlots = maxPlayersPerTeam * 2
   const activePool = sortedPlayers.slice(0, totalSlots)
@@ -309,26 +316,37 @@ export function createOptimalTeams(
   const teamSize = Math.floor(activePool.length / 2)
   // Pin first player to Team 1 to avoid evaluating symmetric duplicates (Team 1 vs 2 == Team 2 vs 1)
   const firstPlayer = activePool[0]
-  const remainingPlayers = activePool.slice(1)
+
+  // By default, anchor Rank 1 & Rank 2 to opposite teams to prevent carry-stacking
+  const shouldAnchor = options.anchorTopTwo !== false && activePool.length >= 4
+  const remainingPlayers = shouldAnchor ? activePool.slice(2) : activePool.slice(1)
   const candidateCombs = getCombinations(remainingPlayers, teamSize - 1)
 
-  let bestSplit: { team1: Player[]; team2: Player[]; roleImbalance: number; mmrDiff: number } | null = null
-
-  for (const comb of candidateCombs) {
+  const candidateSplits = candidateCombs.map(comb => {
     const t1 = [firstPlayer, ...comb]
     const t1Set = new Set(t1)
     const t2 = activePool.filter(p => !t1Set.has(p))
 
     const roleImbalance = calculateRoleImbalance(t1, t2)
     const mmrDiff = getTeamMmrDiff(t1, t2)
+    return { team1: t1, team2: t2, roleImbalance, mmrDiff }
+  })
 
-    if (
-      !bestSplit ||
-      roleImbalance < bestSplit.roleImbalance ||
-      (roleImbalance === bestSplit.roleImbalance && mmrDiff < bestSplit.mmrDiff)
-    ) {
-      bestSplit = { team1: t1, team2: t2, roleImbalance, mmrDiff }
-    }
+  let bestSplit: { team1: Player[]; team2: Player[]; roleImbalance: number; mmrDiff: number } | null = null
+
+  if (options.forceRoles) {
+    // Strictly prioritize role balance first, then MMR difference
+    candidateSplits.sort((a, b) => a.roleImbalance - b.roleImbalance || a.mmrDiff - b.mmrDiff)
+    bestSplit = candidateSplits[0] ?? null
+  } else {
+    // Balance-first (Default): MMR is primary.
+    // Role balance only acts as a tiebreaker or within a tight tolerance (<= 25 MMR),
+    // ensuring we never compromise team quality or give one team a bunch of anchors just for role tags.
+    const MMR_ROLE_TOLERANCE = 25
+    const minMmrDiff = Math.min(...candidateSplits.map(s => s.mmrDiff))
+    const viableSplits = candidateSplits.filter(s => s.mmrDiff <= minMmrDiff + MMR_ROLE_TOLERANCE)
+    viableSplits.sort((a, b) => a.roleImbalance - b.roleImbalance || a.mmrDiff - b.mmrDiff)
+    bestSplit = viableSplits[0] ?? null
   }
 
   const team1 = bestSplit?.team1 ?? activePool.slice(0, teamSize)
@@ -350,15 +368,16 @@ export function createOptimalTeams(
 export function createTeams(
   sortedPlayers: Player[],
   mode: MakeTeamsMode = MakeTeamsMode.OPTIMAL,
-  maxPlayersPerTeam: number = 5
+  maxPlayersPerTeam: number = 5,
+  options: CreateTeamsOptions = {}
 ): TeamDraftResult {
   if (mode === MakeTeamsMode.OPTIMAL) {
-    return createOptimalTeams(sortedPlayers, maxPlayersPerTeam)
+    return createOptimalTeams(sortedPlayers, maxPlayersPerTeam, options)
   }
 
   const prefab = TEAM_PREFABS[mode] ?? TEAM_PREFABS[MakeTeamsMode.STANDARD]
   if (!prefab) {
-    return createOptimalTeams(sortedPlayers, maxPlayersPerTeam)
+    return createOptimalTeams(sortedPlayers, maxPlayersPerTeam, options)
   }
   const team1Set = new Set(prefab.team1)
   const team2Set = new Set(prefab.team2)

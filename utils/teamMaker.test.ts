@@ -331,6 +331,60 @@ describe('teamMaker.createTeams', () => {
 
     expect(avgMs).toBeLessThan(5)
   })
+
+  it('anchors Rank 1 and Rank 2 to opposite teams by default to avoid carry stacking', () => {
+    const players = [
+      makeMockPlayer(1, 3200, 'A'),
+      makeMockPlayer(2, 3150, 'A'),
+      makeMockPlayer(3, 2900, 'T'),
+      makeMockPlayer(4, 2850, 'H'),
+      makeMockPlayer(5, 2800, 'A'),
+      makeMockPlayer(6, 2750, 'A'),
+      makeMockPlayer(7, 2700, 'T'),
+      makeMockPlayer(8, 2650, 'H'),
+      makeMockPlayer(9, 2400, 'A'),
+      makeMockPlayer(10, 2350, 'A'),
+    ]
+
+    const result = createTeams(players, MakeTeamsMode.OPTIMAL, 5)
+    const p1InTeam1 = result.team1.some(p => p.discordId === 'user_1')
+    const p2InTeam1 = result.team1.some(p => p.discordId === 'user_2')
+
+    expect(p1InTeam1).toBe(true)
+    expect(p2InTeam1).toBe(false)
+    expect(result.team2.some(p => p.discordId === 'user_2')).toBe(true)
+  })
+
+  it('respects forceRoles option when explicitly enabled vs disabled', () => {
+    // Only 2 healers, but one is high MMR (3100) and one is very low MMR (2300).
+    // Sacrificing MMR to split the healers produces a worse MMR balance than keeping teams balanced.
+    const players = [
+      makeMockPlayer(1, 3100, 'H'),
+      makeMockPlayer(2, 3000, 'A'),
+      makeMockPlayer(3, 2950, 'T'),
+      makeMockPlayer(4, 2900, 'T'),
+      makeMockPlayer(5, 2850, 'A'),
+      makeMockPlayer(6, 2800, 'A'),
+      makeMockPlayer(7, 2750, 'A'),
+      makeMockPlayer(8, 2700, 'A'),
+      makeMockPlayer(9, 2650, 'A'),
+      makeMockPlayer(10, 2300, 'H'),
+    ]
+
+    const defaultOptimal = createTeams(players, MakeTeamsMode.OPTIMAL, 5, { forceRoles: false })
+    const forceRolesOptimal = createTeams(players, MakeTeamsMode.OPTIMAL, 5, { forceRoles: true })
+
+    const defT1Sum = defaultOptimal.team1.reduce((s, p) => s + p.mmr, 0)
+    const defT2Sum = defaultOptimal.team2.reduce((s, p) => s + p.mmr, 0)
+    const defDiff = Math.abs(defT1Sum - defT2Sum)
+
+    // With forceRoles: true, both teams MUST get a healer
+    expect(forceRolesOptimal.team1.some(p => p.role === 'H')).toBe(true)
+    expect(forceRolesOptimal.team2.some(p => p.role === 'H')).toBe(true)
+
+    // Default optimal maintains tighter or equal MMR parity without blowing up the teams
+    expect(defDiff).toBeLessThanOrEqual(50)
+  })
 })
 
 describe('teamMaker.calculateMatchupPrediction', () => {

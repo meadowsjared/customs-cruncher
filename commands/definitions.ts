@@ -127,9 +127,15 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           {
             name: 'mode',
             type: ApplicationCommandOptionType.String,
-            description: 'Team generation mode (defaults to Standard)',
+            description: 'Team generation mode (defaults to Optimal)',
             required: false,
             choices: makeTeamsModeChoices,
+          },
+          {
+            name: 'force_roles',
+            type: ApplicationCommandOptionType.Boolean,
+            description: 'Force strict role coverage even if it imbalances MMR (defaults to False)',
+            required: false,
           },
           {
             name: 'publish',

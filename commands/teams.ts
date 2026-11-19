@@ -137,6 +137,7 @@ export async function handleMakeTeamsCommand(
 
   const publish = interaction.options.getBoolean('publish', false) ?? false
   const modeInput = interaction.options.getString('mode', false)
+  const forceRoles = interaction.options.getBoolean('force_roles', false) ?? false
   const mode: MakeTeamsMode = isMakeTeamsMode(modeInput) ? modeInput : MakeTeamsMode.OPTIMAL
 
   const sortedPlayers = await getSortedActivePlayers(guildId)
@@ -152,12 +153,12 @@ export async function handleMakeTeamsCommand(
     return
   }
 
-  const { team1, team2, spectators } = createTeams(eligiblePlayers, mode, MAX_PLAYERS_PER_TEAM)
+  const { team1, team2, spectators } = createTeams(eligiblePlayers, mode, MAX_PLAYERS_PER_TEAM, { forceRoles })
   const allSpectators = [...spectators, ...designatedSpectators]
 
   // set the teams in the database
   await setTeamsFromPlayers(guildId, team1, team2, allSpectators)
-  await generateTeamsMessage(interaction, team1, team2, publish, true)
+  await generateTeamsMessage(interaction, team1, team2, publish, true, { forceRoles })
 }
 
 export interface TeamComparisonResult {
@@ -322,7 +323,8 @@ export async function generateTeamsMessage(
   /**
    * if this is true, then we're creating a new team draft
    */
-  isDraft = false
+  isDraft = false,
+  options?: { forceRoles?: boolean }
 ): Promise<void> {
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
@@ -416,12 +418,17 @@ export async function generateTeamsMessage(
         components.push(row)
       }
 
+      const titleSuffix = options?.forceRoles ? ' (Forced Roles)' : ''
+      const forceRolesNotice = options?.forceRoles
+        ? '⚠️ *Force Roles enabled: strict role coverage prioritized over MMR parity.*\n\n'
+        : ''
       const outlookEmbed = new EmbedBuilder()
-        .setTitle('📊 Matchup Outlook & Win Prediction')
+        .setTitle(`📊 Matchup Outlook & Win Prediction${titleSuffix}`)
         .setColor('#5865F2')
         .setDescription(
           `**Team 1** (${prediction.team1AvgMMR} avg) vs **Team 2** (${prediction.team2AvgMMR} avg)\n` +
             `\`[${prediction.probabilityBar}]\` **${prediction.team1WinPct}%** vs **${prediction.team2WinPct}%**\n\n` +
+            forceRolesNotice +
             `${prediction.outlookText}\n` +
             `${prediction.roleStatusText}\n` +
             swapsText
