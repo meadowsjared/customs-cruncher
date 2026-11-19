@@ -362,6 +362,10 @@ const displaySummary = computed<PlayerProfileSummary | null>(() => {
     name: profileData.value.player.name,
     tag: profileData.value.player.tag,
     allTags: profileData.value.player.allTags,
+    mmr: profileData.value.player.mmr,
+    baseMmr: profileData.value.player.baseMmr,
+    adjustment: profileData.value.player.adjustment,
+    role: profileData.value.player.role,
     totalMatches,
     wins,
     losses,
@@ -601,6 +605,21 @@ onMounted(() => {
 
           <!-- Key Stats Badges for this hero -->
           <div class="profile-stat-pills">
+            <div v-if="profileData.player.mmr != null"
+                 class="stat-pill-card mmr-pill"
+                 :title="profileData.player.baseMmr ? `Base MMR: ${formatNumber(profileData.player.baseMmr)}${profileData.player.adjustment ? ` (Adjustment: ${profileData.player.adjustment > 0 ? '+' : ''}${profileData.player.adjustment})` : ''}` : 'Effective In-House MMR'">
+              <span class="stat-pill-label">Player MMR</span>
+              <span class="stat-pill-val val-mmr">{{ formatNumber(profileData.player.mmr) }}</span>
+              <span class="stat-pill-sub">
+                <span v-if="profileData.player.baseMmr">Base: {{ formatNumber(profileData.player.baseMmr) }}</span>
+                <span v-if="profileData.player.adjustment"
+                      class="mmr-adj-badge">
+                  ({{ profileData.player.adjustment > 0 ? '+' : '' }}{{ profileData.player.adjustment }})
+                </span>
+                <span v-if="!profileData.player.baseMmr">In-House</span>
+              </span>
+            </div>
+
             <div class="stat-pill-card">
               <span class="stat-pill-label">Hero Win Rate</span>
               <span class="stat-pill-val"
@@ -661,6 +680,11 @@ onMounted(() => {
                 {{ displaySummary.name }}
                 <span v-if="displaySummary.tag"
                       class="player-bnet-tag">#{{ displaySummary.tag }}</span>
+                <span v-if="displaySummary.role"
+                      class="player-role-badge"
+                      :title="`Preferred Roles: ${displaySummary.role}`">
+                  {{ displaySummary.role }}
+                </span>
               </h1>
               <div v-if="displaySummary.allTags.length > 1"
                    class="linked-accounts-wrap">
@@ -677,6 +701,21 @@ onMounted(() => {
 
           <!-- Key Stats Badges -->
           <div class="profile-stat-pills">
+            <div v-if="displaySummary.mmr != null"
+                 class="stat-pill-card mmr-pill"
+                 :title="displaySummary.baseMmr ? `Base MMR: ${formatNumber(displaySummary.baseMmr)}${displaySummary.adjustment ? ` (Adjustment: ${displaySummary.adjustment > 0 ? '+' : ''}${displaySummary.adjustment})` : ''}` : 'Effective In-House MMR'">
+              <span class="stat-pill-label">Current MMR</span>
+              <span class="stat-pill-val val-mmr">{{ formatNumber(displaySummary.mmr) }}</span>
+              <span class="stat-pill-sub">
+                <span v-if="displaySummary.baseMmr">Base: {{ formatNumber(displaySummary.baseMmr) }}</span>
+                <span v-if="displaySummary.adjustment"
+                      class="mmr-adj-badge">
+                  ({{ displaySummary.adjustment > 0 ? '+' : '' }}{{ displaySummary.adjustment }})
+                </span>
+                <span v-if="!displaySummary.baseMmr">In-House</span>
+              </span>
+            </div>
+
             <div class="stat-pill-card">
               <span class="stat-pill-label">Win Rate</span>
               <span class="stat-pill-val"
@@ -1204,6 +1243,20 @@ onMounted(() => {
   margin-left: 0.25rem;
 }
 
+.player-role-badge {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+
 .linked-accounts-wrap {
   display: flex;
   align-items: center;
@@ -1274,6 +1327,21 @@ onMounted(() => {
 
 .val-kda {
   color: #38bdf8;
+}
+
+.val-mmr {
+  color: var(--accent-gold);
+}
+
+.mmr-pill {
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.mmr-adj-badge {
+  color: var(--accent-cyan);
+  margin-left: 0.2rem;
+  font-weight: 600;
 }
 
 .stat-pill-sub {

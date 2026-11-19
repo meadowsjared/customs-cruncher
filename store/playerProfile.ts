@@ -19,6 +19,10 @@ export interface PlayerProfileSummary {
   name: string
   tag: string
   allTags: string[]
+  mmr?: number | null
+  baseMmr?: number | null
+  adjustment?: number | null
+  role?: string | null
   totalMatches: number
   wins: number
   losses: number
@@ -417,6 +421,40 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
     })
   }
 
+  type PlayerMmrLookupRow = {
+    mmr: number | null
+    base_mmr: number | null
+    adjustment: number | null
+    role: string | null
+  }
+
+  let mmrInfo: PlayerMmrLookupRow | undefined
+  if (primaryAccount.discord_id) {
+    const mmrRows = await sql<PlayerMmrLookupRow[]>`
+      SELECT mmr, base_mmr, adjustment, role
+      FROM v_player_mmr
+      WHERE discord_id = ${primaryAccount.discord_id}
+      LIMIT 1
+    `
+    mmrInfo = mmrRows[0]
+  } else if (primaryAccount.id) {
+    const mmrRows = await sql<PlayerMmrLookupRow[]>`
+      SELECT mmr, base_mmr, adjustment, role
+      FROM v_player_mmr
+      WHERE hots_account_id = ${primaryAccount.id} OR LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
+      LIMIT 1
+    `
+    mmrInfo = mmrRows[0]
+  } else {
+    const mmrRows = await sql<PlayerMmrLookupRow[]>`
+      SELECT mmr, base_mmr, adjustment, role
+      FROM v_player_mmr
+      WHERE LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
+      LIMIT 1
+    `
+    mmrInfo = mmrRows[0]
+  }
+
   const [name, tag] = primaryAccount.hots_battle_tag.split('#')
 
   return {
@@ -426,6 +464,10 @@ export async function getPlayerProfile(identifier: string, heroFilter?: string):
       name: name || primaryAccount.hots_battle_tag,
       tag: tag || '',
       allTags,
+      mmr: mmrInfo?.mmr != null ? Number(mmrInfo.mmr) : null,
+      baseMmr: mmrInfo?.base_mmr != null ? Number(mmrInfo.base_mmr) : null,
+      adjustment: mmrInfo?.adjustment != null ? Number(mmrInfo.adjustment) : null,
+      role: mmrInfo?.role || null,
       totalMatches,
       wins,
       losses,

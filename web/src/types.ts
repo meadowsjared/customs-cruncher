@@ -226,6 +226,10 @@ export interface PlayerProfileSummary {
   name: string
   tag: string
   allTags: string[]
+  mmr?: number | null
+  baseMmr?: number | null
+  adjustment?: number | null
+  role?: string | null
   totalMatches: number
   wins: number
   losses: number
