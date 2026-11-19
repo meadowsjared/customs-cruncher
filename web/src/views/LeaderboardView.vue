@@ -60,6 +60,7 @@ function getBmCommentary(p: LeaderboardPlayer): string {
 }
 
 type SortKey =
+  | 'mmr'
   | 'games_played'
   | 'wins'
   | 'losses'
@@ -300,7 +301,14 @@ function getSortValue(p: LeaderboardPlayer, key: SortKey): number {
   if (key === 'total_bm') {
     return getTotalBm(p)
   }
+  if (key === 'mmr') {
+    return p.mmr ?? 0
+  }
   return p[key] ?? 0
+}
+
+function getPlayerKey(p: LeaderboardPlayer): string {
+  return p.player_identity || p.toon_handle || (p.row_id ? `row_${p.row_id}` : p.player_name)
 }
 
 const sortedAllPlayers = computed(() => {
@@ -311,6 +319,29 @@ const sortedAllPlayers = computed(() => {
   const list = players.value.filter((p) => p.games_played >= min)
 
   return [...list].sort((a, b) => {
+    if (col === 'mmr') {
+      const aVal = a.mmr != null && a.mmr > 0 ? a.mmr : null
+      const bVal = b.mmr != null && b.mmr > 0 ? b.mmr : null
+
+      if (aVal === null && bVal === null) {
+        return b.games_played - a.games_played
+      }
+      if (aVal === null) return 1
+      if (bVal === null) return -1
+
+      if (aVal !== bVal) {
+        return asc ? aVal - bVal : bVal - aVal
+      }
+
+      if (a.games_played !== b.games_played) {
+        return b.games_played - a.games_played
+      }
+      if (a.win_rate_pct !== b.win_rate_pct) {
+        return b.win_rate_pct - a.win_rate_pct
+      }
+      return a.player_name.localeCompare(b.player_name)
+    }
+
     if (col === 'recent_10_win_rate_pct') {
       const aVal =
         a.games_played >= min &&
@@ -364,14 +395,13 @@ const sortedAllPlayers = computed(() => {
 const playerRanks = computed(() => {
   const map = new Map<string, number>()
   sortedAllPlayers.value.forEach((p, idx) => {
-    const key = p.player_identity || p.toon_handle
-    map.set(key, idx + 1)
+    map.set(getPlayerKey(p), idx + 1)
   })
   return map
 })
 
 function getPlayerRank(p: LeaderboardPlayer): number {
-  return playerRanks.value.get(p.player_identity || p.toon_handle) || 0
+  return playerRanks.value.get(getPlayerKey(p)) || 0
 }
 
 function getRankBadge(p: LeaderboardPlayer): string {
@@ -403,6 +433,29 @@ const filteredPlayers = computed(() => {
   })
 
   return [...list].sort((a, b) => {
+    if (col === 'mmr') {
+      const aVal = a.mmr != null && a.mmr > 0 ? a.mmr : null
+      const bVal = b.mmr != null && b.mmr > 0 ? b.mmr : null
+
+      if (aVal === null && bVal === null) {
+        return b.games_played - a.games_played
+      }
+      if (aVal === null) return 1
+      if (bVal === null) return -1
+
+      if (aVal !== bVal) {
+        return asc ? aVal - bVal : bVal - aVal
+      }
+
+      if (a.games_played !== b.games_played) {
+        return b.games_played - a.games_played
+      }
+      if (a.win_rate_pct !== b.win_rate_pct) {
+        return b.win_rate_pct - a.win_rate_pct
+      }
+      return a.player_name.localeCompare(b.player_name)
+    }
+
     if (col === 'recent_10_win_rate_pct') {
       const aVal =
         a.games_played >= min &&
@@ -546,6 +599,12 @@ onMounted(() => {
           <div>
             <div class="roast-name-row">
               <h2 class="roast-player-name">{{ activeFilterPlayer.player_name }}</h2>
+              <span v-if="activeFilterPlayer.role" class="roast-role-badge" :title="`Preferred Roles: ${activeFilterPlayer.role}`">
+                {{ activeFilterPlayer.role }}
+              </span>
+              <span v-if="activeFilterPlayer.mmr != null" class="roast-mmr-badge" :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR'">
+                MMR {{ formatNumber(activeFilterPlayer.mmr) }}
+              </span>
               <span v-if="activeFilterPlayer.hots_battle_tag" class="roast-tag">
                 {{ activeFilterPlayer.hots_battle_tag }}
               </span>
@@ -768,6 +827,17 @@ onMounted(() => {
             <span class="dossier-sub">Last {{ minGames }} games</span>
           </div>
 
+          <div class="stat-dossier-item" v-if="activeFilterPlayer.mmr != null">
+            <span class="dossier-label">Current MMR</span>
+            <span class="dossier-value text-gold">{{ formatNumber(activeFilterPlayer.mmr) }}</span>
+            <span class="dossier-sub" v-if="activeFilterPlayer.base_mmr">
+              Base: {{ formatNumber(activeFilterPlayer.base_mmr) }}
+              <span v-if="activeFilterPlayer.adjustment">
+                ({{ activeFilterPlayer.adjustment > 0 ? '+' : '' }}{{ activeFilterPlayer.adjustment }})
+              </span>
+            </span>
+          </div>
+
           <div class="stat-dossier-item">
             <span class="dossier-label">Total Custom Games</span>
             <span class="dossier-value text-cyan">{{ activeFilterPlayer.games_played }}</span>
@@ -784,6 +854,9 @@ onMounted(() => {
           <tr>
             <th class="rank-col">Rank</th>
             <th>Player</th>
+            <th class="sortable mmr-col" title="Current In-House Effective MMR" @click="setSort('mmr')">
+              MMR {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : '' }}
+            </th>
             <th class="sortable" @click="setSort('games_played')">
               Games {{ sortColumn === 'games_played' ? (sortAsc ? '▲' : '▼') : '' }}
             </th>
@@ -853,7 +926,7 @@ onMounted(() => {
         <tbody>
           <tr
             v-for="(p, idx) in filteredPlayers"
-            :key="p.player_identity || p.toon_handle || ('p_' + idx)"
+            :key="getPlayerKey(p)"
             class="player-row"
             @click="viewPlayerMatches(p)"
           >
@@ -870,12 +943,27 @@ onMounted(() => {
             <!-- Player Name -->
             <td class="player-name-cell">
               <div class="player-name-wrapper">
-                <span class="player-title">{{ p.player_name }}</span>
+                <span class="player-title">
+                  {{ p.player_name }}
+                  <span v-if="p.role" class="player-role-pill" :title="`Preferred Roles: ${p.role}`">{{ p.role }}</span>
+                </span>
                 <span v-if="p.hots_battle_tag" class="player-tag-hint">
                   {{ p.hots_battle_tag }}
                 </span>
                 <span class="view-matches-hint">View Matches →</span>
               </div>
+            </td>
+
+            <!-- MMR -->
+            <td class="num-cell mmr-cell">
+              <span
+                v-if="p.mmr != null"
+                class="mmr-val"
+                :title="p.base_mmr ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}` : 'Effective In-House MMR'"
+              >
+                {{ formatNumber(p.mmr) }}
+              </span>
+              <span v-else class="text-dim">-</span>
             </td>
 
             <!-- Games -->
@@ -1608,6 +1696,63 @@ onMounted(() => {
   font-size: 0.75rem;
   color: var(--text-dim);
   opacity: 0.85;
+}
+
+.text-gold {
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+
+.mmr-col {
+  min-width: 85px;
+}
+
+.mmr-cell {
+  font-weight: 700;
+}
+
+.mmr-val {
+  color: var(--accent-gold);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.player-role-pill {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+
+.roast-role-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+
+.roast-mmr-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--accent-gold);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
 }
 </style>
 

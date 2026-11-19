@@ -60,6 +60,10 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
           'discord_' || ha.discord_id,
           'toon_' || m.toon_handle
         ) AS player_identity,
+        COALESCE(
+          MAX(ha.discord_id) OVER (PARTITION BY m.toon_handle),
+          ha.discord_id
+        ) AS resolved_discord_id,
         ha.id AS account_id,
         ha.is_primary,
         ha.hots_battle_tag AS mapped_battle_tag
@@ -86,81 +90,105 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
           ORDER BY date DESC
         ) AS latest_toon_handle
       FROM player_mappings
+    ),
+    aggregated AS (
+      SELECT
+        player_identity,
+        MAX(resolved_discord_id) AS discord_id,
+        MAX(latest_toon_handle) AS toon_handle,
+        COALESCE(
+          MAX(CASE WHEN is_primary THEN split_part(mapped_battle_tag, '#', 1) END),
+          MAX(split_part(mapped_battle_tag, '#', 1)),
+          MAX(latest_player_name)
+        ) AS player_name,
+        COALESCE(
+          MAX(CASE WHEN is_primary THEN account_id END),
+          MIN(account_id)
+        ) AS row_id,
+        COALESCE(
+          MAX(CASE WHEN is_primary THEN mapped_battle_tag END),
+          MAX(mapped_battle_tag),
+          MAX(hots_battle_tag)
+        ) AS hots_battle_tag,
+        COALESCE(
+          ARRAY_AGG(DISTINCT mapped_battle_tag) FILTER (WHERE mapped_battle_tag IS NOT NULL),
+          ARRAY_AGG(DISTINCT hots_battle_tag) FILTER (WHERE hots_battle_tag IS NOT NULL),
+          '{}'::text[]
+        ) AS all_battle_tags,
+        COALESCE(
+          ARRAY_AGG(DISTINCT account_id) FILTER (WHERE account_id IS NOT NULL),
+          '{}'::int[]
+        ) AS all_row_ids,
+        COUNT(*)::int AS games_played,
+        COUNT(*) FILTER (WHERE win)::int AS wins,
+        COUNT(*) FILTER (WHERE NOT win)::int AS losses,
+        ROUND(100.0 * AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END)::numeric, 2)::double precision AS win_rate_pct,
+        SUM(takedowns)::int AS total_takedowns,
+        SUM(solo_kills)::int AS total_solo_kills,
+        SUM(assists)::int AS total_assists,
+        SUM(deaths)::int AS total_deaths,
+        ROUND((SUM(takedowns)::numeric / GREATEST(SUM(deaths), 1)), 2)::double precision AS overall_kda,
+        ROUND(AVG(takedowns)::numeric, 2)::double precision AS avg_takedowns,
+        ROUND(AVG(deaths)::numeric, 2)::double precision AS avg_deaths,
+        ROUND(AVG(assists)::numeric, 2)::double precision AS avg_assists,
+        ROUND(AVG(hero_damage)::numeric, 1)::double precision AS avg_hero_damage,
+        ROUND(AVG(siege_damage)::numeric, 1)::double precision AS avg_siege_damage,
+        ROUND(AVG(healing)::numeric, 1)::double precision AS avg_healing,
+        ROUND(AVG(damage_taken)::numeric, 1)::double precision AS avg_damage_taken,
+        ROUND(AVG(damage_soaked)::numeric, 1)::double precision AS avg_damage_soaked,
+        ROUND(AVG(xp_contribution)::numeric, 1)::double precision AS avg_xp_contribution,
+        ROUND(AVG(dpm)::numeric, 1)::double precision AS avg_dpm,
+        ROUND(AVG(hpm)::numeric, 1)::double precision AS avg_hpm,
+        ROUND(AVG(xpm)::numeric, 1)::double precision AS avg_xpm,
+        ROUND(100.0 * AVG(kill_participation)::numeric, 1)::double precision AS avg_kill_participation_pct,
+        ROUND(AVG(time_spent_dead)::numeric, 1)::double precision AS avg_time_spent_dead,
+        SUM(votes)::int AS total_votes,
+        SUM(bsteps_count)::int AS total_bsteps,
+        SUM(sprays_count)::int AS total_sprays,
+        SUM(taunts_count)::int AS total_taunts,
+        SUM(dances_count)::int AS total_dances,
+        SUM(voice_lines_count)::int AS total_voice_lines,
+        CASE
+          WHEN COUNT(*) >= ${recentGames} THEN
+            ROUND(
+              100.0 * (AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END) FILTER (WHERE recency_rank <= ${recentGames}))::numeric,
+              2
+            )::double precision
+          ELSE NULL
+        END AS recent_10_win_rate_pct,
+        CASE
+          WHEN COUNT(*) >= ${recentGames} THEN
+            ROUND(
+              (AVG(dpm) FILTER (WHERE recency_rank <= ${recentGames}))::numeric,
+              1
+            )::double precision
+          ELSE NULL
+        END AS recent_10_avg_dpm
+      FROM ranked_games
+      GROUP BY player_identity
     )
     SELECT
-      player_identity,
-      MAX(latest_toon_handle) AS toon_handle,
-      COALESCE(
-        MAX(CASE WHEN is_primary THEN split_part(mapped_battle_tag, '#', 1) END),
-        MAX(split_part(mapped_battle_tag, '#', 1)),
-        MAX(latest_player_name)
-      ) AS player_name,
-      COALESCE(
-        MAX(CASE WHEN is_primary THEN account_id END),
-        MIN(account_id)
-      ) AS row_id,
-      COALESCE(
-        MAX(CASE WHEN is_primary THEN mapped_battle_tag END),
-        MAX(mapped_battle_tag),
-        MAX(hots_battle_tag)
-      ) AS hots_battle_tag,
-      COALESCE(
-        ARRAY_AGG(DISTINCT mapped_battle_tag) FILTER (WHERE mapped_battle_tag IS NOT NULL),
-        ARRAY_AGG(DISTINCT hots_battle_tag) FILTER (WHERE hots_battle_tag IS NOT NULL),
-        '{}'::text[]
-      ) AS all_battle_tags,
-      COALESCE(
-        ARRAY_AGG(DISTINCT account_id) FILTER (WHERE account_id IS NOT NULL),
-        '{}'::int[]
-      ) AS all_row_ids,
-      COUNT(*)::int AS games_played,
-      COUNT(*) FILTER (WHERE win)::int AS wins,
-      COUNT(*) FILTER (WHERE NOT win)::int AS losses,
-      ROUND(100.0 * AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END)::numeric, 2)::double precision AS win_rate_pct,
-      SUM(takedowns)::int AS total_takedowns,
-      SUM(solo_kills)::int AS total_solo_kills,
-      SUM(assists)::int AS total_assists,
-      SUM(deaths)::int AS total_deaths,
-      ROUND((SUM(takedowns)::numeric / GREATEST(SUM(deaths), 1)), 2)::double precision AS overall_kda,
-      ROUND(AVG(takedowns)::numeric, 2)::double precision AS avg_takedowns,
-      ROUND(AVG(deaths)::numeric, 2)::double precision AS avg_deaths,
-      ROUND(AVG(assists)::numeric, 2)::double precision AS avg_assists,
-      ROUND(AVG(hero_damage)::numeric, 1)::double precision AS avg_hero_damage,
-      ROUND(AVG(siege_damage)::numeric, 1)::double precision AS avg_siege_damage,
-      ROUND(AVG(healing)::numeric, 1)::double precision AS avg_healing,
-      ROUND(AVG(damage_taken)::numeric, 1)::double precision AS avg_damage_taken,
-      ROUND(AVG(damage_soaked)::numeric, 1)::double precision AS avg_damage_soaked,
-      ROUND(AVG(xp_contribution)::numeric, 1)::double precision AS avg_xp_contribution,
-      ROUND(AVG(dpm)::numeric, 1)::double precision AS avg_dpm,
-      ROUND(AVG(hpm)::numeric, 1)::double precision AS avg_hpm,
-      ROUND(AVG(xpm)::numeric, 1)::double precision AS avg_xpm,
-      ROUND(100.0 * AVG(kill_participation)::numeric, 1)::double precision AS avg_kill_participation_pct,
-      ROUND(AVG(time_spent_dead)::numeric, 1)::double precision AS avg_time_spent_dead,
-      SUM(votes)::int AS total_votes,
-      SUM(bsteps_count)::int AS total_bsteps,
-      SUM(sprays_count)::int AS total_sprays,
-      SUM(taunts_count)::int AS total_taunts,
-      SUM(dances_count)::int AS total_dances,
-      SUM(voice_lines_count)::int AS total_voice_lines,
-      CASE
-        WHEN COUNT(*) >= ${recentGames} THEN
-          ROUND(
-            100.0 * (AVG(CASE WHEN win THEN 1.0 ELSE 0.0 END) FILTER (WHERE recency_rank <= ${recentGames}))::numeric,
-            2
-          )::double precision
-        ELSE NULL
-      END AS recent_10_win_rate_pct,
-      CASE
-        WHEN COUNT(*) >= ${recentGames} THEN
-          ROUND(
-            (AVG(dpm) FILTER (WHERE recency_rank <= ${recentGames}))::numeric,
-            1
-          )::double precision
-        ELSE NULL
-      END AS recent_10_avg_dpm
-    FROM ranked_games
-    GROUP BY player_identity
-    ORDER BY games_played DESC, win_rate_pct DESC
+      a.*,
+      mmr_info.mmr,
+      mmr_info.base_mmr,
+      COALESCE(mmr_info.adjustment, 0) AS adjustment,
+      mmr_info.role
+    FROM aggregated a
+    LEFT JOIN LATERAL (
+      SELECT v.mmr, v.base_mmr, v.adjustment, v.role
+      FROM v_player_mmr v
+      WHERE (a.discord_id IS NOT NULL AND v.discord_id = a.discord_id)
+         OR (a.discord_id IS NULL AND (
+              (a.row_id IS NOT NULL AND v.hots_account_id = a.row_id)
+              OR LOWER(v.player) = LOWER(a.hots_battle_tag)
+            ))
+      ORDER BY 
+        CASE WHEN a.discord_id IS NOT NULL AND v.discord_id = a.discord_id THEN 0 ELSE 1 END,
+        CASE WHEN LOWER(v.player) = LOWER(a.hots_battle_tag) THEN 0 ELSE 1 END,
+        v.mmr DESC
+      LIMIT 1
+    ) mmr_info ON TRUE
+    ORDER BY a.games_played DESC, a.win_rate_pct DESC
   `
 }
 

@@ -618,6 +618,14 @@ export function createServer(): http.Server {
           }
         }
 
+        const seenKeys = new Set<string>()
+        stats = stats.filter((s) => {
+          const key = s.player_identity || s.toon_handle || (s.row_id ? `row_${s.row_id}` : s.player_name)
+          if (seenKeys.has(key)) return false
+          seenKeys.add(key)
+          return true
+        })
+
         sendJson(res, 200, {
           players: stats,
           total: stats.length,

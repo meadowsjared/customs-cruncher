@@ -205,6 +205,10 @@ export interface LeaderboardPlayer {
   total_voice_lines?: number
   recent_10_win_rate_pct?: number
   recent_10_avg_dpm?: number
+  mmr?: number | null
+  base_mmr?: number | null
+  adjustment?: number | null
+  role?: string | null
 }
 
 export interface PlayerSearchItem {
