@@ -1,25 +1,110 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter, RouterLink } from 'vue-router'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { PlayerSearchItem } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const navbarRef = ref<HTMLElement | null>(null)
+const navLinksRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
+const isReady = ref(false)
+
+const isMatches = computed(() => {
+  return (
+    route.path === '/' ||
+    route.path.startsWith('/matches') ||
+    route.path.startsWith('/replay') ||
+    route.path.startsWith('/match')
+  )
+})
+
+const isLeaderboard = computed(() => {
+  return route.path.startsWith('/leaderboard')
+})
+
+const sliderStyle = ref<{
+  transform: string
+  width: string
+  opacity: number
+}>({
+  transform: 'translate3d(0, 0, 0)',
+  width: '0px',
+  opacity: 0,
+})
+
+function updateSlider() {
+  if (!navLinksRef.value) return
+
+  let activeEl: HTMLElement | null = null
+  if (isMatches.value) {
+    activeEl = navLinksRef.value.querySelector<HTMLElement>('.nav-matches')
+  } else if (isLeaderboard.value) {
+    activeEl = navLinksRef.value.querySelector<HTMLElement>('.nav-leaderboard')
+  }
+
+  if (activeEl) {
+    const left = activeEl.offsetLeft
+    const width = activeEl.offsetWidth
+    sliderStyle.value = {
+      transform: `translate3d(${left}px, 0, 0)`,
+      width: `${width}px`,
+      opacity: 1,
+    }
+  } else {
+    sliderStyle.value = {
+      ...sliderStyle.value,
+      opacity: 0,
+    }
+  }
+}
+
+watch(
+  () => route.path,
+  () => {
+    nextTick(() => {
+      updateSlider()
+    })
+  }
+)
+
 onMounted(() => {
-  if (navbarRef.value && typeof ResizeObserver !== 'undefined') {
+  updateSlider()
+  requestAnimationFrame(() => {
+    updateSlider()
+    isReady.value = true
+  })
+  if (typeof document !== 'undefined' && 'fonts' in document) {
+    document.fonts.ready.then(() => {
+      updateSlider()
+    })
+  }
+  window.addEventListener('resize', updateSlider)
+
+  if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const height = entry.target.getBoundingClientRect().height
-        document.documentElement.style.setProperty('--navbar-height', `${height}px`)
+        if (navbarRef.value && entry.target === navbarRef.value) {
+          const height = entry.target.getBoundingClientRect().height
+          document.documentElement.style.setProperty('--navbar-height', `${height}px`)
+        }
+        if (navLinksRef.value && entry.target === navLinksRef.value) {
+          updateSlider()
+        }
       }
     })
-    resizeObserver.observe(navbarRef.value)
+    if (navbarRef.value) {
+      resizeObserver.observe(navbarRef.value)
+    }
+    if (navLinksRef.value) {
+      resizeObserver.observe(navLinksRef.value)
+    }
   }
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateSlider)
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
@@ -99,12 +184,34 @@ function handleBlur() {
         </div>
       </div>
 
-      <nav class="nav-links">
-        <RouterLink to="/matches" class="nav-link">
+      <nav
+        ref="navLinksRef"
+        class="nav-links"
+        :class="{
+          'is-ready': isReady,
+          'has-active': isMatches || isLeaderboard,
+          'is-matches': isMatches,
+          'is-leaderboard': isLeaderboard,
+        }"
+      >
+        <div
+          class="nav-slider"
+          :style="sliderStyle"
+          aria-hidden="true"
+        />
+        <RouterLink
+          to="/matches"
+          class="nav-link nav-matches"
+          :class="{ 'is-active': isMatches }"
+        >
           <span>⚔️</span>
           <span>Matches</span>
         </RouterLink>
-        <RouterLink to="/leaderboard" class="nav-link">
+        <RouterLink
+          to="/leaderboard"
+          class="nav-link nav-leaderboard"
+          :class="{ 'is-active': isLeaderboard }"
+        >
           <span>🏆</span>
           <span>Leaderboard</span>
         </RouterLink>
