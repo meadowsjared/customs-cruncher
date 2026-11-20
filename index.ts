@@ -10,7 +10,7 @@ process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error)
 })
 
-import { ActivityType, ChannelType, Client, GatewayIntentBits, Partials, PresenceUpdateStatus } from 'discord.js'
+import { ActivityType, ChannelType, Client, GatewayIntentBits, InteractionContextType, Partials, PresenceUpdateStatus } from 'discord.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { dispatchInteraction } from './commands/dispatcher'
@@ -136,8 +136,15 @@ client.once('clientReady', async () => {
     }
   })
 
-  // Register global application commands for DM slash command support
-  client.application?.commands.set(slashCommands).catch(err => {
+  // Register only DM-enabled slash commands globally to avoid duplicating guild commands
+  const dmCommands = slashCommands.filter(
+    cmd =>
+      typeof cmd === 'object' &&
+      cmd !== null &&
+      (('dmPermission' in cmd && cmd.dmPermission === true) ||
+        ('contexts' in cmd && Array.isArray(cmd.contexts) && cmd.contexts.includes(InteractionContextType.BotDM)))
+  )
+  client.application?.commands.set(dmCommands).catch(err => {
     console.error('Error setting global application commands:', err)
   })
 
