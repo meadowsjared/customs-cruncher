@@ -36,6 +36,7 @@
 
   --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --navbar-height: 64px;
 }
 
 *, *::before, *::after {
@@ -50,7 +51,6 @@ body {
   color: var(--text-main);
   min-height: 100vh;
   line-height: 1.5;
-  overflow-x: hidden;
   background-image: 
     radial-gradient(ellipse 60% 50% at 50% -20%, rgba(59, 130, 246, 0.15), transparent),
     radial-gradient(ellipse 40% 40% at 90% 80%, rgba(168, 85, 247, 0.08), transparent);
@@ -97,6 +97,7 @@ a {
 
 /* Navigation Bar */
 .navbar {
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 50;
@@ -104,6 +105,9 @@ a {
   background: rgba(10, 14, 23, 0.85);
   border-bottom: 1px solid var(--border-subtle);
   padding: 0.85rem 1.5rem;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .nav-container {
@@ -165,6 +169,37 @@ a {
   color: #fff;
   background: linear-gradient(135deg, #3b82f6, #6366f1);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --navbar-height: 56px;
+  }
+
+  .navbar {
+    position: relative;
+    padding: 0.5rem 0.85rem;
+  }
+
+  .brand {
+    font-size: 1.05rem;
+    gap: 0.45rem;
+  }
+
+  .brand-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .nav-links {
+    gap: 0.2rem;
+    padding: 0.2rem;
+  }
+
+  .nav-link {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+  }
 }
 
 /* Cards & Surfaces */

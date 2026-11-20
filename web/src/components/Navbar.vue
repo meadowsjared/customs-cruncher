@@ -1,9 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { PlayerSearchItem } from '../types'
 
 const router = useRouter()
+const navbarRef = ref<HTMLElement | null>(null)
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  if (navbarRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const height = entry.target.getBoundingClientRect().height
+        document.documentElement.style.setProperty('--navbar-height', `${height}px`)
+      }
+    })
+    resizeObserver.observe(navbarRef.value)
+  }
+})
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+})
 const searchQuery = ref('')
 const searchResults = ref<PlayerSearchItem[]>([])
 const showDropdown = ref(false)
@@ -47,7 +68,7 @@ function handleBlur() {
 </script>
 
 <template>
-  <header class="navbar">
+  <header ref="navbarRef" class="navbar">
     <div class="nav-container">
       <RouterLink to="/matches" class="brand">
         <img :src="'/branding/Avatar_no_BG.png'" alt="Customs Cruncher" class="brand-icon" />

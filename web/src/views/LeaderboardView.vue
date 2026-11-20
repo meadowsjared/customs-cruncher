@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { LeaderboardPlayer } from '../types'
 import { formatNumber } from '../utils/hots'
@@ -60,6 +60,7 @@ function getBmCommentary(p: LeaderboardPlayer): string {
 }
 
 type SortKey =
+  | 'player_name'
   | 'mmr'
   | 'games_played'
   | 'wins'
@@ -283,7 +284,7 @@ function setSort(col: SortKey) {
     sortAsc.value = !sortAsc.value
   } else {
     sortColumn.value = col
-    sortAsc.value = false
+    sortAsc.value = col === 'player_name' ? true : false
   }
 }
 
@@ -304,6 +305,9 @@ function getSortValue(p: LeaderboardPlayer, key: SortKey): number {
   if (key === 'mmr') {
     return p.mmr ?? 0
   }
+  if (key === 'player_name') {
+    return 0
+  }
   return p[key] ?? 0
 }
 
@@ -319,6 +323,14 @@ const sortedAllPlayers = computed(() => {
   const list = players.value.filter((p) => p.games_played >= min)
 
   return [...list].sort((a, b) => {
+    if (col === 'player_name') {
+      const cmp = a.player_name.localeCompare(b.player_name, undefined, { sensitivity: 'base' })
+      if (cmp !== 0) {
+        return asc ? cmp : -cmp
+      }
+      return b.games_played - a.games_played
+    }
+
     if (col === 'mmr') {
       const aVal = a.mmr != null && a.mmr > 0 ? a.mmr : null
       const bVal = b.mmr != null && b.mmr > 0 ? b.mmr : null
@@ -345,14 +357,14 @@ const sortedAllPlayers = computed(() => {
     if (col === 'recent_10_win_rate_pct') {
       const aVal =
         a.games_played >= min &&
-        a.recent_10_win_rate_pct !== undefined &&
-        a.recent_10_win_rate_pct !== null
+          a.recent_10_win_rate_pct !== undefined &&
+          a.recent_10_win_rate_pct !== null
           ? a.recent_10_win_rate_pct
           : null
       const bVal =
         b.games_played >= min &&
-        b.recent_10_win_rate_pct !== undefined &&
-        b.recent_10_win_rate_pct !== null
+          b.recent_10_win_rate_pct !== undefined &&
+          b.recent_10_win_rate_pct !== null
           ? b.recent_10_win_rate_pct
           : null
 
@@ -433,6 +445,14 @@ const filteredPlayers = computed(() => {
   })
 
   return [...list].sort((a, b) => {
+    if (col === 'player_name') {
+      const cmp = a.player_name.localeCompare(b.player_name, undefined, { sensitivity: 'base' })
+      if (cmp !== 0) {
+        return asc ? cmp : -cmp
+      }
+      return b.games_played - a.games_played
+    }
+
     if (col === 'mmr') {
       const aVal = a.mmr != null && a.mmr > 0 ? a.mmr : null
       const bVal = b.mmr != null && b.mmr > 0 ? b.mmr : null
@@ -459,14 +479,14 @@ const filteredPlayers = computed(() => {
     if (col === 'recent_10_win_rate_pct') {
       const aVal =
         a.games_played >= min &&
-        a.recent_10_win_rate_pct !== undefined &&
-        a.recent_10_win_rate_pct !== null
+          a.recent_10_win_rate_pct !== undefined &&
+          a.recent_10_win_rate_pct !== null
           ? a.recent_10_win_rate_pct
           : null
       const bVal =
         b.games_played >= min &&
-        b.recent_10_win_rate_pct !== undefined &&
-        b.recent_10_win_rate_pct !== null
+          b.recent_10_win_rate_pct !== undefined &&
+          b.recent_10_win_rate_pct !== null
           ? b.recent_10_win_rate_pct
           : null
 
@@ -516,8 +536,27 @@ function viewPlayerMatches(player: LeaderboardPlayer) {
   }
 }
 
+const tableContainerRef = ref<HTMLElement | null>(null)
+const isSticky = ref(false)
+
+function checkSticky() {
+  if (!tableContainerRef.value) return
+  const rect = tableContainerRef.value.getBoundingClientRect()
+  const isMobile = window.innerWidth <= 768
+  const navH = isMobile ? 0 : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height')) || 64)
+  isSticky.value = rect.top <= navH + 1
+}
+
 onMounted(() => {
   fetchLeaderboard()
+  checkSticky()
+  window.addEventListener('scroll', checkSticky, { passive: true })
+  window.addEventListener('resize', checkSticky, { passive: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', checkSticky)
+  window.removeEventListener('resize', checkSticky)
 })
 </script>
 
@@ -530,14 +569,13 @@ onMounted(() => {
       </div>
 
       <div class="filter-bar">
-        <input
-          v-model="search"
-          type="text"
-          placeholder="Search player, tag, or row ID..."
-          class="input-field search-input"
-        />
+        <input v-model="search"
+               type="text"
+               placeholder="Search player, tag, or row ID..."
+               class="input-field search-input" />
 
-        <select v-model="minGames" class="input-field min-games-select">
+        <select v-model="minGames"
+                class="input-field min-games-select">
           <option :value="1">Min 1 Game</option>
           <option :value="3">Min 3 Games</option>
           <option :value="5">Min 5 Games</option>
@@ -548,7 +586,8 @@ onMounted(() => {
     </div>
 
     <!-- Active Query / Pre-filter Banner -->
-    <div v-if="activeQuery" class="active-query-banner">
+    <div v-if="activeQuery"
+         class="active-query-banner">
       <div class="active-query-info">
         <span class="active-query-icon">🎯</span>
         <span class="active-query-text">
@@ -556,59 +595,63 @@ onMounted(() => {
         </span>
       </div>
       <div class="active-query-actions">
-        <button
-          v-if="activeFilterPlayer"
-          class="toggle-view-btn"
-          @click="viewMode = viewMode === 'showcase' ? 'table' : 'showcase'"
-        >
+        <button v-if="activeFilterPlayer"
+                class="toggle-view-btn"
+                @click="viewMode = viewMode === 'showcase' ? 'table' : 'showcase'">
           {{ viewMode === 'showcase' ? '📊 Switch to Table View' : '🤡 Switch to Player Roast Card' }}
         </button>
-        <button class="clear-query-btn" title="View full leaderboard" @click="clearFilter">
+        <button class="clear-query-btn"
+                title="View full leaderboard"
+                @click="clearFilter">
           ✕ Show Full Leaderboard
         </button>
       </div>
     </div>
 
     <!-- Loading -->
-    <div v-if="loading" class="loading-state">
+    <div v-if="loading"
+         class="loading-state">
       <div class="spinner"></div>
       <p>Calculating leaderboard standings...</p>
     </div>
 
     <!-- Empty -->
-    <div v-else-if="filteredPlayers.length === 0" class="empty-state card">
+    <div v-else-if="filteredPlayers.length === 0"
+         class="empty-state card">
       <span class="empty-icon">🏆</span>
       <h3>No players meet the filter criteria</h3>
       <p>Try reducing the minimum games filter</p>
     </div>
 
     <!-- Single Player Roast & Embarrassing Stats Showcase View -->
-    <div
-      v-else-if="activeFilterPlayer && viewMode === 'showcase'"
-      class="player-roast-showcase card"
-    >
+    <div v-else-if="activeFilterPlayer && viewMode === 'showcase'"
+         class="player-roast-showcase card">
       <!-- Header / Identity Strip -->
       <div class="roast-header">
         <div class="roast-identity">
-          <div
-            class="roast-rank-circle"
-            :class="{ 'top-three': getPlayerRank(activeFilterPlayer) <= 3 && getPlayerRank(activeFilterPlayer) > 0 }"
-          >
+          <div class="roast-rank-circle"
+               :class="{ 'top-three': getPlayerRank(activeFilterPlayer) <= 3 && getPlayerRank(activeFilterPlayer) > 0 }">
             {{ getRankBadge(activeFilterPlayer) }}
           </div>
           <div>
             <div class="roast-name-row">
               <h2 class="roast-player-name">{{ activeFilterPlayer.player_name }}</h2>
-              <span v-if="activeFilterPlayer.role" class="roast-role-badge" :title="`Preferred Roles: ${activeFilterPlayer.role}`">
+              <span v-if="activeFilterPlayer.role"
+                    class="roast-role-badge"
+                    :title="`Preferred Roles: ${activeFilterPlayer.role}`">
                 {{ activeFilterPlayer.role }}
               </span>
-              <span v-if="activeFilterPlayer.mmr != null" class="roast-mmr-badge" :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR'">
+              <span v-if="activeFilterPlayer.mmr != null"
+                    class="roast-mmr-badge"
+                    :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR'">
                 MMR {{ formatNumber(activeFilterPlayer.mmr) }}
               </span>
-              <span v-if="activeFilterPlayer.hots_battle_tag" class="roast-tag">
+              <span v-if="activeFilterPlayer.hots_battle_tag"
+                    class="roast-tag">
                 {{ activeFilterPlayer.hots_battle_tag }}
               </span>
-              <span v-if="activeFilterPlayer.row_id" class="roast-row-id">
+              <span v-if="activeFilterPlayer.row_id"
+                    class="roast-row-id">
                 Row #{{ activeFilterPlayer.row_id }}
               </span>
             </div>
@@ -619,10 +662,12 @@ onMounted(() => {
         </div>
 
         <div class="roast-header-actions">
-          <button class="action-btn-primary" @click="viewPlayerMatches(activeFilterPlayer)">
+          <button class="action-btn-primary"
+                  @click="viewPlayerMatches(activeFilterPlayer)">
             ⚔️ View Full Match History →
           </button>
-          <button class="action-btn-secondary" @click="viewMode = 'table'">
+          <button class="action-btn-secondary"
+                  @click="viewMode = 'table'">
             📊 View Table Row
           </button>
         </div>
@@ -637,7 +682,8 @@ onMounted(() => {
             <span class="shame-label">FEED COUNTER</span>
           </div>
           <div class="shame-mega-value text-red">
-            {{ activeFilterPlayer.total_deaths ?? Math.round(activeFilterPlayer.avg_deaths * activeFilterPlayer.games_played) }}
+            {{ activeFilterPlayer.total_deaths ?? Math.round(activeFilterPlayer.avg_deaths *
+              activeFilterPlayer.games_played) }}
           </div>
           <div class="shame-subtext">
             <strong>{{ (activeFilterPlayer.avg_deaths ?? 0).toFixed(1) }}</strong> deaths per match
@@ -685,372 +731,604 @@ onMounted(() => {
                 ? "A true philanthropist: generously donating free wins to the opposing team."
                 : "Just barely clinging to a positive win rate against all tactical odds."
             }}
+              </div>
+          </div>
+
+          <!-- 🧽 Damage Sponge -->
+          <div class="shame-card shame-sponge">
+            <div class="shame-card-header">
+              <span class="shame-icon">🧽</span>
+              <span class="shame-label">DAMAGE SPONGE INDEX</span>
+            </div>
+            <div class="shame-mega-value text-cyan">
+              {{ getDamageSpongeRatio(activeFilterPlayer) }}x
+            </div>
+            <div class="shame-subtext">
+              <strong>{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_taken || 0)) }}</strong> taken vs
+              <strong>{{ formatNumber(Math.round(activeFilterPlayer.avg_hero_damage || 0)) }}</strong> dealt
+            </div>
+            <div class="shame-quote">
+              "Body-blocking skillshots with their face so teammates don't have to."
+            </div>
           </div>
         </div>
 
-        <!-- 🧽 Damage Sponge -->
-        <div class="shame-card shame-sponge">
-          <div class="shame-card-header">
-            <span class="shame-icon">🧽</span>
-            <span class="shame-label">DAMAGE SPONGE INDEX</span>
+        <!-- BM & Emote Dossier -->
+        <div class="roast-section-card bm-dossier">
+          <div class="roast-section-title">
+            <span>🔥 Bad Manners & Flare Dossier</span>
+            <span class="bm-total-pill">Total BM: {{ getTotalBm(activeFilterPlayer) }}</span>
           </div>
-          <div class="shame-mega-value text-cyan">
-            {{ getDamageSpongeRatio(activeFilterPlayer) }}x
+          <div class="bm-quote-banner">
+            {{ getBmCommentary(activeFilterPlayer) }}
           </div>
-          <div class="shame-subtext">
-            <strong>{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_taken || 0)) }}</strong> taken vs
-            <strong>{{ formatNumber(Math.round(activeFilterPlayer.avg_hero_damage || 0)) }}</strong> dealt
+          <div class="bm-stats-row">
+            <div class="bm-item">
+              <span class="bm-emoji">🎨</span>
+              <span class="bm-count">{{ activeFilterPlayer.total_sprays || 0 }}</span>
+              <span class="bm-name">Sprays Sprayed</span>
+            </div>
+            <div class="bm-item">
+              <span class="bm-emoji">👟</span>
+              <span class="bm-count">{{ activeFilterPlayer.total_bsteps || 0 }}</span>
+              <span class="bm-name">B-Steps Tapped</span>
+            </div>
+            <div class="bm-item">
+              <span class="bm-emoji">💃</span>
+              <span class="bm-count">{{ activeFilterPlayer.total_dances || 0 }}</span>
+              <span class="bm-name">Dances Performed</span>
+            </div>
+            <div class="bm-item">
+              <span class="bm-emoji">🗣️</span>
+              <span class="bm-count">{{ activeFilterPlayer.total_taunts || 0 }}</span>
+              <span class="bm-name">Taunts Thrown</span>
+            </div>
+            <div class="bm-item">
+              <span class="bm-emoji">🎙️</span>
+              <span class="bm-count">{{ activeFilterPlayer.total_voice_lines || 0 }}</span>
+              <span class="bm-name">Voice Lines Spammed</span>
+            </div>
           </div>
-          <div class="shame-quote">
-            "Body-blocking skillshots with their face so teammates don't have to."
-          </div>
-        </div>
-      </div>
-
-      <!-- BM & Emote Dossier -->
-      <div class="roast-section-card bm-dossier">
-        <div class="roast-section-title">
-          <span>🔥 Bad Manners & Flare Dossier</span>
-          <span class="bm-total-pill">Total BM: {{ getTotalBm(activeFilterPlayer) }}</span>
-        </div>
-        <div class="bm-quote-banner">
-          {{ getBmCommentary(activeFilterPlayer) }}
-        </div>
-        <div class="bm-stats-row">
-          <div class="bm-item">
-            <span class="bm-emoji">🎨</span>
-            <span class="bm-count">{{ activeFilterPlayer.total_sprays || 0 }}</span>
-            <span class="bm-name">Sprays Sprayed</span>
-          </div>
-          <div class="bm-item">
-            <span class="bm-emoji">👟</span>
-            <span class="bm-count">{{ activeFilterPlayer.total_bsteps || 0 }}</span>
-            <span class="bm-name">B-Steps Tapped</span>
-          </div>
-          <div class="bm-item">
-            <span class="bm-emoji">💃</span>
-            <span class="bm-count">{{ activeFilterPlayer.total_dances || 0 }}</span>
-            <span class="bm-name">Dances Performed</span>
-          </div>
-          <div class="bm-item">
-            <span class="bm-emoji">🗣️</span>
-            <span class="bm-count">{{ activeFilterPlayer.total_taunts || 0 }}</span>
-            <span class="bm-name">Taunts Thrown</span>
-          </div>
-          <div class="bm-item">
-            <span class="bm-emoji">🎙️</span>
-            <span class="bm-count">{{ activeFilterPlayer.total_voice_lines || 0 }}</span>
-            <span class="bm-name">Voice Lines Spammed</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Full Performance & Macro Dossier -->
-      <div class="roast-section-card">
-        <div class="roast-section-title">
-          <span>📊 Full Career Combat & Macro Performance</span>
-          <span class="rank-standings-pill">
-            Leaderboard Standing: {{ getRankBadge(activeFilterPlayer) }} (Position {{ getPlayerRank(activeFilterPlayer) }} of {{ sortedAllPlayers.length }})
-          </span>
         </div>
 
-        <div class="stat-dossier-grid">
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Overall KAD</span>
-            <span class="dossier-value" :class="(activeFilterPlayer.overall_kda || 0) < 3.0 ? 'text-red' : 'text-green'">
-              {{ (activeFilterPlayer.overall_kda || 0).toFixed(2) }}
+        <!-- Full Performance & Macro Dossier -->
+        <div class="roast-section-card">
+          <div class="roast-section-title">
+            <span>📊 Full Career Combat & Macro Performance</span>
+            <span class="rank-standings-pill">
+              Leaderboard Standing: {{ getRankBadge(activeFilterPlayer) }} (Position {{
+                getPlayerRank(activeFilterPlayer) }} of {{ sortedAllPlayers.length }})
             </span>
           </div>
 
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Total Takedowns</span>
-            <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_takedowns || 0) }}</span>
-            <span class="dossier-sub">{{ (activeFilterPlayer.avg_takedowns || 0).toFixed(1) }} / match</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Solo Kills</span>
-            <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_solo_kills || 0) }}</span>
-            <span class="dossier-sub">Eliminations without help</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Total Assists</span>
-            <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_assists || 0) }}</span>
-            <span class="dossier-sub">{{ (activeFilterPlayer.avg_assists || 0).toFixed(1) }} / match</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Avg Hero Damage</span>
-            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_hero_damage || 0)) }}</span>
-            <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_dpm || 0) }} DPM</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Avg Siege Damage</span>
-            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_siege_damage || 0)) }}</span>
-            <span class="dossier-sub">Minion & structure clear</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Avg Healing / Shield</span>
-            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_healing || 0)) }}</span>
-            <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_hpm || 0) }} HPM</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Avg Damage Soaked</span>
-            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_soaked || 0)) }}</span>
-            <span class="dossier-sub">Mitigated & healed</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Avg XP Contribution</span>
-            <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_xp_contribution || 0)) }}</span>
-            <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_xpm || 0) }} XPM</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Kill Participation</span>
-            <span class="dossier-value">{{ (activeFilterPlayer.avg_kill_participation_pct || 0).toFixed(1) }}%</span>
-            <span class="dossier-sub">Team fight presence</span>
-          </div>
-
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Recent {{ minGames }} Form</span>
-            <span
-              class="dossier-value"
-              :class="activeFilterPlayer.recent_10_win_rate_pct != null && activeFilterPlayer.recent_10_win_rate_pct >= 50 ? 'text-green' : 'text-red'"
-            >
-              {{ activeFilterPlayer.recent_10_win_rate_pct != null ? activeFilterPlayer.recent_10_win_rate_pct + '%' : 'N/A' }}
-            </span>
-            <span class="dossier-sub">Last {{ minGames }} games</span>
-          </div>
-
-          <div class="stat-dossier-item" v-if="activeFilterPlayer.mmr != null">
-            <span class="dossier-label">Current MMR</span>
-            <span class="dossier-value text-gold">{{ formatNumber(activeFilterPlayer.mmr) }}</span>
-            <span class="dossier-sub" v-if="activeFilterPlayer.base_mmr">
-              Base: {{ formatNumber(activeFilterPlayer.base_mmr) }}
-              <span v-if="activeFilterPlayer.adjustment">
-                ({{ activeFilterPlayer.adjustment > 0 ? '+' : '' }}{{ activeFilterPlayer.adjustment }})
+          <div class="stat-dossier-grid">
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Overall KAD</span>
+              <span class="dossier-value"
+                    :class="(activeFilterPlayer.overall_kda || 0) < 3.0 ? 'text-red' : 'text-green'">
+                {{ (activeFilterPlayer.overall_kda || 0).toFixed(2) }}
               </span>
-            </span>
-          </div>
+            </div>
 
-          <div class="stat-dossier-item">
-            <span class="dossier-label">Total Custom Games</span>
-            <span class="dossier-value text-cyan">{{ activeFilterPlayer.games_played }}</span>
-            <span class="dossier-sub">{{ activeFilterPlayer.wins }}W - {{ activeFilterPlayer.losses }}L</span>
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Total Takedowns</span>
+              <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_takedowns || 0) }}</span>
+              <span class="dossier-sub">{{ (activeFilterPlayer.avg_takedowns || 0).toFixed(1) }} / match</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Solo Kills</span>
+              <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_solo_kills || 0) }}</span>
+              <span class="dossier-sub">Eliminations without help</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Total Assists</span>
+              <span class="dossier-value">{{ formatNumber(activeFilterPlayer.total_assists || 0) }}</span>
+              <span class="dossier-sub">{{ (activeFilterPlayer.avg_assists || 0).toFixed(1) }} / match</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Avg Hero Damage</span>
+              <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_hero_damage || 0)) }}</span>
+              <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_dpm || 0) }} DPM</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Avg Siege Damage</span>
+              <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_siege_damage || 0))
+              }}</span>
+              <span class="dossier-sub">Minion & structure clear</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Avg Healing / Shield</span>
+              <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_healing || 0)) }}</span>
+              <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_hpm || 0) }} HPM</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Avg Damage Soaked</span>
+              <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_soaked || 0))
+              }}</span>
+              <span class="dossier-sub">Mitigated & healed</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Avg XP Contribution</span>
+              <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_xp_contribution || 0))
+              }}</span>
+              <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_xpm || 0) }} XPM</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Kill Participation</span>
+              <span class="dossier-value">{{ (activeFilterPlayer.avg_kill_participation_pct || 0).toFixed(1) }}%</span>
+              <span class="dossier-sub">Team fight presence</span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Recent {{ minGames }} Form</span>
+              <span class="dossier-value"
+                    :class="activeFilterPlayer.recent_10_win_rate_pct != null && activeFilterPlayer.recent_10_win_rate_pct >= 50 ? 'text-green' : 'text-red'">
+                {{ activeFilterPlayer.recent_10_win_rate_pct != null ? activeFilterPlayer.recent_10_win_rate_pct + '%' :
+                  'N/A' }}
+              </span>
+              <span class="dossier-sub">Last {{ minGames }} games</span>
+            </div>
+
+            <div class="stat-dossier-item"
+                 v-if="activeFilterPlayer.mmr != null">
+              <span class="dossier-label">Current MMR</span>
+              <span class="dossier-value text-gold">{{ formatNumber(activeFilterPlayer.mmr) }}</span>
+              <span class="dossier-sub"
+                    v-if="activeFilterPlayer.base_mmr">
+                Base: {{ formatNumber(activeFilterPlayer.base_mmr) }}
+                <span v-if="activeFilterPlayer.adjustment">
+                  ({{ activeFilterPlayer.adjustment > 0 ? '+' : '' }}{{ activeFilterPlayer.adjustment }})
+                </span>
+              </span>
+            </div>
+
+            <div class="stat-dossier-item">
+              <span class="dossier-label">Total Custom Games</span>
+              <span class="dossier-value text-cyan">{{ activeFilterPlayer.games_played }}</span>
+              <span class="dossier-sub">{{ activeFilterPlayer.wins }}W - {{ activeFilterPlayer.losses }}L</span>
+            </div>
           </div>
         </div>
+      </div>
+
+      <!-- Leaderboard Table -->
+      <div v-else
+           ref="tableContainerRef"
+           class="table-container card leaderboard-table-container"
+           :class="{ 'is-sticky': isSticky }">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th class="rank-col">Rank</th>
+              <th class="sortable player-col"
+                  @click="setSort('player_name')">
+                Player {{ sortColumn === 'player_name' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <!-- MMR (Detailed) -->
+              <th class="sortable mmr-col mmr-col-detailed"
+                  title="Current In-House Effective MMR"
+                  @click="setSort('mmr')">
+                MMR {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <!-- Win Rate (Detailed) -->
+              <th class="sortable wr-col-detailed"
+                  @click="setSort('win_rate_pct')">
+                Win Rate {{ sortColumn === 'win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+
+              <!-- W - L (Detailed) -->
+              <th class="wl-header-th wl-col-detailed">
+                <div class="wl-header-wrap">
+                  <span class="wl-clickable"
+                        :class="{ active: sortColumn === 'wins' }"
+                        title="Sort by Wins"
+                        @click="setSort('wins')">
+                    W{{ sortColumn === 'wins' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <span class="wl-sep">-</span>
+                  <span class="wl-clickable"
+                        :class="{ active: sortColumn === 'losses' }"
+                        title="Sort by Losses"
+                        @click="setSort('losses')">
+                    L{{ sortColumn === 'losses' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                </div>
+              </th>
+
+              <!-- Stacked Win Rate / Record (medium screens) -->
+              <th class="wr-header-th wr-col-stacked">
+                <div class="wr-stacked-header-wrap">
+                  <span class="wr-clickable"
+                        :class="{ active: sortColumn === 'win_rate_pct' }"
+                        title="Sort by Win Rate"
+                        @click="setSort('win_rate_pct')">
+                    WIN RATE{{ sortColumn === 'win_rate_pct' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <div class="wl-header-wrap">
+                    <span class="wl-clickable"
+                          :class="{ active: sortColumn === 'wins' }"
+                          title="Sort by Wins"
+                          @click="setSort('wins')">
+                      W{{ sortColumn === 'wins' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                    <span class="wl-sep">-</span>
+                    <span class="wl-clickable"
+                          :class="{ active: sortColumn === 'losses' }"
+                          title="Sort by Losses"
+                          @click="setSort('losses')">
+                      L{{ sortColumn === 'losses' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                  </div>
+                </div>
+              </th>
+
+              <!-- Mega-Stacked MMR / Win Rate / Record (compact/mobile screens) -->
+              <th class="wr-header-th stat-trio-col-stacked">
+                <div class="stat-trio-stacked-header-wrap">
+                  <div class="stat-trio-header-row">
+                    <span class="wr-clickable"
+                          :class="{ active: sortColumn === 'mmr' }"
+                          title="Sort by MMR"
+                          @click="setSort('mmr')">
+                      MMR{{ sortColumn === 'mmr' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                    <span class="wr-clickable"
+                          :class="{ active: sortColumn === 'win_rate_pct' }"
+                          title="Sort by Win Rate"
+                          @click="setSort('win_rate_pct')">
+                      WR{{ sortColumn === 'win_rate_pct' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                  </div>
+                  <div class="wl-header-wrap">
+                    <span class="wl-clickable"
+                          :class="{ active: sortColumn === 'wins' }"
+                          title="Sort by Wins"
+                          @click="setSort('wins')">
+                      W{{ sortColumn === 'wins' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                    <span class="wl-sep">-</span>
+                    <span class="wl-clickable"
+                          :class="{ active: sortColumn === 'losses' }"
+                          title="Sort by Losses"
+                          @click="setSort('losses')">
+                      L{{ sortColumn === 'losses' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                  </div>
+                </div>
+              </th>
+
+              <!-- Games (Detailed) -->
+              <th class="sortable games-col-detailed"
+                  @click="setSort('games_played')">
+                Games {{ sortColumn === 'games_played' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+
+              <!-- KAD (Detailed) -->
+              <th class="sortable kad-col-detailed"
+                  @click="setSort('overall_kda')">
+                KAD {{ sortColumn === 'overall_kda' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+
+              <!-- Stacked Games / KAD (compact screens) -->
+              <th class="games-kad-header-th games-kad-col-stacked">
+                <div class="games-kad-stacked-header-wrap">
+                  <span class="wl-clickable"
+                        :class="{ active: sortColumn === 'games_played' }"
+                        title="Sort by Games"
+                        @click="setSort('games_played')">
+                    GAMES{{ sortColumn === 'games_played' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <span class="wl-clickable"
+                        :class="{ active: sortColumn === 'overall_kda' }"
+                        title="Sort by KAD"
+                        @click="setSort('overall_kda')">
+                    KAD{{ sortColumn === 'overall_kda' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                </div>
+              </th>
+              <th class="sortable combat-col-detailed th-hero"
+                  @click="setSort('avg_hero_damage')">
+                Avg Hero Dmg {{ sortColumn === 'avg_hero_damage' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable combat-col-detailed th-heal"
+                  @click="setSort('avg_healing')">
+                Avg Heal {{ sortColumn === 'avg_healing' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable combat-col-detailed th-siege"
+                  @click="setSort('avg_siege_damage')">
+                Avg Siege {{ sortColumn === 'avg_siege_damage' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="combat-header-th combat-col-stacked">
+                <div class="combat-header-wrap">
+                  <span class="combat-clickable combat-click-hero"
+                        :class="{ active: sortColumn === 'avg_hero_damage' }"
+                        title="Sort by Avg Hero Damage"
+                        @click="setSort('avg_hero_damage')">
+                    Hero{{ sortColumn === 'avg_hero_damage' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <span class="combat-sep">/</span>
+                  <span class="combat-clickable combat-click-heal"
+                        :class="{ active: sortColumn === 'avg_healing' }"
+                        title="Sort by Avg Healing"
+                        @click="setSort('avg_healing')">
+                    Heal{{ sortColumn === 'avg_healing' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <span class="combat-sep">/</span>
+                  <span class="combat-clickable combat-click-siege"
+                        :class="{ active: sortColumn === 'avg_siege_damage' }"
+                        title="Sort by Avg Siege"
+                        @click="setSort('avg_siege_damage')">
+                    Siege{{ sortColumn === 'avg_siege_damage' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                </div>
+              </th>
+              <th class="sortable bm-col-detailed"
+                  @click="setSort('total_bsteps')">
+                B-Steps {{ sortColumn === 'total_bsteps' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-detailed"
+                  @click="setSort('total_sprays')">
+                Sprays {{ sortColumn === 'total_sprays' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-detailed"
+                  @click="setSort('total_taunts')">
+                Taunts {{ sortColumn === 'total_taunts' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-detailed"
+                  @click="setSort('total_dances')">
+                Dances {{ sortColumn === 'total_dances' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-detailed"
+                  @click="setSort('total_voice_lines')">
+                Voice {{ sortColumn === 'total_voice_lines' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-detailed"
+                  @click="setSort('total_bm')">
+                Total BM {{ sortColumn === 'total_bm' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-stacked"
+                  @click="setSort('total_bm')"
+                  title="Total Bad Manners (B-steps, Sprays, Taunts, Dances, Voice)">
+                BM {{ sortColumn === 'total_bm' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable"
+                  :title="`Win rate over the player's last ${minGames} games`"
+                  @click="setSort('recent_10_win_rate_pct')">
+                Recent {{ minGames }} {{ sortColumn === 'recent_10_win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(p, idx) in filteredPlayers"
+                :key="getPlayerKey(p)"
+                class="player-row"
+                @click="viewPlayerMatches(p)">
+              <!-- Rank -->
+              <td class="rank-col">
+                <span class="rank-badge"
+                      :class="{ 'top-three': getPlayerRank(p) <= 3 && getPlayerRank(p) > 0 }">
+                  {{ getRankBadge(p) }}
+                </span>
+              </td>
+
+              <!-- Player Name -->
+              <td class="player-name-cell">
+                <div class="player-name-wrapper">
+                  <span class="player-title">
+                    <span class="player-name-text">{{ p.player_name }}</span>
+                    <span v-if="p.role"
+                          class="player-role-pill"
+                          :title="`Preferred Roles: ${p.role}`">{{ p.role }}</span>
+                  </span>
+                  <span v-if="p.hots_battle_tag"
+                        class="player-tag-hint">
+                    {{ p.hots_battle_tag }}
+                  </span>
+                  <span class="view-matches-hint">View Matches →</span>
+                </div>
+              </td>
+
+              <!-- MMR (Detailed) -->
+              <td class="num-cell mmr-cell mmr-cell-detailed">
+                <span v-if="p.mmr != null"
+                      class="mmr-val"
+                      :title="p.base_mmr ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}` : 'Effective In-House MMR'">
+                  {{ formatNumber(p.mmr) }}
+                </span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Win Rate (Detailed) -->
+              <td class="wr-cell-detailed">
+                <div class="wr-cell">
+                  <span class="badge"
+                        :class="p.win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'">
+                    {{ p.win_rate_pct.toFixed(1) }}%
+                  </span>
+                </div>
+              </td>
+
+              <!-- W - L (Detailed) -->
+              <td class="num-cell wl-cell-detailed">
+                <span class="text-green">{{ p.wins }}W</span> -
+                <span class="text-red">{{ p.losses }}L</span>
+              </td>
+
+              <!-- Stacked Win Rate / Record (medium screens) -->
+              <td class="wr-cell-stacked">
+                <div class="wr-stacked-wrapper">
+                  <span class="badge"
+                        :class="p.win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'">
+                    {{ p.win_rate_pct.toFixed(1) }}%
+                  </span>
+                  <div class="wr-stacked-record num-cell">
+                    <span class="text-green">{{ p.wins }}W</span>
+                    <span class="wl-sep">-</span>
+                    <span class="text-red">{{ p.losses }}L</span>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Mega-Stacked MMR / Win Rate / Record (compact/mobile screens) -->
+              <td class="stat-trio-cell-stacked">
+                <div class="stat-trio-stacked-wrapper">
+                  <div class="stat-trio-top-row">
+                    <span v-if="p.mmr != null"
+                          class="mmr-val stat-trio-mmr"
+                          :title="p.base_mmr ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}` : 'Effective In-House MMR'">
+                      {{ formatNumber(p.mmr) }}
+                    </span>
+                    <span v-else
+                          class="text-dim">-</span>
+                    <span class="badge"
+                          :class="p.win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'">
+                      {{ p.win_rate_pct.toFixed(1) }}%
+                    </span>
+                  </div>
+                  <div class="stat-trio-record num-cell">
+                    <span class="text-green">{{ p.wins }}W</span>
+                    <span class="wl-sep">-</span>
+                    <span class="text-red">{{ p.losses }}L</span>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Games (Detailed) -->
+              <td class="num-cell bold-cell games-cell-detailed">{{ p.games_played }}</td>
+
+              <!-- KDA (Detailed) -->
+              <td class="num-cell bold-cell kad-cell-detailed">{{ p.overall_kda.toFixed(2) }}</td>
+
+              <!-- Stacked Games / KAD (compact screens) -->
+              <td class="num-cell games-kad-cell-stacked">
+                <div class="games-kad-stacked-wrapper">
+                  <span class="bold-cell games-stacked-val"
+                        title="Games Played">{{ p.games_played }}</span>
+                  <span class="kad-stacked-val"
+                        title="KAD ratio">{{ p.overall_kda.toFixed(2) }}</span>
+                </div>
+              </td>
+
+              <!-- Avg Hero Dmg (detailed) -->
+              <td class="num-cell combat-col-detailed dmg-hero">{{ formatNumber(p.avg_hero_damage) }}</td>
+
+              <!-- Avg Heal (detailed) -->
+              <td class="num-cell combat-col-detailed dmg-heal">{{ formatNumber(p.avg_healing) }}</td>
+
+              <!-- Avg Siege (detailed) -->
+              <td class="num-cell combat-col-detailed dmg-siege">{{ formatNumber(p.avg_siege_damage) }}</td>
+
+              <!-- Stacked Combat Stats (small screens) -->
+              <td class="combat-cell-stacked">
+                <div class="combat-stacked-wrapper">
+                  <span class="combat-stat-val dmg-hero"
+                        title="Avg Hero Damage">{{ formatNumber(p.avg_hero_damage) }}</span>
+                  <span class="combat-stat-val dmg-heal"
+                        title="Avg Healing">{{ formatNumber(p.avg_healing) }}</span>
+                  <span class="combat-stat-val dmg-siege"
+                        title="Avg Siege Damage">{{ formatNumber(p.avg_siege_damage) }}</span>
+                </div>
+              </td>
+
+              <!-- B-Steps (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="p.total_bsteps > 0"
+                      class="bm-tag">👟 {{ p.total_bsteps }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Sprays (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="p.total_sprays > 0"
+                      class="bm-tag">🎨 {{ p.total_sprays }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Taunts (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="p.total_taunts > 0"
+                      class="bm-tag">🗣️ {{ p.total_taunts }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Dances (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="p.total_dances > 0"
+                      class="bm-tag">💃 {{ p.total_dances }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Voice (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="(p.total_voice_lines ?? 0) > 0"
+                      class="bm-tag">🎙️ {{ p.total_voice_lines }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Total BM (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="getTotalBm(p) > 0"
+                      class="bm-tag bm-total-tag">🔥 {{ getTotalBm(p) }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Stacked BM cell (compact screens) -->
+              <td class="bm-cell bm-cell-stacked">
+                <div v-if="getTotalBm(p) > 0"
+                     class="bm-stacked-wrapper">
+                  <span class="bm-tag bm-total-tag">🔥 {{ getTotalBm(p) }}</span>
+                  <div class="bm-stacked-breakdown">
+                    <span v-if="p.total_bsteps > 0"
+                          class="bm-mini-pill"
+                          title="B-Steps">👟 {{ p.total_bsteps }}</span>
+                    <span v-if="p.total_sprays > 0"
+                          class="bm-mini-pill"
+                          title="Sprays">🎨 {{ p.total_sprays }}</span>
+                    <span v-if="p.total_taunts > 0"
+                          class="bm-mini-pill"
+                          title="Taunts">🗣️ {{ p.total_taunts }}</span>
+                    <span v-if="p.total_dances > 0"
+                          class="bm-mini-pill"
+                          title="Dances">💃 {{ p.total_dances }}</span>
+                    <span v-if="(p.total_voice_lines ?? 0) > 0"
+                          class="bm-mini-pill"
+                          title="Voice Lines">🎙️ {{ p.total_voice_lines }}</span>
+                  </div>
+                </div>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- Recent {{ minGames }} -->
+              <td>
+                <span v-if="p.games_played >= minGames && p.recent_10_win_rate_pct !== undefined && p.recent_10_win_rate_pct !== null"
+                      class="badge"
+                      :class="p.recent_10_win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'">
+                  {{ p.recent_10_win_rate_pct.toFixed(0) }}%
+                </span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
-
-    <!-- Leaderboard Table -->
-    <div v-else class="table-container card leaderboard-table-container">
-      <table class="leaderboard-table">
-        <thead>
-          <tr>
-            <th class="rank-col">Rank</th>
-            <th>Player</th>
-            <th class="sortable mmr-col" title="Current In-House Effective MMR" @click="setSort('mmr')">
-              MMR {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('games_played')">
-              Games {{ sortColumn === 'games_played' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="wl-header-th">
-              <div class="wl-header-wrap">
-                <span
-                  class="wl-clickable"
-                  :class="{ active: sortColumn === 'wins' }"
-                  title="Sort by Wins"
-                  @click="setSort('wins')"
-                >
-                  W{{ sortColumn === 'wins' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
-                </span>
-                <span class="wl-sep">-</span>
-                <span
-                  class="wl-clickable"
-                  :class="{ active: sortColumn === 'losses' }"
-                  title="Sort by Losses"
-                  @click="setSort('losses')"
-                >
-                  L{{ sortColumn === 'losses' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
-                </span>
-              </div>
-            </th>
-            <th class="sortable" @click="setSort('win_rate_pct')">
-              Win Rate {{ sortColumn === 'win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('overall_kda')">
-              KAD {{ sortColumn === 'overall_kda' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('avg_hero_damage')">
-              Avg Hero Dmg {{ sortColumn === 'avg_hero_damage' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('avg_healing')">
-              Avg Heal {{ sortColumn === 'avg_healing' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('avg_siege_damage')">
-              Avg Siege {{ sortColumn === 'avg_siege_damage' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('total_bsteps')">
-              B-Steps {{ sortColumn === 'total_bsteps' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('total_sprays')">
-              Sprays {{ sortColumn === 'total_sprays' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('total_taunts')">
-              Taunts {{ sortColumn === 'total_taunts' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('total_dances')">
-              Dances {{ sortColumn === 'total_dances' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('total_voice_lines')">
-              Voice {{ sortColumn === 'total_voice_lines' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th class="sortable" @click="setSort('total_bm')">
-              Total BM {{ sortColumn === 'total_bm' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-            <th
-              class="sortable"
-              :title="`Win rate over the player's last ${minGames} games`"
-              @click="setSort('recent_10_win_rate_pct')"
-            >
-              Recent {{ minGames }} {{ sortColumn === 'recent_10_win_rate_pct' ? (sortAsc ? '▲' : '▼') : '' }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(p, idx) in filteredPlayers"
-            :key="getPlayerKey(p)"
-            class="player-row"
-            @click="viewPlayerMatches(p)"
-          >
-            <!-- Rank -->
-            <td class="rank-col">
-              <span
-                class="rank-badge"
-                :class="{ 'top-three': getPlayerRank(p) <= 3 && getPlayerRank(p) > 0 }"
-              >
-                {{ getRankBadge(p) }}
-              </span>
-            </td>
-
-            <!-- Player Name -->
-            <td class="player-name-cell">
-              <div class="player-name-wrapper">
-                <span class="player-title">
-                  {{ p.player_name }}
-                  <span v-if="p.role" class="player-role-pill" :title="`Preferred Roles: ${p.role}`">{{ p.role }}</span>
-                </span>
-                <span v-if="p.hots_battle_tag" class="player-tag-hint">
-                  {{ p.hots_battle_tag }}
-                </span>
-                <span class="view-matches-hint">View Matches →</span>
-              </div>
-            </td>
-
-            <!-- MMR -->
-            <td class="num-cell mmr-cell">
-              <span
-                v-if="p.mmr != null"
-                class="mmr-val"
-                :title="p.base_mmr ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}` : 'Effective In-House MMR'"
-              >
-                {{ formatNumber(p.mmr) }}
-              </span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Games -->
-            <td class="num-cell bold-cell">{{ p.games_played }}</td>
-
-            <!-- W - L -->
-            <td class="num-cell">
-              <span class="text-green">{{ p.wins }}W</span> - 
-              <span class="text-red">{{ p.losses }}L</span>
-            </td>
-
-            <!-- Win Rate -->
-            <td>
-              <div class="wr-cell">
-                <span
-                  class="badge"
-                  :class="p.win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'"
-                >
-                  {{ p.win_rate_pct.toFixed(1) }}%
-                </span>
-              </div>
-            </td>
-
-            <!-- KDA -->
-            <td class="num-cell bold-cell">{{ p.overall_kda.toFixed(2) }}</td>
-
-            <!-- Avg Hero Dmg -->
-            <td class="num-cell">{{ formatNumber(p.avg_hero_damage) }}</td>
-
-            <!-- Avg Heal -->
-            <td class="num-cell">{{ formatNumber(p.avg_healing) }}</td>
-
-            <!-- Avg Siege -->
-            <td class="num-cell">{{ formatNumber(p.avg_siege_damage) }}</td>
-
-            <!-- B-Steps -->
-            <td class="bm-cell">
-              <span v-if="p.total_bsteps > 0" class="bm-tag">👟 {{ p.total_bsteps }}</span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Sprays -->
-            <td class="bm-cell">
-              <span v-if="p.total_sprays > 0" class="bm-tag">🎨 {{ p.total_sprays }}</span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Taunts -->
-            <td class="bm-cell">
-              <span v-if="p.total_taunts > 0" class="bm-tag">🗣️ {{ p.total_taunts }}</span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Dances -->
-            <td class="bm-cell">
-              <span v-if="p.total_dances > 0" class="bm-tag">💃 {{ p.total_dances }}</span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Voice -->
-            <td class="bm-cell">
-              <span v-if="(p.total_voice_lines ?? 0) > 0" class="bm-tag">🎙️ {{ p.total_voice_lines }}</span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Total BM -->
-            <td class="bm-cell">
-              <span v-if="getTotalBm(p) > 0" class="bm-tag bm-total-tag">🔥 {{ getTotalBm(p) }}</span>
-              <span v-else class="text-dim">-</span>
-            </td>
-
-            <!-- Recent {{ minGames }} -->
-            <td>
-              <span
-                v-if="p.games_played >= minGames && p.recent_10_win_rate_pct !== undefined && p.recent_10_win_rate_pct !== null"
-                class="badge"
-                :class="p.recent_10_win_rate_pct >= 50 ? 'badge-win' : 'badge-loss'"
-              >
-                {{ p.recent_10_win_rate_pct.toFixed(0) }}%
-              </span>
-              <span v-else class="text-dim">-</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
 </template>
 
 <style scoped>
@@ -1127,12 +1405,28 @@ onMounted(() => {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.15rem;
+  max-width: 140px;
 }
 
 .player-title {
   font-weight: 700;
   color: var(--text-main);
   font-size: 0.95rem;
+  max-width: 100%;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-role-pill {
+  flex-shrink: 0;
 }
 
 .view-matches-hint {
@@ -1175,6 +1469,7 @@ onMounted(() => {
   min-width: min-content;
   padding-left: 2rem;
   padding-right: 2rem;
+  transition: padding 0.25s ease;
 }
 
 .leaderboard-table-container {
@@ -1182,6 +1477,13 @@ onMounted(() => {
   width: 100%;
   padding: 0;
   border-radius: var(--radius-lg);
+  background: var(--bg-surface-elevated);
+  transition: border-radius 0.25s ease;
+}
+
+.leaderboard-table-container.is-sticky {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 
 .leaderboard-table {
@@ -1196,28 +1498,45 @@ onMounted(() => {
 }
 
 .leaderboard-table thead th {
+  position: -webkit-sticky;
   position: sticky;
-  top: 64px;
+  top: var(--navbar-height, 64px);
   z-index: 20;
   background: var(--bg-surface-elevated);
+  background-clip: padding-box;
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .leaderboard-table thead tr th:first-child {
   border-top-left-radius: var(--radius-lg);
+  transition: border-radius 0.25s ease;
 }
 
 .leaderboard-table thead tr th:last-child {
   border-top-right-radius: var(--radius-lg);
+  transition: border-radius 0.25s ease;
+}
+
+.leaderboard-table-container.is-sticky .leaderboard-table thead tr th:first-child {
+  border-top-left-radius: 0;
+}
+
+.leaderboard-table-container.is-sticky .leaderboard-table thead tr th:last-child {
+  border-top-right-radius: 0;
 }
 
 .leaderboard-table tbody tr:last-child td:first-child {
   border-bottom-left-radius: var(--radius-lg);
+  transition: border-radius 0.25s ease;
 }
 
 .leaderboard-table tbody tr:last-child td:last-child {
   border-bottom-right-radius: var(--radius-lg);
+  transition: border-radius 0.25s ease;
 }
 
 .wl-header-th {
@@ -1253,6 +1572,152 @@ onMounted(() => {
   opacity: 0.5;
 }
 
+.mmr-col-detailed,
+.mmr-cell-detailed,
+.wr-col-detailed,
+.wr-cell-detailed,
+.wl-col-detailed,
+.wl-cell-detailed {
+  display: table-cell;
+}
+
+.wr-col-stacked,
+.wr-cell-stacked,
+.stat-trio-col-stacked,
+.stat-trio-cell-stacked {
+  display: none;
+}
+
+.stat-trio-stacked-header-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.stat-trio-header-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.stat-trio-stacked-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.stat-trio-top-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.stat-trio-mmr {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-amber);
+}
+
+.stat-trio-record {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.games-col-detailed,
+.games-cell-detailed,
+.kad-col-detailed,
+.kad-cell-detailed {
+  display: table-cell;
+}
+
+.games-kad-col-stacked,
+.games-kad-cell-stacked {
+  display: none;
+}
+
+.games-kad-header-th {
+  user-select: none;
+  white-space: normal !important;
+}
+
+.games-kad-stacked-header-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.games-kad-stacked-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-start;
+}
+
+.games-stacked-val {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.kad-stacked-val {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.wr-header-th {
+  user-select: none;
+  white-space: normal !important;
+}
+
+.wr-stacked-header-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.wr-clickable {
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.wr-clickable:hover {
+  background: var(--bg-surface-hover);
+  color: #fff;
+}
+
+.wr-clickable.active {
+  color: var(--accent-cyan) !important;
+  background: rgba(56, 189, 248, 0.15) !important;
+}
+
+.wr-stacked-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.wr-stacked-record {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
 .bm-cell {
   white-space: nowrap;
 }
@@ -1262,6 +1727,391 @@ onMounted(() => {
   border: 1px solid rgba(245, 158, 11, 0.35);
   color: #fbbf24;
   font-weight: 700;
+}
+
+.bm-col-detailed,
+.bm-cell-detailed {
+  display: table-cell;
+}
+
+.bm-col-stacked,
+.bm-cell-stacked {
+  display: none;
+}
+
+.combat-col-detailed {
+  display: table-cell;
+}
+
+.combat-col-stacked,
+.combat-cell-stacked {
+  display: none;
+}
+
+.th-hero {
+  color: #f87171 !important;
+}
+
+.th-heal {
+  color: #34d399 !important;
+}
+
+.th-siege {
+  color: #fbbf24 !important;
+}
+
+.combat-header-th {
+  user-select: none;
+  white-space: normal !important;
+}
+
+.combat-header-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.combat-clickable {
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  font-weight: 700;
+}
+
+.combat-clickable:hover {
+  background: var(--bg-surface-hover);
+}
+
+.combat-click-hero {
+  color: #f87171;
+}
+
+.combat-click-hero.active {
+  color: #f87171 !important;
+  background: rgba(248, 113, 113, 0.2) !important;
+}
+
+.combat-click-heal {
+  color: #34d399;
+}
+
+.combat-click-heal.active {
+  color: #34d399 !important;
+  background: rgba(52, 211, 153, 0.2) !important;
+}
+
+.combat-click-siege {
+  color: #fbbf24;
+}
+
+.combat-click-siege.active {
+  color: #fbbf24 !important;
+  background: rgba(251, 191, 36, 0.2) !important;
+}
+
+.combat-sep {
+  display: none;
+}
+
+.combat-stacked-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  align-items: flex-start;
+}
+
+.combat-stat-val {
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.dmg-hero {
+  color: #f87171 !important;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.dmg-heal {
+  color: #34d399 !important;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.dmg-siege {
+  color: #fbbf24 !important;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.bm-stacked-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.bm-stacked-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  max-width: 140px;
+}
+
+.bm-mini-pill {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.25rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1450px) {
+
+  .bm-col-detailed,
+  .bm-cell-detailed {
+    display: none !important;
+  }
+
+  .bm-col-stacked,
+  .bm-cell-stacked {
+    display: table-cell !important;
+  }
+
+  .combat-col-detailed {
+    display: none !important;
+  }
+
+  .combat-col-stacked,
+  .combat-cell-stacked {
+    display: table-cell !important;
+  }
+}
+
+@media (max-width: 1250px) {
+
+  .wr-col-detailed,
+  .wr-cell-detailed,
+  .wl-col-detailed,
+  .wl-cell-detailed {
+    display: none !important;
+  }
+
+  .wr-col-stacked,
+  .wr-cell-stacked {
+    display: table-cell !important;
+  }
+}
+
+@media (max-width: 900px) {
+
+  .mmr-col-detailed,
+  .mmr-cell-detailed {
+    display: none !important;
+  }
+
+  .wr-col-stacked,
+  .wr-cell-stacked {
+    display: none !important;
+  }
+
+  .stat-trio-col-stacked,
+  .stat-trio-cell-stacked {
+    display: table-cell !important;
+  }
+
+  .games-col-detailed,
+  .games-cell-detailed,
+  .kad-col-detailed,
+  .kad-cell-detailed {
+    display: none !important;
+  }
+
+  .games-kad-col-stacked,
+  .games-kad-cell-stacked {
+    display: table-cell !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .leaderboard-container {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .leaderboard-table th,
+  .leaderboard-table td {
+    padding: 0.5rem 0.35rem;
+  }
+
+  .rank-col {
+    width: 36px !important;
+    min-width: 36px;
+    padding-left: 0.35rem !important;
+    padding-right: 0.15rem !important;
+    text-align: center;
+  }
+
+  .player-col,
+  .player-name-cell {
+    max-width: 140px;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+
+  .player-name-wrapper {
+    max-width: 140px;
+  }
+
+  .leaderboard-header {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .active-query-banner {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
+
+  .empty-state,
+  .loading-state,
+  .player-roast-showcase {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
+
+  .leaderboard-table-container {
+    border-radius: 0 !important;
+    border-left: none;
+    border-right: none;
+  }
+
+  .leaderboard-table thead tr th:first-child,
+  .leaderboard-table thead tr th:last-child,
+  .leaderboard-table tbody tr:last-child td:first-child,
+  .leaderboard-table tbody tr:last-child td:last-child {
+    border-radius: 0 !important;
+  }
+
+  .leaderboard-table thead th {
+    top: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .leaderboard-table th,
+  .leaderboard-table td {
+    padding: 0.35rem 0.4vw !important;
+  }
+
+  .rank-col {
+    width: 5.5vw !important;
+    min-width: 0 !important;
+    padding-left: 0.1vw !important;
+    padding-right: 0.1vw !important;
+  }
+
+  .rank-badge {
+    font-size: 2.4vw !important;
+  }
+
+  .rank-badge.top-three {
+    font-size: 2.8vw !important;
+  }
+
+  .player-col,
+  .player-name-cell {
+    max-width: 21vw !important;
+    padding-left: 0.2vw !important;
+    padding-right: 0.2vw !important;
+  }
+
+  .player-name-wrapper {
+    max-width: 21vw !important;
+  }
+
+  .player-title {
+    font-size: 2.3vw !important;
+    gap: 0.2vw !important;
+  }
+
+  .player-name-text {
+    font-size: 2.3vw !important;
+  }
+
+  .player-tag-hint {
+    font-size: 1.7vw !important;
+  }
+
+  .player-role-pill {
+    font-size: 1.7vw !important;
+    padding: 0 0.25vw !important;
+  }
+
+  .stat-trio-mmr {
+    font-size: 2.4vw !important;
+  }
+
+  .stat-trio-record {
+    font-size: 1.9vw !important;
+  }
+
+  .stat-trio-cell-stacked .badge {
+    font-size: 1.9vw !important;
+    padding: 0.05rem 0.25vw !important;
+  }
+
+  .games-stacked-val {
+    font-size: 2.2vw !important;
+  }
+
+  .kad-stacked-val {
+    font-size: 1.9vw !important;
+  }
+
+  .combat-stacked-wrapper {
+    font-size: 1.9vw !important;
+  }
+
+  .combat-stat-val {
+    font-size: 1.9vw !important;
+  }
+
+  .bm-total-tag {
+    font-size: 1.9vw !important;
+    padding: 0.05rem 0.25vw !important;
+  }
+
+  .bm-mini-pill {
+    font-size: 1.5vw !important;
+    padding: 0 0.15vw !important;
+  }
+
+  .bm-stacked-breakdown {
+    max-width: 13vw !important;
+    gap: 0.1vw !important;
+  }
+
+  .recent-cell .badge {
+    font-size: 1.9vw !important;
+    padding: 0.05rem 0.25vw !important;
+  }
+
+  .wl-clickable,
+  .wr-clickable,
+  .combat-clickable {
+    font-size: 1.9vw !important;
+    padding: 0.1vw 0.2vw !important;
+  }
+
+  .leaderboard-table thead th {
+    font-size: 1.9vw !important;
+  }
 }
 
 .player-tag-hint {
@@ -1764,4 +2614,3 @@ onMounted(() => {
   vertical-align: middle;
 }
 </style>
-
