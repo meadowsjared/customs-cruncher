@@ -146,6 +146,27 @@ export interface ReplayPicks {
   [key: string]: (string | null)[] | number | undefined
 }
 
+export interface ReplayTakedownParticipant {
+  player: string
+  hero: string
+}
+
+export interface ReplayTakedown {
+  loop: number
+  time: number
+  x?: number
+  y?: number
+  killers: ReplayTakedownParticipant[]
+  victim: ReplayTakedownParticipant
+}
+
+export interface PlayerCombatBadge {
+  id: string
+  label: string
+  type: 'first-blood' | 'double-kill' | 'triple-kill' | 'quad-kill' | 'quintuple-kill'
+  tooltip: string
+}
+
 export interface ReplayDetail {
   id: number
   date: string
@@ -165,6 +186,7 @@ export interface ReplayDetail {
   players: Record<string, ReplayPlayer>
   bans?: Record<string, ReplayBanItem[]>
   picks?: ReplayPicks
+  takedowns?: ReplayTakedown[]
 }
 
 export interface LeaderboardPlayer {

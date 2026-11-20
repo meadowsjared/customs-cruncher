@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem } from '../types'
+import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem, PlayerCombatBadge } from '../types'
 import {
   formatDuration,
   formatDateRelative,
@@ -132,6 +132,194 @@ function getPlayerPickOrder(heroName: string | undefined | null, team: number): 
 
   if (idx === -1) return null
   return getPickNumber(team, idx)
+}
+
+// Player combat badges (First Blood & Multikills: Double, Triple, Quad, 5-Kill)
+const playerCombatBadgesMap = computed<Map<string, PlayerCombatBadge[]>>(() => {
+  const badgesMap = new Map<string, PlayerCombatBadge[]>()
+  if (!match.value?.players) return badgesMap
+
+  const allPlayers = Object.values(match.value.players)
+  const takedowns = match.value.takedowns
+
+  if (takedowns && takedowns.length > 0) {
+    const sortedTds = [...takedowns].sort((a, b) => a.time - b.time)
+    const firstTd = sortedTds[0]
+    const victimPlayer = firstTd?.victim
+      ? allPlayers.find(
+          (p) =>
+            (firstTd.victim.player && p.ToonHandle === firstTd.victim.player) ||
+            (firstTd.victim.hero && p.hero === firstTd.victim.hero)
+        )
+      : null
+    const killerTeam = victimPlayer ? (victimPlayer.team === 0 ? 1 : 0) : null
+
+    // Credit the kill only to the single primary killer who got credit for the kill
+    const primaryKiller = firstTd?.killers && Array.isArray(firstTd.killers) && firstTd.killers.length > 0
+      ? firstTd.killers.find((k) => k.player && k.player !== '0' && k.hero !== 'Nexus Forces') || firstTd.killers[0]
+      : null
+
+    const firstBloodPlayerHandle = primaryKiller?.player || null
+    const firstBloodHeroLower = primaryKiller?.hero ? primaryKiller.hero.toLowerCase() : null
+    const firstBloodTimeStr = firstTd ? formatDuration(firstTd.time) : ''
+    const victimHeroName = firstTd?.victim?.hero
+      ? resolveHeroName(firstTd.victim.hero) || firstTd.victim.hero
+      : 'Enemy Hero'
+
+    for (const p of allPlayers) {
+      const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+      const pBadges: PlayerCombatBadge[] = []
+
+      // 1. First Blood (only the player who got kill credit)
+      let isFirstBlood = false
+      if (primaryKiller && (killerTeam === null || p.team === killerTeam)) {
+        if (firstBloodPlayerHandle && p.ToonHandle === firstBloodPlayerHandle) {
+          isFirstBlood = true
+        } else if (firstBloodHeroLower && p.hero && p.hero.toLowerCase() === firstBloodHeroLower) {
+          isFirstBlood = true
+        }
+      }
+      if (isFirstBlood) {
+        pBadges.push({
+          id: `${pKey}-first-blood`,
+          label: '🩸 First Blood',
+          type: 'first-blood',
+          tooltip: `Drew First Blood on ${victimHeroName} (${firstBloodTimeStr})`,
+        })
+      }
+
+      // 2. Multikills (chain takedowns within 10 seconds, credited only to the killer who got kill credit)
+      const pHeroLower = p.hero ? p.hero.toLowerCase() : ''
+      const pTds = sortedTds.filter((td) => {
+        if (!td.killers || !Array.isArray(td.killers) || td.killers.length === 0) return false
+
+        // Determine victim and verify player is on the opposing (killer) team
+        const tdVictim = td.victim
+          ? allPlayers.find(
+              (vp) =>
+                (td.victim.player && vp.ToonHandle === td.victim.player) ||
+                (td.victim.hero && vp.hero === td.victim.hero)
+            )
+          : null
+        const tdKillerTeam = tdVictim ? (tdVictim.team === 0 ? 1 : 0) : null
+        if (tdKillerTeam !== null && p.team !== tdKillerTeam) return false
+
+        // Primary killer who got credit for the kill (killing blow)
+        const primaryKiller =
+          td.killers.find((k) => k.player && k.player !== '0' && k.hero !== 'Nexus Forces') ||
+          td.killers[0]
+
+        if (!primaryKiller) return false
+
+        if (primaryKiller.player && p.ToonHandle) {
+          return primaryKiller.player === p.ToonHandle
+        }
+        if (primaryKiller.hero && pHeroLower) {
+          return primaryKiller.hero.toLowerCase() === pHeroLower
+        }
+        return false
+      })
+
+      let currentStreak = 1
+      let lastKillTime = -999
+      const streaks: number[] = []
+
+      for (const td of pTds) {
+        if (td.time - lastKillTime <= 10) {
+          currentStreak++
+        } else {
+          if (currentStreak >= 2) {
+            streaks.push(currentStreak)
+          }
+          currentStreak = 1
+        }
+        lastKillTime = td.time
+      }
+      if (currentStreak >= 2) {
+        streaks.push(currentStreak)
+      }
+
+      let doubleCount = 0
+      let tripleCount = 0
+      let quadCount = 0
+      let quintupleCount = 0
+
+      for (const s of streaks) {
+        if (s >= 5) quintupleCount++
+        else if (s === 4) quadCount++
+        else if (s === 3) tripleCount++
+        else if (s === 2) doubleCount++
+      }
+
+      const soloKills = p.gameStats?.SoloKill !== undefined ? p.gameStats.SoloKill : 99
+
+      if (quintupleCount > 0 && soloKills >= 5) {
+        pBadges.push({
+          id: `${pKey}-5kill`,
+          label: quintupleCount > 1 ? `5-Kill x${quintupleCount}` : '5-Kill',
+          type: 'quintuple-kill',
+          tooltip: `${quintupleCount}x 5-Hero Multikill (Team Wipe)`,
+        })
+      }
+
+      if (quadCount > 0 && soloKills >= 4) {
+        pBadges.push({
+          id: `${pKey}-quad`,
+          label: quadCount > 1 ? `Quad Kill x${quadCount}` : 'Quad Kill',
+          type: 'quad-kill',
+          tooltip: `${quadCount}x Quad Kill (4 kills in 10s)`,
+        })
+      }
+
+      if (tripleCount > 0 && soloKills >= 3) {
+        pBadges.push({
+          id: `${pKey}-triple`,
+          label: tripleCount > 1 ? `Triple Kill x${tripleCount}` : 'Triple Kill',
+          type: 'triple-kill',
+          tooltip: `${tripleCount}x Triple Kill (3 kills in 10s)`,
+        })
+      }
+
+      if (doubleCount > 0 && soloKills >= 2) {
+        pBadges.push({
+          id: `${pKey}-double`,
+          label: doubleCount > 1 ? `Double Kill x${doubleCount}` : 'Double Kill',
+          type: 'double-kill',
+          tooltip: `${doubleCount}x Double Kill (2 kills in 10s)`,
+        })
+      }
+
+      if (pBadges.length > 0) {
+        badgesMap.set(pKey, pBadges)
+      }
+    }
+  } else {
+    // Fallback if takedowns timeline wasn't parsed, but gameStats.Multikill is present
+    for (const p of allPlayers) {
+      const multikillCount = p.gameStats?.Multikill || 0
+      const soloKills = p.gameStats?.SoloKill || 0
+      // In HotS scoreboard, Multikill is sometimes recorded for team participation streaks,
+      // so only credit multikill fallback if the player personally got at least 2 kills.
+      if (multikillCount > 0 && soloKills >= 2) {
+        const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+        badgesMap.set(pKey, [
+          {
+            id: `${pKey}-multikill-fallback`,
+            label: multikillCount > 1 ? `Multikill x${multikillCount}` : 'Multikill',
+            type: 'double-kill',
+            tooltip: `${multikillCount} Multikill(s) recorded in game score`,
+          },
+        ])
+      }
+    }
+  }
+
+  return badgesMap
+})
+
+function getPlayerCombatBadges(player: ReplayPlayer): PlayerCombatBadge[] {
+  const key = player.ToonHandle || `${player.name}-${player.hero}`
+  return playerCombatBadgesMap.value.get(key) || []
 }
 
 // Copy build code feedback tracker
@@ -743,41 +931,41 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="p in team0Players"
-                    :key="p.ToonHandle"
-                    :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
-                  <td class="player-cell">
-                    <div class="player-info-wrap">
-                      <img :src="getHeroImageUrl(p.hero)"
-                           :alt="p.hero"
-                           class="hero-avatar clickable-hero-link"
-                           :title="`View ${p.name}'s ${p.hero} matches`"
-                           @click="navigateToPlayerHero(p, p.hero)" />
-                      <div class="name-hero-col">
-                        <div class="name-tag-row">
-                          <span class="player-name clickable-player-link"
-                                :title="`View player history for ${p.name}`"
-                                @click="navigateToPlayer(p)">
-                            {{ p.name }}
-                          </span>
-                          <span v-if="p.tag"
-                                class="player-tag">#{{ p.tag }}</span>
-                          <span v-if="isPlayerHighlighted(p)"
-                                class="badge badge-highlight">★ You</span>
-                        </div>
-                        <div class="hero-pick-row">
-                          <span class="hero-name clickable-hero-link"
-                                :title="`View ${p.name}'s ${p.hero} matches`"
-                                @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
-                          <span v-if="getPlayerPickOrder(p.hero, p.team)"
-                                class="pick-order-tag"
-                                title="Draft Pick Order">
-                            Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
-                          </span>
+                <template v-for="p in team0Players"
+                          :key="p.ToonHandle">
+                  <tr :class="{ 'highlighted-row': isPlayerHighlighted(p), 'has-badges-row': getPlayerCombatBadges(p).length > 0 }">
+                    <td class="player-cell">
+                      <div class="player-info-wrap">
+                        <img :src="getHeroImageUrl(p.hero)"
+                             :alt="p.hero"
+                             class="hero-avatar clickable-hero-link"
+                             :title="`View ${p.name}'s ${p.hero} matches`"
+                             @click="navigateToPlayerHero(p, p.hero)" />
+                        <div class="name-hero-col">
+                          <div class="name-tag-row">
+                            <span class="player-name clickable-player-link"
+                                  :title="`View player history for ${p.name}`"
+                                  @click="navigateToPlayer(p)">
+                              {{ p.name }}
+                            </span>
+                            <span v-if="p.tag"
+                                  class="player-tag">#{{ p.tag }}</span>
+                            <span v-if="isPlayerHighlighted(p)"
+                                  class="badge badge-highlight">★ You</span>
+                          </div>
+                          <div class="hero-pick-row">
+                            <span class="hero-name clickable-hero-link"
+                                  :title="`View ${p.name}'s ${p.hero} matches`"
+                                  @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
+                            <span v-if="getPlayerPickOrder(p.hero, p.team)"
+                                  class="pick-order-tag"
+                                  title="Draft Pick Order">
+                              Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
                   <td class="kad-cell">
                     <span class="kad-text">
                       {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} /
@@ -856,7 +1044,24 @@ onMounted(() => {
                     </div>
                   </td>
                 </tr>
-                <tr class="totals-row">
+                <tr v-if="getPlayerCombatBadges(p).length"
+                    class="player-badges-row"
+                    :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
+                  <td colspan="9"
+                      class="player-badges-cell">
+                    <div class="player-combat-badges">
+                      <span v-for="b in getPlayerCombatBadges(p)"
+                            :key="b.id"
+                            class="combat-badge"
+                            :class="`badge-${b.type}`"
+                            :title="b.tooltip">
+                        {{ b.label }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+              <tr class="totals-row">
                   <td>Team 1 Totals</td>
                   <td>{{ computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }}
                     / {{ computeTeamTotal(team0Players, 'Deaths') }}</td>
@@ -923,41 +1128,41 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="p in team1Players"
-                    :key="p.ToonHandle"
-                    :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
-                  <td class="player-cell">
-                    <div class="player-info-wrap">
-                      <img :src="getHeroImageUrl(p.hero)"
-                           :alt="p.hero"
-                           class="hero-avatar clickable-hero-link"
-                           :title="`View ${p.name}'s ${p.hero} matches`"
-                           @click="navigateToPlayerHero(p, p.hero)" />
-                      <div class="name-hero-col">
-                        <div class="name-tag-row">
-                          <span class="player-name clickable-player-link"
-                                :title="`View player history for ${p.name}`"
-                                @click="navigateToPlayer(p)">
-                            {{ p.name }}
-                          </span>
-                          <span v-if="p.tag"
-                                class="player-tag">#{{ p.tag }}</span>
-                          <span v-if="isPlayerHighlighted(p)"
-                                class="badge badge-highlight">★ You</span>
-                        </div>
-                        <div class="hero-pick-row">
-                          <span class="hero-name clickable-hero-link"
-                                :title="`View ${p.name}'s ${p.hero} matches`"
-                                @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
-                          <span v-if="getPlayerPickOrder(p.hero, p.team)"
-                                class="pick-order-tag"
-                                title="Draft Pick Order">
-                            Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
-                          </span>
+                <template v-for="p in team1Players"
+                          :key="p.ToonHandle">
+                  <tr :class="{ 'highlighted-row': isPlayerHighlighted(p), 'has-badges-row': getPlayerCombatBadges(p).length > 0 }">
+                    <td class="player-cell">
+                      <div class="player-info-wrap">
+                        <img :src="getHeroImageUrl(p.hero)"
+                             :alt="p.hero"
+                             class="hero-avatar clickable-hero-link"
+                             :title="`View ${p.name}'s ${p.hero} matches`"
+                             @click="navigateToPlayerHero(p, p.hero)" />
+                        <div class="name-hero-col">
+                          <div class="name-tag-row">
+                            <span class="player-name clickable-player-link"
+                                  :title="`View player history for ${p.name}`"
+                                  @click="navigateToPlayer(p)">
+                              {{ p.name }}
+                            </span>
+                            <span v-if="p.tag"
+                                  class="player-tag">#{{ p.tag }}</span>
+                            <span v-if="isPlayerHighlighted(p)"
+                                  class="badge badge-highlight">★ You</span>
+                          </div>
+                          <div class="hero-pick-row">
+                            <span class="hero-name clickable-hero-link"
+                                  :title="`View ${p.name}'s ${p.hero} matches`"
+                                  @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
+                            <span v-if="getPlayerPickOrder(p.hero, p.team)"
+                                  class="pick-order-tag"
+                                  title="Draft Pick Order">
+                              Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
                   <td class="kad-cell">
                     <span class="kad-text">
                       {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} /
@@ -1036,7 +1241,24 @@ onMounted(() => {
                     </div>
                   </td>
                 </tr>
-                <tr class="totals-row">
+                <tr v-if="getPlayerCombatBadges(p).length"
+                    class="player-badges-row"
+                    :class="{ 'highlighted-row': isPlayerHighlighted(p) }">
+                  <td colspan="9"
+                      class="player-badges-cell">
+                    <div class="player-combat-badges">
+                      <span v-for="b in getPlayerCombatBadges(p)"
+                            :key="b.id"
+                            class="combat-badge"
+                            :class="`badge-${b.type}`"
+                            :title="b.tooltip">
+                        {{ b.label }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+              <tr class="totals-row">
                   <td>Team 2 Totals</td>
                   <td>{{ computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }}
                     / {{ computeTeamTotal(team1Players, 'Deaths') }}</td>
@@ -2427,5 +2649,116 @@ img.clickable-hero-link:hover {
 
 .error-icon {
   font-size: 2.5rem;
+}
+
+/* Player Combat Badges (Full-Row Subrow) */
+.team-0-section tbody tr.has-badges-row,
+.team-1-section tbody tr.has-badges-row {
+  border-bottom: none !important;
+}
+
+.team-0-section tbody tr.has-badges-row td,
+.team-1-section tbody tr.has-badges-row td {
+  border-bottom: none !important;
+  padding-bottom: 0.2rem !important;
+}
+
+.team-0-section tbody tr.player-badges-row,
+.team-1-section tbody tr.player-badges-row {
+  border-top: none !important;
+}
+
+.player-badges-cell {
+  border-top: none !important;
+  padding: 0 0.8rem 0.55rem 3.6rem !important;
+}
+
+@media (max-width: 768px) {
+  .player-badges-cell {
+    padding-left: 0.8rem !important;
+  }
+}
+
+.team-0-section tbody tr.has-badges-row:hover,
+.team-0-section tbody tr.has-badges-row:hover + tr.player-badges-row,
+.team-0-section tbody tr.player-badges-row:hover {
+  background: rgba(56, 189, 248, 0.08) !important;
+}
+
+.team-1-section tbody tr.has-badges-row:hover,
+.team-1-section tbody tr.has-badges-row:hover + tr.player-badges-row,
+.team-1-section tbody tr.player-badges-row:hover {
+  background: rgba(244, 63, 94, 0.08) !important;
+}
+
+.highlighted-row.has-badges-row td {
+  border-bottom: none !important;
+}
+
+.highlighted-row.player-badges-row td {
+  border-top: none !important;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.5) !important;
+}
+
+.player-combat-badges {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.combat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.combat-badge:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.15);
+}
+
+.badge-first-blood {
+  background: #991b1b;
+  color: #fee2e2;
+  border: 1px solid #ef4444;
+}
+
+.badge-double-kill {
+  background: #e11d48;
+  color: #ffffff;
+  border: 1px solid #fb7185;
+}
+
+.badge-triple-kill {
+  background: #d97706;
+  color: #ffffff;
+  border: 1px solid #fbbf24;
+}
+
+.badge-quad-kill {
+  background: #7c3aed;
+  color: #ffffff;
+  border: 1px solid #a78bfa;
+}
+
+.badge-quintuple-kill {
+  background: linear-gradient(135deg, #ef4444 0%, #a855f7 100%);
+  color: #ffffff;
+  border: 1px solid #f43f5e;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 </style>
