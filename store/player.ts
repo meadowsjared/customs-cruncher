@@ -791,8 +791,31 @@ ${validationResult.rules}
   if (!guildId) return false
 
   let player = await getPlayerByDiscordId(discordId, guildId)
-  if (!player) {
-    await ensurePlayerExists(discordId)
+  if (!player || player.usernames.discordDisplayName === 'Unknown') {
+    if (interaction?.guild) {
+      const member = interaction.guild.members.cache.get(discordId)
+      const user = member?.user ?? interaction.client.users.cache.get(discordId)
+      if (member || user) {
+        const dName = user?.username ?? 'Unknown'
+        const dispName = member?.displayName ?? user?.displayName ?? user?.globalName ?? dName
+        const gName = user?.globalName ?? dName
+        if (dispName !== 'Unknown' && dispName !== 'N/A') {
+          await ensurePlayerExists(discordId, {
+            discordName: dName,
+            discordGlobalName: gName,
+            discordDisplayName: dispName,
+          })
+          await setPlayerDiscordNames(discordId, guildId, {
+            discordName: dName,
+            discordGlobalName: gName,
+            discordDisplayName: dispName,
+          })
+        }
+      }
+    }
+    if (!player) {
+      await ensurePlayerExists(discordId)
+    }
     player = await getPlayerByDiscordId(discordId, guildId)
   }
   if (!player) {

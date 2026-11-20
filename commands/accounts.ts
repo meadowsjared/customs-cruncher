@@ -23,6 +23,7 @@ import {
   setAccountSubstitution,
   setHotsAccountRealIdName,
   setPlayerActive,
+  setPlayerDiscordNames,
   setPlayerRole,
   setPrimaryAccount,
   storeInteraction,
@@ -58,6 +59,10 @@ export async function handleAdminAddHotsAccountButton(interaction: ButtonInterac
   }
   const player = await getPlayerByDiscordId(discordId, guildId)
   if (player) {
+    const discordNames = fetchDiscordNames(interaction, discordId)
+    if (discordNames.discordDisplayName !== 'N/A' && discordNames.discordDisplayName !== 'Unknown') {
+      await setPlayerDiscordNames(discordId, guildId, discordNames)
+    }
     await handleAddHotsAccount(modalInteraction, discordId, hotsBattleTag) // Update the player's battle tag in the database
   }
 }
@@ -373,6 +378,13 @@ export async function handleAddHotsAccountCommandSub(
       flags: MessageFlags.Ephemeral,
     })
     return
+  }
+
+  const targetUser =
+    interaction.options.getUser(CommandIds.USER) ?? (discordId === interaction.user.id ? interaction.user : null)
+  const discordNames = fetchDiscordNames(interaction, discordId, targetUser)
+  if (discordNames.discordDisplayName !== 'N/A' && discordNames.discordDisplayName !== 'Unknown') {
+    await setPlayerDiscordNames(discordId, guildId, discordNames)
   }
 
   await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
