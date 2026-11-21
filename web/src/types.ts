@@ -105,6 +105,8 @@ export interface ReplayPlayer {
   team: number
   win: boolean
   rowId?: number | null
+  mmr?: number | null
+  baseMmr?: number | null
   gameStats?: PlayerGameStats
   talents?: ReplayPlayerTalents
   bsteps?: unknown[]

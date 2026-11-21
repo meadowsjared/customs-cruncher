@@ -751,6 +751,13 @@ function computeTeamAvgKda(players: ReplayPlayer[]): string {
   return (totalKda / count).toFixed(2)
 }
 
+function computeTeamAvgMmr(players: ReplayPlayer[]): string {
+  const withMmr = players.filter((p) => typeof p.mmr === 'number' && p.mmr > 0)
+  if (withMmr.length === 0) return ''
+  const sum = withMmr.reduce((acc, p) => acc + (p.mmr ?? 0), 0)
+  return `${formatNumber(Math.round(sum / withMmr.length))} MMR`
+}
+
 async function navigateToPlayer(player: ReplayPlayer) {
   if (player.rowId) {
     router.push(`/player/${player.rowId}`)
@@ -969,6 +976,11 @@ onMounted(() => {
                         class="draft-takedowns-pill">
                     {{ match.team0_takedowns }} Takedowns
                   </span>
+                  <span v-if="computeTeamAvgMmr(team0Players)"
+                        class="draft-mmr-pill"
+                        title="Team Average MMR at time of match">
+                    Avg {{ computeTeamAvgMmr(team0Players) }}
+                  </span>
                 </div>
               </div>
 
@@ -1037,6 +1049,11 @@ onMounted(() => {
                   <span v-if="match.team1_takedowns !== undefined && match.team1_takedowns !== null"
                         class="draft-takedowns-pill">
                     {{ match.team1_takedowns }} Takedowns
+                  </span>
+                  <span v-if="computeTeamAvgMmr(team1Players)"
+                        class="draft-mmr-pill"
+                        title="Team Average MMR at time of match">
+                    Avg {{ computeTeamAvgMmr(team1Players) }}
                   </span>
                 </div>
               </div>
@@ -1116,6 +1133,11 @@ onMounted(() => {
               </div>
               <span class="stat-pill">Level {{ match.teams?.['0']?.level || '?' }}</span>
               <span class="stat-pill">{{ match.team0_takedowns }} Takedowns</span>
+              <span v-if="computeTeamAvgMmr(team0Players)"
+                    class="stat-pill"
+                    title="Team Average MMR at time of match">
+                Avg {{ computeTeamAvgMmr(team0Players) }}
+              </span>
             </div>
           </div>
 
@@ -1165,6 +1187,11 @@ onMounted(() => {
                                   class="pick-order-tag"
                                   title="Draft Pick Order">
                               Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
+                            </span>
+                            <span v-if="p.mmr"
+                                  class="player-mmr-badge"
+                                  :title="`MMR at time of match: ${formatNumber(p.mmr)}${p.baseMmr ? ` (Base: ${formatNumber(p.baseMmr)})` : ''}`">
+                              {{ formatNumber(p.mmr) }} MMR
                             </span>
                           </div>
                         </div>
@@ -1313,6 +1340,11 @@ onMounted(() => {
               </div>
               <span class="stat-pill">Level {{ match.teams?.['1']?.level || '?' }}</span>
               <span class="stat-pill">{{ match.team1_takedowns }} Takedowns</span>
+              <span v-if="computeTeamAvgMmr(team1Players)"
+                    class="stat-pill"
+                    title="Team Average MMR at time of match">
+                Avg {{ computeTeamAvgMmr(team1Players) }}
+              </span>
             </div>
           </div>
 
@@ -1362,6 +1394,11 @@ onMounted(() => {
                                   class="pick-order-tag"
                                   title="Draft Pick Order">
                               Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
+                            </span>
+                            <span v-if="p.mmr"
+                                  class="player-mmr-badge"
+                                  :title="`MMR at time of match: ${formatNumber(p.mmr)}${p.baseMmr ? ` (Base: ${formatNumber(p.baseMmr)})` : ''}`">
+                              {{ formatNumber(p.mmr) }} MMR
                             </span>
                           </div>
                         </div>
@@ -1510,6 +1547,11 @@ onMounted(() => {
                     <span class="team-pill"
                           :class="p.team === 0 ? 'pill-blue' : 'pill-red'">
                       {{ p.team === 0 ? 'Blue' : 'Red' }}
+                    </span>
+                    <span v-if="p.mmr"
+                          class="player-mmr-badge"
+                          :title="`MMR at time of match: ${formatNumber(p.mmr)}${p.baseMmr ? ` (Base: ${formatNumber(p.baseMmr)})` : ''}`">
+                      {{ formatNumber(p.mmr) }} MMR
                     </span>
                   </div>
                   <span class="hero-name clickable-hero-link"
@@ -2842,6 +2884,30 @@ onMounted(() => {
   background: rgba(56, 189, 248, 0.12);
   color: var(--accent-cyan);
   border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.player-mmr-badge {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.draft-mmr-pill {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
 }
 
 @media (max-width: 900px) {

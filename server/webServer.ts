@@ -530,17 +530,97 @@ export function createServer(): http.Server {
             }
           }
           if (tags.length > 0) {
-            const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
-              SELECT id, hots_battle_tag FROM hots_accounts WHERE LOWER(hots_battle_tag) IN ${sql(tags)}
-            `
-            const tagMap = new Map<string, number>()
-            for (const a of accounts) {
-              tagMap.set(a.hots_battle_tag.toLowerCase(), a.id)
-            }
-            for (const [, p] of playerEntries) {
-              if (p && typeof p === 'object' && 'name' in p && 'tag' in p) {
-                const fullTag = `${String(p.name)}#${String(p.tag)}`.toLowerCase()
-                p.rowId = tagMap.get(fullTag) ?? null
+            try {
+              const replayDate = new Date(replay.date)
+              const mmrRows = await sql<{
+                hots_account_id: number
+                battle_tag_lower: string
+                base_mmr: number
+                adjustment: number
+                games: number
+                win_rate: number
+                mmr: number
+              }[]>`
+                WITH account_details AS (
+                  SELECT
+                    ha.id AS hots_account_id,
+                    ha.discord_id,
+                    LOWER(ha.hots_battle_tag) AS battle_tag_lower,
+                    GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr, 0) AS account_mmr,
+                    COALESCE(p.adjustment, 0) AS adjustment
+                  FROM hots_accounts ha
+                  LEFT JOIN players p ON p.discord_id = ha.discord_id
+                  WHERE LOWER(ha.hots_battle_tag) IN ${sql(tags)}
+                ),
+                discord_best AS (
+                  SELECT
+                    ha_all.discord_id,
+                    MAX(GREATEST(ha_all.hp_qm_mmr, ha_all.hp_sl_mmr, ha_all.hp_ar_mmr, 0)) AS base_mmr
+                  FROM hots_accounts ha_all
+                  WHERE ha_all.discord_id IN (SELECT discord_id FROM account_details WHERE discord_id IS NOT NULL)
+                  GROUP BY ha_all.discord_id
+                ),
+                prior_stats AS (
+                  SELECT
+                    LOWER(s.hots_battle_tag) AS battle_tag_lower,
+                    COUNT(*)::int AS games,
+                    ROUND(100.0 * AVG(CASE WHEN s.win THEN 1.0 ELSE 0.0 END)::numeric, 1)::float AS win_rate
+                  FROM mv_replay_player_stats s
+                  WHERE LOWER(s.hots_battle_tag) IN ${sql(tags)}
+                    AND s.date < ${replayDate}
+                  GROUP BY LOWER(s.hots_battle_tag)
+                )
+                SELECT
+                  ad.hots_account_id,
+                  ad.battle_tag_lower,
+                  COALESCE(db.base_mmr, ad.account_mmr) AS base_mmr,
+                  ad.adjustment,
+                  COALESCE(ps.games, 0) AS games,
+                  COALESCE(ps.win_rate, 50.0) AS win_rate,
+                  GREATEST(
+                    calculate_effective_mmr(
+                      COALESCE(db.base_mmr, ad.account_mmr),
+                      COALESCE(ps.games, 0),
+                      COALESCE(ps.win_rate, 50.0),
+                      ad.adjustment
+                    ),
+                    0
+                  )::integer AS mmr
+                FROM account_details ad
+                LEFT JOIN discord_best db ON db.discord_id = ad.discord_id
+                LEFT JOIN prior_stats ps ON ps.battle_tag_lower = ad.battle_tag_lower
+              `
+              const accountMap = new Map<string, { id: number; mmr: number | null; baseMmr: number | null }>()
+              for (const r of mmrRows) {
+                accountMap.set(r.battle_tag_lower, {
+                  id: r.hots_account_id,
+                  mmr: r.mmr > 0 ? r.mmr : null,
+                  baseMmr: r.base_mmr > 0 ? r.base_mmr : null,
+                })
+              }
+              for (const [, p] of playerEntries) {
+                if (p && typeof p === 'object' && 'name' in p && 'tag' in p) {
+                  const fullTag = `${String(p.name)}#${String(p.tag)}`.toLowerCase()
+                  const acc = accountMap.get(fullTag)
+                  p.rowId = acc?.id ?? null
+                  p.mmr = acc?.mmr ?? null
+                  p.baseMmr = acc?.baseMmr ?? null
+                }
+              }
+            } catch (err) {
+              console.error('[WebServer] Error calculating match player MMR:', err)
+              const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
+                SELECT id, hots_battle_tag FROM hots_accounts WHERE LOWER(hots_battle_tag) IN ${sql(tags)}
+              `
+              const tagMap = new Map<string, number>()
+              for (const a of accounts) {
+                tagMap.set(a.hots_battle_tag.toLowerCase(), a.id)
+              }
+              for (const [, p] of playerEntries) {
+                if (p && typeof p === 'object' && 'name' in p && 'tag' in p) {
+                  const fullTag = `${String(p.name)}#${String(p.tag)}`.toLowerCase()
+                  p.rowId = tagMap.get(fullTag) ?? null
+                }
               }
             }
           }
