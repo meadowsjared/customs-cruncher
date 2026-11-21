@@ -758,6 +758,18 @@ function computeTeamAvgMmr(players: ReplayPlayer[]): string {
   return `${formatNumber(Math.round(sum / withMmr.length))} MMR`
 }
 
+function getPlayerMetaTooltip(player: ReplayPlayer): string {
+  const pick = getPlayerPickOrder(player.hero, player.team)
+  const parts: string[] = []
+  if (pick) {
+    parts.push(`Draft Pick #${pick}`)
+  }
+  if (player.mmr) {
+    parts.push(`MMR at time of match: ${formatNumber(player.mmr)}${player.baseMmr ? ` (Base: ${formatNumber(player.baseMmr)})` : ''}`)
+  }
+  return parts.join(' | ')
+}
+
 async function navigateToPlayer(player: ReplayPlayer) {
   if (player.rowId) {
     router.push(`/player/${player.rowId}`)
@@ -1183,15 +1195,15 @@ onMounted(() => {
                             <span class="hero-name clickable-hero-link"
                                   :title="`View ${p.name}'s ${p.hero} matches`"
                                   @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
-                            <span v-if="getPlayerPickOrder(p.hero, p.team)"
-                                  class="pick-order-tag"
-                                  title="Draft Pick Order">
-                              Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
-                            </span>
-                            <span v-if="p.mmr"
-                                  class="player-mmr-badge"
-                                  :title="`MMR at time of match: ${formatNumber(p.mmr)}${p.baseMmr ? ` (Base: ${formatNumber(p.baseMmr)})` : ''}`">
-                              {{ formatNumber(p.mmr) }} MMR
+                            <span v-if="getPlayerPickOrder(p.hero, p.team) || p.mmr"
+                                  class="player-meta-badge"
+                                  :title="getPlayerMetaTooltip(p)">
+                              <span v-if="getPlayerPickOrder(p.hero, p.team)"
+                                    class="meta-pick">#{{ getPlayerPickOrder(p.hero, p.team) }}</span>
+                              <span v-if="getPlayerPickOrder(p.hero, p.team) && p.mmr"
+                                    class="meta-dot">·</span>
+                              <span v-if="p.mmr"
+                                    class="meta-mmr">{{ formatNumber(p.mmr) }} MMR</span>
                             </span>
                           </div>
                         </div>
@@ -1390,15 +1402,15 @@ onMounted(() => {
                             <span class="hero-name clickable-hero-link"
                                   :title="`View ${p.name}'s ${p.hero} matches`"
                                   @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
-                            <span v-if="getPlayerPickOrder(p.hero, p.team)"
-                                  class="pick-order-tag"
-                                  title="Draft Pick Order">
-                              Pick #{{ getPlayerPickOrder(p.hero, p.team) }}
-                            </span>
-                            <span v-if="p.mmr"
-                                  class="player-mmr-badge"
-                                  :title="`MMR at time of match: ${formatNumber(p.mmr)}${p.baseMmr ? ` (Base: ${formatNumber(p.baseMmr)})` : ''}`">
-                              {{ formatNumber(p.mmr) }} MMR
+                            <span v-if="getPlayerPickOrder(p.hero, p.team) || p.mmr"
+                                  class="player-meta-badge"
+                                  :title="getPlayerMetaTooltip(p)">
+                              <span v-if="getPlayerPickOrder(p.hero, p.team)"
+                                    class="meta-pick">#{{ getPlayerPickOrder(p.hero, p.team) }}</span>
+                              <span v-if="getPlayerPickOrder(p.hero, p.team) && p.mmr"
+                                    class="meta-dot">·</span>
+                              <span v-if="p.mmr"
+                                    class="meta-mmr">{{ formatNumber(p.mmr) }} MMR</span>
                             </span>
                           </div>
                         </div>
@@ -1923,6 +1935,27 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.container {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+th,
+td {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+th:first-child,
+td:first-child {
+  padding-left: 1rem;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 1rem;
+}
+
 .back-nav {
   margin-bottom: 1.5rem;
 }
@@ -2320,6 +2353,7 @@ onMounted(() => {
 .hero-name {
   font-size: 0.8rem;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .team-pill {
@@ -2873,6 +2907,37 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.player-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.meta-pick {
+  color: #7dd3fc;
+  font-weight: 800;
+}
+
+.meta-dot {
+  opacity: 0.45;
+  font-weight: normal;
+}
+
+.meta-mmr {
+  color: #38bdf8;
 }
 
 .pick-order-tag {
@@ -2884,6 +2949,7 @@ onMounted(() => {
   background: rgba(56, 189, 248, 0.12);
   color: var(--accent-cyan);
   border: 1px solid rgba(56, 189, 248, 0.25);
+  white-space: nowrap;
 }
 
 .player-mmr-badge {
