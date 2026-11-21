@@ -5,6 +5,7 @@ import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem, Playe
 import {
   formatDuration,
   formatDateRelative,
+  formatDateFull,
   formatNumber,
   getHeroImageUrl,
   getMapImageUrl,
@@ -851,8 +852,8 @@ onMounted(() => {
             <h1 class="banner-map-title">{{ match.map }}</h1>
             <div class="banner-meta-row">
               <span class="meta-item">⏱️ {{ formatDuration(match.length) }}</span>
-              <span class="meta-item">📅 {{ formatDateRelative(match.date) }}</span>
-              <span class="meta-item">📍 {{ new Date(match.date).toLocaleDateString() }}</span>
+              <span class="meta-item" :title="formatDateFull(match.date)">📅 {{ formatDateRelative(match.date) }}</span>
+              <span class="meta-item" :title="formatDateFull(match.date)">📍 {{ new Date(match.date).toLocaleDateString() }}</span>
             </div>
           </div>
 
@@ -1976,6 +1977,10 @@ onMounted(() => {
   color: var(--text-muted);
   font-size: 0.9rem;
   font-weight: 500;
+}
+
+.banner-meta-row .meta-item[title] {
+  cursor: help;
 }
 
 .banner-badges {
