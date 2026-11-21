@@ -19,6 +19,7 @@ import {
   formatTalentDescriptionHtml,
   isQuestTalent,
   getCorrelatedQuestStats,
+  getTierTalents,
 } from '../utils/hots'
 
 const route = useRoute()
@@ -548,7 +549,65 @@ const activeTooltip = ref<ActiveTooltipState>({
   y: 0,
 })
 
+interface ExpandedTierState {
+  visible: boolean
+  heroName: string
+  tierIndex: number
+  pickedTalentKey?: string
+  player?: ReplayPlayer
+}
+
+const expandedTier = ref<ExpandedTierState>({
+  visible: false,
+  heroName: '',
+  tierIndex: 0,
+})
+
+function openExpandedTier(talentKey?: string, tierIndex: number = 0, player?: ReplayPlayer) {
+  hideTalentTooltip()
+  const hero = getTalentInfo(talentKey)?.hero || player?.hero || ''
+  expandedTier.value = {
+    visible: true,
+    heroName: hero,
+    tierIndex,
+    pickedTalentKey: talentKey,
+    player,
+  }
+}
+
+function closeExpandedTier() {
+  expandedTier.value.visible = false
+}
+
+function switchExpandedTier(newTierIndex: number) {
+  if (!expandedTier.value.player) return
+  const playerTalents = getPlayerTalentList(expandedTier.value.player)
+  const newPickedKey = playerTalents[newTierIndex]
+  expandedTier.value.tierIndex = newTierIndex
+  expandedTier.value.pickedTalentKey = newPickedKey
+}
+
+function isTalentPicked(talent: { key: string; name: string }, pickedKey?: string): boolean {
+  if (!pickedKey) return false
+  if (talent.key === pickedKey) return true
+  const pickedInfo = getTalentInfo(pickedKey)
+  if (pickedInfo && pickedInfo.name.toLowerCase() === talent.name.toLowerCase()) return true
+  return formatTalentName(pickedKey).toLowerCase() === talent.name.toLowerCase()
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (expandedTier.value.visible) {
+      closeExpandedTier()
+    } else if (activeTooltip.value.visible) {
+      hideTalentTooltip()
+    }
+  }
+}
+
 function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey?: string, tierIndex: number = 0, player?: ReplayPlayer) {
+  if (expandedTier.value.visible) return
+
   let clientX = 0
   let clientY = 0
   if ('touches' in event && event.touches.length > 0) {
@@ -571,7 +630,7 @@ function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey?: string, t
 }
 
 function updateTooltipPosition(event: MouseEvent) {
-  if (!activeTooltip.value.visible) return
+  if (!activeTooltip.value.visible || expandedTier.value.visible) return
   activeTooltip.value.x = event.clientX
   activeTooltip.value.y = event.clientY
 }
@@ -585,8 +644,15 @@ function isDomElement(target: EventTarget | null): target is Element {
 }
 
 function handlePointerDown(e: Event) {
+  if (expandedTier.value.visible) {
+    if (isDomElement(e.target) && e.target.closest('.expanded-talent-modal')) {
+      return
+    }
+    closeExpandedTier()
+    return
+  }
   if (!activeTooltip.value.visible) return
-  if (isDomElement(e.target) && e.target.closest('.talent-mini-slot, .hots-talent-tooltip')) {
+  if (isDomElement(e.target) && e.target.closest('.talent-mini-slot, .hots-talent-tooltip, .talent-tier-item')) {
     return
   }
   hideTalentTooltip()
@@ -855,10 +921,12 @@ async function navigateToPlayerHero(player: ReplayPlayer, hero: string) {
 onMounted(() => {
   fetchMatchDetail()
   window.addEventListener('pointerdown', handlePointerDown)
+  window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('pointerdown', handlePointerDown)
+  window.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -1264,10 +1332,11 @@ onUnmounted(() => {
                       <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                            :key="idx"
                            class="talent-mini-slot"
+                           :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][idx] + ' options'"
                            @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                            @mousemove="updateTooltipPosition($event)"
                            @mouseleave="hideTalentTooltip"
-                           @click.stop="showTalentTooltip($event, tKey, idx, p)">
+                           @click.stop="openExpandedTier(tKey, idx, p)">
                         <img v-if="tKey"
                              :src="getTalentImageUrl(tKey)"
                              :alt="formatTalentName(tKey)"
@@ -1472,10 +1541,11 @@ onUnmounted(() => {
                       <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                            :key="idx"
                            class="talent-mini-slot"
+                           :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][idx] + ' options'"
                            @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                            @mousemove="updateTooltipPosition($event)"
                            @mouseleave="hideTalentTooltip"
-                           @click.stop="showTalentTooltip($event, tKey, idx, p)">
+                           @click.stop="openExpandedTier(tKey, idx, p)">
                         <img v-if="tKey"
                              :src="getTalentImageUrl(tKey)"
                              :alt="formatTalentName(tKey)"
@@ -1633,7 +1703,9 @@ onUnmounted(() => {
               <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                    :key="idx"
                    class="talent-tier-item"
-                   :class="{ 'talent-unselected': !tKey }">
+                   :class="{ 'talent-unselected': !tKey }"
+                   :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][idx] + ' options'"
+                   @click="openExpandedTier(tKey, idx, p)">
                 <div class="tier-level-badge">Lvl {{ [1, 4, 7, 10, 13, 16, 20][idx] }}</div>
                 <div class="talent-icon-box">
                   <img v-if="tKey"
@@ -1971,6 +2043,157 @@ onUnmounted(() => {
                   class="tooltip-footer-hero">
               {{ getTalentInfo(activeTooltip.talentKey)?.hero || activeTooltip.heroName }}
             </span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Expanded Talent Tier Options Modal -->
+    <Teleport to="body">
+      <div v-if="expandedTier.visible"
+           class="expanded-talent-overlay"
+           @click.self="closeExpandedTier">
+        <div class="expanded-talent-modal"
+             role="dialog"
+             aria-modal="true"
+             @click.stop>
+          <!-- HotS In-Game Style Talent Build Bar -->
+          <div class="hots-build-bar">
+            <div class="hots-build-header">
+              <div class="hots-build-title-group">
+                <span class="hots-build-title">{{ expandedTier.heroName }} Talent Build</span>
+                <div v-if="expandedTier.player" class="hots-build-player-info">
+                  <span class="hots-player-name">{{ expandedTier.player?.name }}</span>
+                  <span v-if="expandedTier.player?.tag" class="hots-player-tag">#{{ expandedTier.player?.tag }}</span>
+                  <span class="team-pill"
+                        :class="expandedTier.player?.team === 0 ? 'pill-blue' : 'pill-red'">
+                    {{ expandedTier.player?.team === 0 ? 'Blue' : 'Red' }}
+                  </span>
+                </div>
+              </div>
+
+              <button class="hots-build-close-btn"
+                      aria-label="Close"
+                      @click="closeExpandedTier">
+                ✕
+              </button>
+            </div>
+
+            <!-- Hexagonal In-Game Talent Slots (Levels 1, 4, 7, 10, 13, 16, 20) -->
+            <div class="hots-hex-bar">
+              <button v-for="(lvl, tIdx) in [1, 4, 7, 10, 13, 16, 20]"
+                      :key="lvl"
+                      type="button"
+                      class="hots-hex-slot"
+                      :class="{
+                        'is-active': expandedTier.tierIndex === tIdx,
+                        'has-picked': !!getPlayerTalentList(expandedTier.player)[tIdx],
+                        'is-empty': !getPlayerTalentList(expandedTier.player)[tIdx]
+                      }"
+                      :title="`Tier Level ${lvl}`"
+                      @click="switchExpandedTier(tIdx)">
+                <div class="hots-hex-outer">
+                  <div class="hots-hex-inner">
+                    <img v-if="getPlayerTalentList(expandedTier.player)[tIdx]"
+                         :src="getTalentImageUrl(getPlayerTalentList(expandedTier.player)[tIdx])"
+                         :alt="formatTalentName(getPlayerTalentList(expandedTier.player)[tIdx])"
+                         class="hots-hex-img"
+                         @error="hideBrokenImage" />
+                    <span v-else class="hots-hex-empty-lvl">{{ lvl }}</span>
+                  </div>
+                </div>
+                <span class="hots-hex-lvl-label">Lvl {{ lvl }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tier Indicator Subheader -->
+          <div class="expanded-tier-banner">
+            <span class="expanded-tier-banner-title">
+              Level {{ [1, 4, 7, 10, 13, 16, 20][expandedTier.tierIndex] }} Talents
+            </span>
+            <span class="expanded-tier-banner-hint">
+              Click any hexagon above to switch tier options
+            </span>
+          </div>
+
+          <!-- All Options List for this Tier -->
+          <div class="expanded-options-body">
+            <div class="expanded-options-grid">
+              <div v-for="t in getTierTalents(expandedTier.heroName, expandedTier.tierIndex)"
+                   :key="t.key"
+                   class="expanded-talent-card"
+                   :class="{
+                     'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
+                     'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
+                   }">
+                <!-- Card Header with Hexagonal Option Icon -->
+                <div class="talent-card-top">
+                  <div class="talent-card-hex-wrap">
+                    <div class="talent-card-hex-outer"
+                         :class="{
+                           'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
+                           'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
+                         }">
+                      <div class="talent-card-hex-inner">
+                        <img :src="getTalentImageUrl(t.key)"
+                             :alt="t.name"
+                             class="talent-card-hex-img"
+                             @error="hideBrokenImage" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="talent-card-meta">
+                    <div class="talent-card-status-row">
+                      <span v-if="isTalentPicked(t, expandedTier.pickedTalentKey)"
+                            class="picked-badge">
+                        ✓ SELECTED
+                      </span>
+                      <span v-else
+                            class="unpicked-badge">
+                        NOT PICKED
+                      </span>
+
+                      <span v-if="t.type"
+                            class="talent-type-badge"
+                            :class="getTypeBadgeClass(t.type)">
+                        {{ t.type }}
+                      </span>
+                    </div>
+
+                    <h4 class="expanded-talent-name">{{ t.name }}</h4>
+                  </div>
+                </div>
+
+                <!-- Card Description -->
+                <div v-if="t.description"
+                     class="expanded-talent-desc"
+                     v-html="formatTalentDescriptionHtml(t.description)">
+                </div>
+
+                <!-- Quest stats (if picked and has stats) -->
+                <div v-if="isTalentPicked(t, expandedTier.pickedTalentKey) && getCorrelatedQuestStats(t.key, expandedTier.player?.gameStats).length > 0"
+                     class="expanded-quest-stats">
+                  <div v-for="(stat, sIdx) in getCorrelatedQuestStats(t.key, expandedTier.player?.gameStats)"
+                       :key="sIdx"
+                       class="talent-quest-badge"
+                       :class="{ 'quest-completed': stat.completed }">
+                    <span class="quest-stat-icon">{{ getQuestIcon(stat.type) }}</span>
+                    <span class="quest-stat-text">{{ stat.displayText }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Fallback if no talents found in database -->
+            <div v-if="getTierTalents(expandedTier.heroName, expandedTier.tierIndex).length === 0"
+                 class="expanded-empty-state">
+              <p>No other talent options found for this tier.</p>
+              <div v-if="expandedTier.pickedTalentKey" class="fallback-picked-only">
+                <strong>Picked:</strong> {{ formatTalentName(expandedTier.pickedTalentKey) }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -3387,7 +3610,479 @@ img.clickable-hero-link:hover {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
+/* Expanded Talent Modal */
+.talent-tier-item {
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.talent-tier-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateX(3px);
+}
+
+.expanded-talent-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(5, 8, 16, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: overlayFadeIn 0.2s ease-out;
+}
+
+.expanded-talent-modal {
+  background: linear-gradient(180deg, #1b123d 0%, #0d0922 100%);
+  border: 1.5px solid rgba(139, 92, 246, 0.4);
+  border-radius: var(--radius-lg, 16px);
+  width: 100%;
+  max-width: 860px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 0 35px rgba(124, 58, 237, 0.25), inset 0 1px 0 rgba(196, 181, 253, 0.25);
+  animation: modalPop 0.25s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* HotS In-Game Style Talent Build Bar Header */
+.hots-build-bar {
+  background: linear-gradient(180deg, #25174e 0%, #150d33 100%);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.35);
+  padding: 1.15rem 1.75rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  box-shadow: inset 0 1px 0 rgba(216, 180, 254, 0.3), 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.hots-build-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.hots-build-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.hots-build-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.025em;
+  text-shadow: 0 0 14px rgba(96, 165, 250, 0.65), 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.hots-build-player-info {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+}
+
+.hots-player-name {
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.hots-player-tag {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.hots-build-close-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.hots-build-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+/* 7 Hexagonal HotS Talent Slots */
+.hots-hex-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1.25rem;
+  padding: 0.35rem 0.25rem 0.6rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.hots-hex-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.hots-hex-bar::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.4);
+  border-radius: 2px;
+}
+
+.hots-hex-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  flex-shrink: 0;
+}
+
+/* HotS Pointy-Topped Hexagon with Shiny Metallic Outline */
+.hots-hex-outer {
+  width: 52px;
+  height: 60px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.22s ease;
+  /* Shiny metallic steel bevel border default */
+  background: linear-gradient(145deg, #f8fafc 0%, #cbd5e1 20%, #64748b 45%, #1e293b 75%, #94a3b8 100%);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.65));
+}
+
+.hots-hex-inner {
+  width: calc(100% - 5px);
+  height: calc(100% - 5px);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: #0d0a20;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hots-hex-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.08);
+}
+
+.hots-hex-lvl-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+  letter-spacing: 0.02em;
+}
+
+/* Hover State */
+.hots-hex-slot:hover .hots-hex-outer {
+  background: linear-gradient(145deg, #ffffff 0%, #bae6fd 25%, #60a5fa 55%, #2563eb 80%, #dbeafe 100%);
+  filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.85)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.7));
+  transform: translateY(-3px) scale(1.06);
+}
+
+.hots-hex-slot:hover .hots-hex-lvl-label {
+  color: #f1f5f9;
+}
+
+/* Active / Selected Tier */
+.hots-hex-slot.is-active .hots-hex-outer {
+  background: linear-gradient(145deg, #ffffff 0%, #a5f3fc 25%, #38bdf8 55%, #0284c7 80%, #ffffff 100%);
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 3px #ffffff) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.85));
+  transform: translateY(-2px) scale(1.05);
+}
+
+.hots-hex-slot.is-active .hots-hex-lvl-label {
+  color: #38bdf8;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.85);
+}
+
+/* Empty / Unpicked Slot */
+.hots-hex-slot.is-empty .hots-hex-outer {
+  background: linear-gradient(145deg, #64748b 0%, #475569 35%, #1e293b 70%, #475569 100%);
+  opacity: 0.65;
+}
+
+.hots-hex-empty-lvl {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #64748b;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Tier Indicator Banner */
+.expanded-tier-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.expanded-tier-banner-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.expanded-tier-banner-hint {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* All Options List for this Tier */
+.expanded-options-body {
+  padding: 1.25rem 1.75rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.expanded-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.expanded-talent-card {
+  padding: 1.15rem;
+  border-radius: var(--radius-md, 10px);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.expanded-talent-card.is-picked {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1.5px solid rgba(16, 185, 129, 0.65);
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.expanded-talent-card.is-not-picked {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  opacity: 0.62;
+}
+
+.expanded-talent-card.is-not-picked:hover {
+  opacity: 1;
+  background: rgba(30, 41, 59, 0.85);
+  border-style: solid;
+  border-color: rgba(148, 163, 184, 0.5);
+  transform: translateY(-2px);
+}
+
+.talent-card-top {
+  display: flex;
+  gap: 0.95rem;
+  align-items: flex-start;
+}
+
+/* Hexagonal Talent Icon on Cards */
+.talent-card-hex-wrap {
+  width: 52px;
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.talent-card-hex-outer {
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.talent-card-hex-outer.is-picked {
+  background: linear-gradient(145deg, #f0fdf4 0%, #86efac 25%, #22c55e 55%, #15803d 80%, #bbf7d0 100%);
+  filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.75)) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.6));
+}
+
+.talent-card-hex-outer.is-not-picked {
+  background: linear-gradient(145deg, #e2e8f0 0%, #94a3b8 25%, #475569 55%, #1e293b 80%, #cbd5e1 100%);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+.talent-card-hex-inner {
+  width: calc(100% - 5px);
+  height: calc(100% - 5px);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: #0d0a20;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.talent-card-hex-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.08);
+}
+
+.talent-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.talent-card-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.picked-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid rgba(16, 185, 129, 0.6);
+  color: #34d399;
+}
+
+.unpicked-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-full);
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.expanded-talent-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.expanded-talent-desc {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+
+.expanded-quest-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.expanded-empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 @media (max-width: 640px) {
+  .expanded-talent-overlay {
+    padding: 0.5rem;
+  }
+
+  .expanded-talent-modal {
+    max-height: 94vh;
+    border-radius: 10px;
+  }
+
+  .hots-build-bar {
+    padding: 0.85rem 1rem 0.75rem;
+    gap: 0.75rem;
+  }
+
+  .hots-build-title {
+    font-size: 1.05rem;
+  }
+
+  .hots-hex-bar {
+    gap: 0.5rem;
+    justify-content: space-between;
+  }
+
+  .hots-hex-outer {
+    width: 44px;
+    height: 51px;
+  }
+
+  .hots-hex-inner {
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+  }
+
+  .expanded-tier-banner {
+    padding: 0.5rem 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+  }
+
+  .expanded-options-body {
+    padding: 1rem;
+  }
+
+  .expanded-options-grid {
+    grid-template-columns: 1fr;
+  }
   .container {
     padding-left: 0;
     padding-right: 0;

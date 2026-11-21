@@ -207,6 +207,37 @@ export function getTalentInfo(talentKey?: string): TalentInfo | undefined {
   return talentsMap[talentKey]
 }
 
+export interface TierTalentItem extends TalentInfo {
+  key: string
+}
+
+export function getTierTalents(heroName?: string, tierIndexOrLevel?: number | string): TierTalentItem[] {
+  if (!heroName) return []
+  const normHero = resolveHeroName(heroName).toLowerCase().replace(/[^a-z0-9]/g, '')
+  const tierLevels = [1, 4, 7, 10, 13, 16, 20]
+  let targetTierStr: string
+  if (typeof tierIndexOrLevel === 'number' && tierIndexOrLevel >= 0 && tierIndexOrLevel < 7) {
+    targetTierStr = String(tierLevels[tierIndexOrLevel])
+  } else {
+    targetTierStr = String(tierIndexOrLevel)
+  }
+
+  const results: TierTalentItem[] = []
+  const seenNames = new Set<string>()
+
+  for (const [key, t] of Object.entries(talentsMap)) {
+    if (String(t.tier) === targetTierStr) {
+      const tHeroNorm = t.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
+      if (tHeroNorm === normHero && !seenNames.has(t.name)) {
+        seenNames.add(t.name)
+        results.push({ key, ...t })
+      }
+    }
+  }
+
+  return results
+}
+
 export function getTalentImageUrl(talentKey?: string): string {
   if (!talentKey) return ''
   const info = talentsMap[talentKey]
