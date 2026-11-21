@@ -2197,6 +2197,13 @@ onUnmounted(() => {
                              @error="hideBrokenImage" />
                       </div>
                     </div>
+                    <span v-if="isTalentPicked(t, expandedTier.pickedTalentKey)"
+                          class="talent-card-hex-fav-badge"
+                          title="Selected talent">
+                      <svg viewBox="0 0 16 16" class="hex-fav-heart">
+                        <path d="M8 13.5l-5.3-5.3a3.3 3.3 0 0 1 4.7-4.7L8 4.1l.6-.6a3.3 3.3 0 0 1 4.7 4.7z" fill="currentColor" />
+                      </svg>
+                    </span>
                   </div>
 
                   <div class="talent-card-meta">

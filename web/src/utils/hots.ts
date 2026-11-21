@@ -306,6 +306,14 @@ export function getTalentTooltip(talentKey?: string, tierIndex: number = 0): str
   return `Level ${level}${typeStr}: ${info.name}${desc}`
 }
 
+const QUEST_EXCLAMATION_SVG =
+  '<span class="hots-quest-exclamation" aria-hidden="true">' +
+  '<svg viewBox="0 0 16 16" class="quest-mark-svg">' +
+  '<circle cx="8" cy="8" r="7.25" class="quest-mark-circle" />' +
+  '<path d="M8 3.8v4.6M8 11.5v.01" class="quest-mark-bang" />' +
+  '</svg>' +
+  '</span>'
+
 export function formatTalentDescriptionHtml(description?: string): string {
   if (!description) return ''
   const sections = splitTalentDescriptionSections(description)
@@ -313,8 +321,8 @@ export function formatTalentDescriptionHtml(description?: string): string {
   return sections
     .map((section) => {
       const formatted = section
-        .replace(/(Repeatable Quest:|Quest:)/g, '<span class="tooltip-quest">$1</span>')
-        .replace(/(Reward:)/g, '<span class="tooltip-reward">$1</span>')
+        .replace(/((?:Repeatable\s+)?Quest:)/g, `${QUEST_EXCLAMATION_SVG}<span class="tooltip-quest">$1</span>`)
+        .replace(/(Reward:)/g, `${QUEST_EXCLAMATION_SVG}<span class="tooltip-reward">$1</span>`)
         .replace(/(Passive:)/g, '<span class="tooltip-passive">$1</span>')
         .replace(/(Active:)/g, '<span class="tooltip-active">$1</span>')
         .replace(/(Gambit:)/g, '<span class="tooltip-gambit">$1</span>')

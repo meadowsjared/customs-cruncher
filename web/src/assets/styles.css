@@ -865,24 +865,57 @@ tbody tr:hover {
   font-style: italic;
 }
 
+/* HotS Quest Exclamation Mark Badge */
+.hots-quest-exclamation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -0.15em;
+  margin-right: 0.35rem;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.quest-mark-svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.quest-mark-circle {
+  fill: #1a0f02;
+  stroke: #b45309;
+  stroke-width: 1.25;
+}
+
+.quest-mark-bang {
+  stroke: #facc15;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.9));
+}
+
 /* Highlighted keywords in descriptions */
 .tooltip-quest {
-  color: #fbbf24;
+  color: #facc15;
   font-weight: 700;
+  text-shadow: 0 0 6px rgba(250, 204, 21, 0.3);
 }
 
 .tooltip-reward {
-  color: #34d399;
+  color: #facc15;
   font-weight: 700;
+  text-shadow: 0 0 6px rgba(250, 204, 21, 0.3);
 }
 
 .tooltip-passive {
-  color: #38bdf8;
+  color: #4ade80;
   font-weight: 700;
 }
 
 .tooltip-active {
-  color: #22d3ee;
+  color: #fb923c;
   font-weight: 700;
 }
 
