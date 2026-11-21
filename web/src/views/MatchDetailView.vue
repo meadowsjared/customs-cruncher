@@ -1333,18 +1333,27 @@ onUnmounted(() => {
                       <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                            :key="idx"
                            class="talent-mini-slot"
+                           :class="{
+                             'has-talent': !!tKey,
+                             'is-empty': !tKey,
+                             'is-heroic': [3, 6].includes(idx)
+                           }"
                            :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][idx] + ' options'"
                            @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                            @mousemove="updateTooltipPosition($event)"
                            @mouseleave="hideTalentTooltip"
                            @click.stop="openExpandedTier(tKey, idx, p)">
-                        <img v-if="tKey"
-                             :src="getTalentImageUrl(tKey)"
-                             :alt="formatTalentName(tKey)"
-                             class="talent-mini-img"
-                             @error="hideBrokenImage" />
-                        <span v-else
-                              class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
+                        <div class="talent-mini-hex-outer">
+                          <div class="talent-mini-hex-inner">
+                            <img v-if="tKey"
+                                 :src="getTalentImageUrl(tKey)"
+                                 :alt="formatTalentName(tKey)"
+                                 class="talent-mini-img"
+                                 @error="hideBrokenImage" />
+                            <span v-else
+                                  class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -1542,18 +1551,27 @@ onUnmounted(() => {
                       <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                            :key="idx"
                            class="talent-mini-slot"
+                           :class="{
+                             'has-talent': !!tKey,
+                             'is-empty': !tKey,
+                             'is-heroic': [3, 6].includes(idx)
+                           }"
                            :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][idx] + ' options'"
                            @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                            @mousemove="updateTooltipPosition($event)"
                            @mouseleave="hideTalentTooltip"
                            @click.stop="openExpandedTier(tKey, idx, p)">
-                        <img v-if="tKey"
-                             :src="getTalentImageUrl(tKey)"
-                             :alt="formatTalentName(tKey)"
-                             class="talent-mini-img"
-                             @error="hideBrokenImage" />
-                        <span v-else
-                              class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
+                        <div class="talent-mini-hex-outer">
+                          <div class="talent-mini-hex-inner">
+                            <img v-if="tKey"
+                                 :src="getTalentImageUrl(tKey)"
+                                 :alt="formatTalentName(tKey)"
+                                 class="talent-mini-img"
+                                 @error="hideBrokenImage" />
+                            <span v-else
+                                  class="talent-mini-empty">{{ [1, 4, 7, 10, 13, 16, 20][idx] }}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -1692,9 +1710,21 @@ onUnmounted(() => {
               <div class="build-code-action">
                 <button class="copy-code-btn"
                         :class="{ copied: copiedPlayerHandle === p.ToonHandle }"
+                        title="Copy in-game talent build code to clipboard"
                         @click="copyBuildCode(p)">
-                  <span v-if="copiedPlayerHandle === p.ToonHandle">Copied! ✓</span>
-                  <span v-else>📋 Copy In-Game Code</span>
+                  <template v-if="copiedPlayerHandle === p.ToonHandle">
+                    <svg class="copy-btn-icon check-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3.5 8.5 6.5 11.5 12.5 4.5" />
+                    </svg>
+                    <span>Copied!</span>
+                  </template>
+                  <template v-else>
+                    <svg class="copy-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="5.5" y="5.5" width="7" height="7" rx="1.2" />
+                      <path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
+                    </svg>
+                    <span>Copy</span>
+                  </template>
                 </button>
               </div>
             </div>
@@ -1976,15 +2006,17 @@ onUnmounted(() => {
              :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }">
           <div class="tooltip-header">
             <div class="tooltip-icon-wrap">
-              <img v-if="activeTooltip.talentKey"
-                   :src="getTalentImageUrl(activeTooltip.talentKey)"
-                   :alt="getTooltipTalentName(activeTooltip.talentKey, activeTooltip.tierIndex)"
-                   class="tooltip-talent-img"
-                   @error="hideBrokenImage" />
-              <span v-else
-                    class="tooltip-empty-lvl">
-                {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
-              </span>
+              <div class="tooltip-hex-inner">
+                <img v-if="activeTooltip.talentKey"
+                     :src="getTalentImageUrl(activeTooltip.talentKey)"
+                     :alt="getTooltipTalentName(activeTooltip.talentKey, activeTooltip.tierIndex)"
+                     class="tooltip-talent-img"
+                     @error="hideBrokenImage" />
+                <span v-else
+                      class="tooltip-empty-lvl">
+                  {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
+                </span>
+              </div>
             </div>
 
             <div class="tooltip-header-info">
@@ -2073,11 +2105,33 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <button class="hots-build-close-btn"
-                      aria-label="Close"
-                      @click="closeExpandedTier">
-                ✕
-              </button>
+              <div class="hots-build-controls">
+                <button v-if="expandedTier.player"
+                        class="copy-code-btn"
+                        :class="{ copied: copiedPlayerHandle === expandedTier.player.ToonHandle }"
+                        title="Copy in-game talent build code to clipboard"
+                        @click="copyBuildCode(expandedTier.player)">
+                  <template v-if="copiedPlayerHandle === expandedTier.player.ToonHandle">
+                    <svg class="copy-btn-icon check-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3.5 8.5 6.5 11.5 12.5 4.5" />
+                    </svg>
+                    <span>Copied!</span>
+                  </template>
+                  <template v-else>
+                    <svg class="copy-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="5.5" y="5.5" width="7" height="7" rx="1.2" />
+                      <path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
+                    </svg>
+                    <span>Copy</span>
+                  </template>
+                </button>
+
+                <button class="hots-build-close-btn"
+                        aria-label="Close"
+                        @click="closeExpandedTier">
+                  ✕
+                </button>
+              </div>
             </div>
 
             <!-- Hexagonal In-Game Talent Slots (Levels 1, 4, 7, 10, 13, 16, 20) -->
@@ -2891,32 +2945,75 @@ td:last-child {
 }
 
 .talent-mini-slot {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.talent-mini-hex-outer {
+  width: 25px;
+  height: 29px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #f8fafc 0%, #cbd5e1 20%, #64748b 45%, #1e293b 75%, #94a3b8 100%);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  transition: all 0.18s ease;
+}
+
+.talent-mini-slot.is-heroic .talent-mini-hex-outer {
+  background: linear-gradient(145deg, #fef08a 0%, #f59e0b 35%, #78350f 75%, #fde047 100%);
+}
+
+.talent-mini-slot.is-empty .talent-mini-hex-outer {
+  background: linear-gradient(145deg, #64748b 0%, #334155 50%, #0f172a 100%);
+  opacity: 0.55;
+}
+
+.talent-mini-hex-inner {
+  width: calc(100% - 3px);
+  height: calc(100% - 3px);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: #0d0a20;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.talent-mini-slot:hover {
-  transform: scale(1.25);
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
-  z-index: 10;
 }
 
 .talent-mini-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: scale(1.08);
   display: block;
+}
+
+.talent-mini-empty {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #64748b;
+  font-family: var(--font-mono);
+}
+
+.talent-mini-slot:hover {
+  transform: scale(1.3) translateY(-2px);
+  z-index: 20;
+}
+
+.talent-mini-slot:hover .talent-mini-hex-outer {
+  background: linear-gradient(145deg, #ffffff 0%, #a5f3fc 25%, #38bdf8 55%, #0284c7 80%, #ffffff 100%);
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 2px #ffffff) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.8));
+}
+
+.talent-mini-slot.is-heroic:hover .talent-mini-hex-outer {
+  background: linear-gradient(145deg, #ffffff 0%, #fef08a 25%, #fbbf24 55%, #b45309 80%, #ffffff 100%);
+  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.95)) drop-shadow(0 0 2px #ffffff) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.8));
 }
 
 .talent-mini-empty {
@@ -2953,8 +3050,35 @@ td:last-child {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 0.75rem;
+}
+
+.talent-card-header .player-info-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.talent-card-header .name-hero-col {
+  min-width: 0;
+}
+
+.talent-card-header .name-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.build-code-action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .talents-tiers-list {
@@ -3700,6 +3824,13 @@ img.clickable-hero-link:hover {
   color: var(--text-dim);
   font-size: 0.8rem;
   font-family: var(--font-mono);
+}
+
+.hots-build-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
 }
 
 .hots-build-close-btn {

@@ -1065,15 +1065,17 @@ onUnmounted(() => {
              :class="{ 'heroic-tier': [10, 20].includes([1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex]) }">
           <div class="tooltip-header">
             <div class="tooltip-icon-wrap">
-              <img v-if="activeTooltip.talentKey"
-                   :src="getTalentImageUrl(activeTooltip.talentKey)"
-                   :alt="formatTalentName(activeTooltip.talentKey)"
-                   class="tooltip-talent-img"
-                   @error="hideBrokenImage" />
-              <span v-else
-                    class="tooltip-empty-lvl">
-                {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
-              </span>
+              <div class="tooltip-hex-inner">
+                <img v-if="activeTooltip.talentKey"
+                     :src="getTalentImageUrl(activeTooltip.talentKey)"
+                     :alt="formatTalentName(activeTooltip.talentKey)"
+                     class="tooltip-talent-img"
+                     @error="hideBrokenImage" />
+                <span v-else
+                      class="tooltip-empty-lvl">
+                  {{ [1, 4, 7, 10, 13, 16, 20][activeTooltip.tierIndex] }}
+                </span>
+              </div>
             </div>
             <div class="tooltip-header-info">
               <div class="tooltip-badges-row">
