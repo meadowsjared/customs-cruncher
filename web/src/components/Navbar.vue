@@ -300,8 +300,23 @@ function handleBlur() {
 }
 
 @media (max-width: 768px) {
+  .nav-container {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
   .nav-search-wrap {
-    display: none;
+    order: 3;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .nav-search-input {
+    width: 100%;
+  }
+
+  .nav-search-input:focus {
+    width: 100%;
   }
 }
 </style>
