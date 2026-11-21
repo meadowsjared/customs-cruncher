@@ -186,7 +186,9 @@ async function main() {
     }
   }
 
-  console.log(`🚀 Starting parser pool for ${filesToProcess.length} replay files (${missingFilesCount} missing on disk)...`)
+  console.log(
+    `🚀 Starting parser pool for ${filesToProcess.length} replay files (${missingFilesCount} missing on disk)...`
+  )
 
   let updatedCount = 0
   let failedCount = 0
@@ -254,29 +256,45 @@ async function main() {
 
       const now = Date.now()
       const isComplete = processedCount === totalCount
-      const shouldLog = isComplete || (now - lastLogTime >= 2000) || (processedCount - lastLogCount >= 25)
+      const isTTY = Boolean(process.stdout.isTTY)
+      const shouldLog =
+        isComplete ||
+        (isTTY ? now - lastLogTime >= 80 : now - lastLogTime >= 2000 || processedCount - lastLogCount >= 25)
 
       if (shouldLog) {
         lastLogTime = now
         lastLogCount = processedCount
         const elapsedMs = Math.max(1, now - startTime)
         const elapsedSec = Math.floor(elapsedMs / 1000)
-        const replaysPerSec = processedCount > 0 ? (processedCount / (elapsedMs / 1000)) : 0
+        const replaysPerSec = processedCount > 0 ? processedCount / (elapsedMs / 1000) : 0
         const remainingCount = totalCount - processedCount
         const remainingSec = replaysPerSec > 0 ? Math.ceil(remainingCount / replaysPerSec) : 0
 
         const pct = Math.round((processedCount / totalCount) * 100)
-        const bar = renderProgressBar(processedCount / totalCount, 20)
+        const cols = process.stdout.columns || 100
+        const barWidth = Math.max(8, Math.min(20, cols - 85))
+        const bar = renderProgressBar(processedCount / totalCount, barWidth)
         const elapsedStr = formatTime(elapsedSec)
         const etaStr = isComplete ? '0s' : formatTime(remainingSec)
         const speedStr = `${replaysPerSec.toFixed(1)}/s`
         const failStr = failedCount > 0 ? ` | Failed: ${failedCount}` : ''
 
-        console.log(
+        let line =
           `⏳ [${bar}] ${pct}% (${processedCount}/${totalCount}) ` +
           `| Elapsed: ${elapsedStr} | Remaining: ~${etaStr} ` +
           `| Speed: ${speedStr} | Updated: ${updatedCount}${failStr}`
-        )
+
+        if (isTTY) {
+          if (cols && line.length >= cols) {
+            line = line.slice(0, cols - 1)
+          }
+          process.stdout.write(`\r\x1b[K${line}`)
+          if (isComplete) {
+            process.stdout.write('\n')
+          }
+        } else {
+          console.log(line)
+        }
       }
     },
   })
