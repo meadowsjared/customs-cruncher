@@ -448,6 +448,56 @@ export function getCorrelatedQuestStats(
   return results
 }
 
+export function isTalentPicked(talent: { key: string; name: string }, pickedKey?: string): boolean {
+  if (!pickedKey) return false
+  if (talent.key === pickedKey) return true
+  const pickedInfo = getTalentInfo(pickedKey)
+  if (pickedInfo && pickedInfo.name.toLowerCase() === talent.name.toLowerCase()) return true
+  return formatTalentName(pickedKey).toLowerCase() === talent.name.toLowerCase()
+}
+
+export function getTalentBuildCodeFromTalents(
+  hero: string,
+  talents: (string | undefined)[] | { Tier1Choice?: string; Tier2Choice?: string; Tier3Choice?: string; Tier4Choice?: string; Tier5Choice?: string; Tier6Choice?: string; Tier7Choice?: string } | null | undefined
+): string {
+  if (!hero) return ''
+  let talentList: (string | undefined)[]
+  if (!talents) {
+    talentList = [undefined, undefined, undefined, undefined, undefined, undefined, undefined]
+  } else if (Array.isArray(talents)) {
+    talentList = talents
+  } else {
+    talentList = [
+      talents.Tier1Choice,
+      talents.Tier2Choice,
+      talents.Tier3Choice,
+      talents.Tier4Choice,
+      talents.Tier5Choice,
+      talents.Tier6Choice,
+      talents.Tier7Choice,
+    ]
+  }
+
+  const digits: number[] = []
+  for (let tIdx = 0; tIdx < 7; tIdx++) {
+    const pickedKey = talentList[tIdx]
+    if (!pickedKey) {
+      digits.push(0)
+      continue
+    }
+    const tierTalents = getTierTalents(hero, tIdx)
+    const foundIdx = tierTalents.findIndex((t) => isTalentPicked(t, pickedKey))
+    if (foundIdx >= 0) {
+      digits.push(foundIdx + 1)
+    } else {
+      digits.push(0)
+    }
+  }
+
+  const heroClean = hero.replace(/[^a-zA-Z0-9]/g, '')
+  return `[T${digits.join('')},${heroClean}]`
+}
+
 export function getTalentBuildCode(player: { hero: string; gameStats?: { Tier1Talent?: number; Tier2Talent?: number; Tier3Talent?: number; Tier4Talent?: number; Tier5Talent?: number; Tier6Talent?: number; Tier7Talent?: number } }): string {
   const stats = player.gameStats
   if (!stats) return ''

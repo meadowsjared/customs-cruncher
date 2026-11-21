@@ -608,6 +608,9 @@ function handleKeydown(e: KeyboardEvent) {
 
 function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey?: string, tierIndex: number = 0, player?: ReplayPlayer) {
   if (expandedTier.value.visible) return
+  // On touchscreens/mobile devices without pointer hover, suppress the floating tooltip
+  // so a single tap opens the full expanded talent build modal cleanly
+  if (typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches) return
 
   let clientX = 0
   let clientY = 0

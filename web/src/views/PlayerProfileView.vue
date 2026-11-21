@@ -21,6 +21,9 @@ import {
   getTalentInfo,
   formatTalentName,
   formatTalentDescriptionHtml,
+  getTierTalents,
+  isTalentPicked,
+  getTalentBuildCodeFromTalents,
 } from '../utils/hots'
 
 const route = useRoute()
@@ -68,7 +71,80 @@ const activeTooltip = ref<ActiveTooltipState>({
   y: 0,
 })
 
+// Expanded Talent Tier Options Modal State
+interface ExpandedTierState {
+  visible: boolean
+  heroName: string
+  tierIndex: number
+  pickedTalentKey?: string
+  match?: PlayerProfileMatch
+}
+
+const expandedTier = ref<ExpandedTierState>({
+  visible: false,
+  heroName: '',
+  tierIndex: 0,
+})
+
+const copiedMatchId = ref<number | null>(null)
+let copyTimeout: ReturnType<typeof setTimeout> | null = null
+
+function openExpandedTier(talentKey: string | undefined, tierIndex: number = 0, match?: PlayerProfileMatch) {
+  hideTalentTooltip()
+  const hero = getTalentInfo(talentKey)?.hero || match?.hero || ''
+  expandedTier.value = {
+    visible: true,
+    heroName: hero,
+    tierIndex,
+    pickedTalentKey: talentKey,
+    match,
+  }
+}
+
+function closeExpandedTier() {
+  expandedTier.value.visible = false
+}
+
+function switchExpandedTier(newTierIndex: number) {
+  if (!expandedTier.value.match) return
+  const matchTalents = getMatchTalentList(expandedTier.value.match.talents)
+  const newPickedKey = matchTalents[newTierIndex]
+  expandedTier.value.tierIndex = newTierIndex
+  expandedTier.value.pickedTalentKey = newPickedKey
+}
+
+async function copyMatchBuildCode(match: PlayerProfileMatch) {
+  const talents = getMatchTalentList(match.talents)
+  const code = getTalentBuildCodeFromTalents(match.hero, talents)
+  if (!code) return
+  try {
+    await navigator.clipboard.writeText(code)
+    copiedMatchId.value = match.replay_id
+    if (copyTimeout) clearTimeout(copyTimeout)
+    copyTimeout = setTimeout(() => {
+      copiedMatchId.value = null
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy build code:', err)
+  }
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (expandedTier.value.visible) {
+      closeExpandedTier()
+    } else if (activeTooltip.value.visible) {
+      hideTalentTooltip()
+    }
+  }
+}
+
 function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey: string | undefined, tierIndex: number, heroName: string) {
+  if (expandedTier.value.visible) return
+  // On touchscreens/mobile devices without pointer hover, suppress the floating tooltip
+  // so a single tap opens the full expanded talent build modal cleanly
+  if (typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches) return
+
   let clientX = 0
   let clientY = 0
   if ('touches' in event && event.touches.length > 0) {
@@ -90,6 +166,7 @@ function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey: string | u
 }
 
 function updateTooltipPosition(event: MouseEvent) {
+  if (!activeTooltip.value.visible || expandedTier.value.visible) return
   activeTooltip.value.x = event.clientX
   activeTooltip.value.y = event.clientY
 }
@@ -103,8 +180,15 @@ function isDomElement(target: EventTarget | null): target is Element {
 }
 
 function handlePointerDown(e: Event) {
+  if (expandedTier.value.visible) {
+    if (isDomElement(e.target) && e.target.closest('.expanded-talent-modal')) {
+      return
+    }
+    closeExpandedTier()
+    return
+  }
   if (!activeTooltip.value.visible) return
-  if (isDomElement(e.target) && e.target.closest('.talent-slot, .hots-talent-tooltip')) {
+  if (isDomElement(e.target) && e.target.closest('.talent-mini-slot, .talent-slot, .hots-talent-tooltip')) {
     return
   }
   hideTalentTooltip()
@@ -550,10 +634,12 @@ onMounted(() => {
     fetchPlayerProfile(currentId, heroStr)
   }
   window.addEventListener('pointerdown', handlePointerDown)
+  window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('pointerdown', handlePointerDown)
+  window.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
@@ -988,26 +1074,34 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Talents Strip (7 Tiers with tooltips) -->
+            <!-- Talents Strip (7 Tiers with tooltips & HotS hex modal) -->
             <div class="match-talents-col"
                  @click.stop>
               <div class="talents-strip">
                 <div v-for="(tKey, tIdx) in getMatchTalentList(m.talents)"
                      :key="tIdx"
-                     class="talent-slot"
+                     class="talent-mini-slot"
+                     :class="{
+                       'is-heroic': [3, 6].includes(tIdx),
+                       'is-empty': !tKey
+                     }"
+                     :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][tIdx] + ' options'"
                      @mouseenter="showTalentTooltip($event, tKey, tIdx, m.hero)"
                      @mousemove="updateTooltipPosition($event)"
                      @mouseleave="hideTalentTooltip"
-                     @click.stop="showTalentTooltip($event, tKey, tIdx, m.hero)">
-                  <img v-if="tKey"
-                       :src="getTalentImageUrl(tKey)"
-                       :alt="formatTalentName(tKey)"
-                       class="talent-icon-img"
-                       @error="hideBrokenImage" />
-                  <span v-else
-                        class="talent-empty-tier">
-                    {{ [1, 4, 7, 10, 13, 16, 20][tIdx] }}
-                  </span>
+                     @click.stop="openExpandedTier(tKey, tIdx, m)">
+                  <div class="talent-mini-hex-outer">
+                    <div class="talent-mini-hex-inner">
+                      <img v-if="tKey"
+                           :src="getTalentImageUrl(tKey)"
+                           :alt="formatTalentName(tKey)"
+                           class="talent-mini-img"
+                           @error="hideBrokenImage" />
+                      <span v-else class="talent-mini-empty">
+                        {{ [1, 4, 7, 10, 13, 16, 20][tIdx] }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1115,6 +1209,173 @@ onUnmounted(() => {
                   class="tooltip-footer-hero">
               {{ resolveHeroName(activeTooltip.heroName) }}
             </span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Expanded Talent Tier Options Modal -->
+    <Teleport to="body">
+      <div v-if="expandedTier.visible"
+           class="expanded-talent-overlay"
+           @click.self="closeExpandedTier">
+        <div class="expanded-talent-modal"
+             role="dialog"
+             aria-modal="true"
+             @click.stop>
+          <!-- HotS In-Game Style Talent Build Bar -->
+          <div class="hots-build-bar">
+            <div class="hots-build-header">
+              <div class="hots-build-title-group">
+                <span class="hots-build-title">{{ resolveHeroName(expandedTier.heroName) }} Talent Build</span>
+                <div v-if="expandedTier.match" class="hots-build-player-info">
+                  <span class="hots-player-name">{{ expandedTier.match.battle_tag || profileData?.player.name }}</span>
+                  <span class="team-pill"
+                        :class="expandedTier.match.win ? 'pill-blue' : 'pill-red'">
+                    {{ expandedTier.match.win ? 'Victory' : 'Defeat' }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="hots-build-controls">
+                <button v-if="expandedTier.match"
+                        class="copy-code-btn"
+                        :class="{ copied: copiedMatchId === expandedTier.match.replay_id }"
+                        title="Copy in-game talent build code to clipboard"
+                        @click="copyMatchBuildCode(expandedTier.match)">
+                  <template v-if="copiedMatchId === expandedTier.match.replay_id">
+                    <svg class="copy-btn-icon check-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3.5 8.5 6.5 11.5 12.5 4.5" />
+                    </svg>
+                    <span>Copied!</span>
+                  </template>
+                  <template v-else>
+                    <svg class="copy-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="5.5" y="5.5" width="7" height="7" rx="1.2" />
+                      <path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
+                    </svg>
+                    <span>Copy</span>
+                  </template>
+                </button>
+
+                <button class="hots-build-close-btn"
+                        aria-label="Close"
+                        @click="closeExpandedTier">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <!-- Hexagonal In-Game Talent Slots (Levels 1, 4, 7, 10, 13, 16, 20) -->
+            <div class="hots-hex-bar">
+              <button v-for="(lvl, tIdx) in [1, 4, 7, 10, 13, 16, 20]"
+                      :key="lvl"
+                      type="button"
+                      class="hots-hex-slot"
+                      :class="{
+                        'is-active': expandedTier.tierIndex === tIdx,
+                        'has-picked': !!getMatchTalentList(expandedTier.match?.talents)[tIdx],
+                        'is-empty': !getMatchTalentList(expandedTier.match?.talents)[tIdx]
+                      }"
+                      :title="`Tier Level ${lvl}`"
+                      @click="switchExpandedTier(tIdx)">
+                <div class="hots-hex-outer">
+                  <div class="hots-hex-inner">
+                    <img v-if="getMatchTalentList(expandedTier.match?.talents)[tIdx]"
+                         :src="getTalentImageUrl(getMatchTalentList(expandedTier.match?.talents)[tIdx])"
+                         :alt="formatTalentName(getMatchTalentList(expandedTier.match?.talents)[tIdx])"
+                         class="hots-hex-img"
+                         @error="hideBrokenImage" />
+                    <span v-else class="hots-hex-empty-lvl">{{ lvl }}</span>
+                  </div>
+                </div>
+                <span class="hots-hex-lvl-label">Lvl {{ lvl }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tier Indicator Subheader -->
+          <div class="expanded-tier-banner">
+            <span class="expanded-tier-banner-title">
+              Level {{ [1, 4, 7, 10, 13, 16, 20][expandedTier.tierIndex] }} Talents
+            </span>
+            <span class="expanded-tier-banner-hint">
+              Click any hexagon above to switch tier options
+            </span>
+          </div>
+
+          <!-- All Options List for this Tier -->
+          <div class="expanded-options-body">
+            <div class="expanded-options-grid">
+              <div v-for="t in getTierTalents(expandedTier.heroName, expandedTier.tierIndex)"
+                   :key="t.key"
+                   class="expanded-talent-card"
+                   :class="{
+                     'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
+                     'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
+                   }">
+                <!-- Card Header with Hexagonal Option Icon -->
+                <div class="talent-card-top">
+                  <div class="talent-card-hex-wrap">
+                    <div class="talent-card-hex-outer"
+                         :class="{
+                           'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
+                           'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
+                         }">
+                      <div class="talent-card-hex-inner">
+                        <img :src="getTalentImageUrl(t.key)"
+                             :alt="t.name"
+                             class="talent-card-hex-img"
+                             @error="hideBrokenImage" />
+                      </div>
+                    </div>
+                    <span v-if="isTalentPicked(t, expandedTier.pickedTalentKey)"
+                          class="talent-card-hex-fav-badge"
+                          title="Selected talent">
+                      <svg viewBox="0 0 16 16" class="hex-fav-heart">
+                        <path d="M8 13.5l-5.3-5.3a3.3 3.3 0 0 1 4.7-4.7L8 4.1l.6-.6a3.3 3.3 0 0 1 4.7 4.7z" fill="currentColor" />
+                      </svg>
+                    </span>
+                  </div>
+
+                  <div class="talent-card-meta">
+                    <div class="talent-card-status-row">
+                      <span v-if="isTalentPicked(t, expandedTier.pickedTalentKey)"
+                            class="picked-badge">
+                        ✓ SELECTED
+                      </span>
+                      <span v-else
+                            class="unpicked-badge">
+                        NOT PICKED
+                      </span>
+
+                      <span v-if="t.type"
+                            class="talent-type-badge"
+                            :class="getTypeBadgeClass(t.type)">
+                        {{ t.type }}
+                      </span>
+                    </div>
+
+                    <h4 class="expanded-talent-name">{{ t.name }}</h4>
+                  </div>
+                </div>
+
+                <!-- Card Description -->
+                <div v-if="t.description"
+                     class="expanded-talent-desc"
+                     v-html="formatTalentDescriptionHtml(t.description)">
+                </div>
+              </div>
+            </div>
+
+            <!-- Fallback if no talents found in database -->
+            <div v-if="getTierTalents(expandedTier.heroName, expandedTier.tierIndex).length === 0"
+                 class="expanded-empty-state">
+              <p>No other talent options found for this tier.</p>
+              <div v-if="expandedTier.pickedTalentKey" class="fallback-picked-only">
+                <strong>Picked:</strong> {{ formatTalentName(expandedTier.pickedTalentKey) }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1633,7 +1894,7 @@ onUnmounted(() => {
 
 .player-match-row {
   display: grid;
-  grid-template-columns: 110px 170px 145px 180px 110px 1fr auto;
+  grid-template-columns: 110px 170px 145px 195px 110px 1fr auto;
   align-items: center;
   gap: 1rem;
   background: rgba(15, 23, 42, 0.7);
@@ -1777,39 +2038,12 @@ onUnmounted(() => {
 .talents-strip {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 3px;
 }
 
-.talent-slot {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.1s ease;
-}
-
-.talent-slot:hover {
-  transform: scale(1.15);
-  border-color: var(--accent-cyan);
-  z-index: 5;
-}
-
-.talent-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.talent-empty-tier {
-  font-size: 0.55rem;
-  font-family: var(--font-mono);
-  color: rgba(255, 255, 255, 0.25);
+.match-talents-col .talent-mini-hex-outer {
+  width: 23px;
+  height: 27px;
 }
 
 /* KDA Col */
@@ -2005,7 +2239,8 @@ onUnmounted(() => {
 /* Responsive */
 @media (max-width: 1080px) {
   .player-match-row {
-    grid-template-columns: 100px 140px 120px 1fr auto;
+    grid-template-columns: 100px 150px 130px 195px 100px auto;
+    gap: 0.75rem;
   }
 
   .match-stats-col {
