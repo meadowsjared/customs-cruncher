@@ -425,9 +425,26 @@ export async function tagLastLobbyImageAsFinal(gameNumber = 1, guildName?: strin
       return null
     }
 
+    // Determine the effective game number: use gameNumber, but if previous images from the same
+    // date/session already exist with "-Final - Game X", ensure the number is strictly greater to avoid duplicates.
+    let effectiveGameNumber = gameNumber
+    const datePrefix = last.slice(0, 16) // e.g. "lobby_2026-11-19"
+    const existingGameNumbers = files
+      .filter(f => f.startsWith(datePrefix) && f.includes('-Final - Game '))
+      .map(f => {
+        const m = f.match(/-Final - Game (\d+)/i)
+        return m ? parseInt(m[1], 10) : 0
+      })
+    if (existingGameNumbers.length > 0) {
+      const maxExisting = Math.max(...existingGameNumbers)
+      if (effectiveGameNumber <= maxExisting) {
+        effectiveGameNumber = maxExisting + 1
+      }
+    }
+
     const ext = path.extname(last)
     const base = path.basename(last, ext)
-    const newPath = path.join(targetDir, `${base}-Final - Game ${gameNumber}${ext}`)
+    const newPath = path.join(targetDir, `${base}-Final - Game ${effectiveGameNumber}${ext}`)
 
     await fs.rename(path.join(targetDir, last), newPath)
     return newPath

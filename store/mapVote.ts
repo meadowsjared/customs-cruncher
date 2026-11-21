@@ -133,11 +133,7 @@ export async function getGameNumberTonight(guildId?: string, hours = 15): Promis
         SELECT COUNT(DISTINCT r.id)::int AS count
         FROM replays r
         WHERE r.date >= ${cutoffDate}
-          AND EXISTS (
-            SELECT 1 FROM hots_accounts ha
-            WHERE ha.guild_id = ${guildId}
-              AND ha.hots_battle_tag = ANY(r.player_ids)
-          )
+          AND r.guild_id = ${guildId}
       `
       return (rows[0]?.count ?? 0) + 1
     }
