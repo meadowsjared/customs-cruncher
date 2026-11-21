@@ -1114,8 +1114,8 @@ onMounted(() => {
                   <th>K / A / D</th>
                   <th>KAD</th>
                   <th>Talents</th>
-                  <th>Hero Dmg</th>
                   <th>Siege Dmg</th>
+                  <th>Hero Dmg</th>
                   <th>Heal / Shield</th>
                   <th>Dmg Taken</th>
                   <th>XP Contrib</th>
@@ -1185,20 +1185,20 @@ onMounted(() => {
                   </td>
                   <td class="stat-bar-cell">
                     <div class="stat-bar-container">
-                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
+                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-hero"
-                             :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }">
+                        <div class="stat-bar-fill fill-siege"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }">
                         </div>
                       </div>
                     </div>
                   </td>
                   <td class="stat-bar-cell">
                     <div class="stat-bar-container">
-                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
+                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-siege"
-                             :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }">
+                        <div class="stat-bar-fill fill-hero"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }">
                         </div>
                       </div>
                     </div>
@@ -1258,8 +1258,8 @@ onMounted(() => {
                     / {{ computeTeamTotal(team0Players, 'Deaths') }}</td>
                   <td>{{ computeTeamAvgKda(team0Players) }}</td>
                   <td></td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'HeroDamage')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'SiegeDamage')) }}</td>
+                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'HeroDamage')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'Healing') + computeTeamTotal(team0Players,
                     'SelfHealing')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team0Players, 'DamageTaken')) }}</td>
@@ -1311,8 +1311,8 @@ onMounted(() => {
                   <th>K / A / D</th>
                   <th>KAD</th>
                   <th>Talents</th>
-                  <th>Hero Dmg</th>
                   <th>Siege Dmg</th>
+                  <th>Hero Dmg</th>
                   <th>Heal / Shield</th>
                   <th>Dmg Taken</th>
                   <th>XP Contrib</th>
@@ -1382,20 +1382,20 @@ onMounted(() => {
                   </td>
                   <td class="stat-bar-cell">
                     <div class="stat-bar-container">
-                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
+                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-hero"
-                             :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }">
+                        <div class="stat-bar-fill fill-siege"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }">
                         </div>
                       </div>
                     </div>
                   </td>
                   <td class="stat-bar-cell">
                     <div class="stat-bar-container">
-                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
+                      <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
                       <div class="stat-bar">
-                        <div class="stat-bar-fill fill-siege"
-                             :style="{ width: `${Math.min(100, ((p.gameStats?.SiegeDamage || 0) / maxStats.siegeDamage) * 100)}%` }">
+                        <div class="stat-bar-fill fill-hero"
+                             :style="{ width: `${Math.min(100, ((p.gameStats?.HeroDamage || 0) / maxStats.heroDamage) * 100)}%` }">
                         </div>
                       </div>
                     </div>
@@ -1455,8 +1455,8 @@ onMounted(() => {
                     / {{ computeTeamTotal(team1Players, 'Deaths') }}</td>
                   <td>{{ computeTeamAvgKda(team1Players) }}</td>
                   <td></td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'HeroDamage')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'SiegeDamage')) }}</td>
+                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'HeroDamage')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'Healing') + computeTeamTotal(team1Players,
                     'SelfHealing')) }}</td>
                   <td>{{ formatNumber(computeTeamTotal(team1Players, 'DamageTaken')) }}</td>
