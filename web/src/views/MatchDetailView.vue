@@ -519,7 +519,8 @@ function getPlayerCombatBadges(player: ReplayPlayer): PlayerCombatBadge[] {
 const copiedPlayerHandle = ref<string | null>(null)
 let copyTimeout: ReturnType<typeof setTimeout> | null = null
 
-function getPlayerTalentList(player: ReplayPlayer): (string | undefined)[] {
+function getPlayerTalentList(player?: ReplayPlayer): (string | undefined)[] {
+  if (!player) return []
   return [
     player.talents?.Tier1Choice,
     player.talents?.Tier2Choice,
@@ -4035,7 +4036,7 @@ img.clickable-hero-link:hover {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 700px) {
   .expanded-talent-overlay {
     padding: 0.5rem;
   }

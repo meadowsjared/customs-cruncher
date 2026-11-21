@@ -2004,7 +2004,7 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
   .leaderboard-table th,
   .leaderboard-table td {
     padding: 0.35rem 0.4vw !important;
