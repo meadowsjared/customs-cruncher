@@ -4,6 +4,17 @@ import type { HotSReplayObject, ReplayData } from '../types/replay'
 
 const require = createRequire(import.meta.url)
 
+// Polyfill Buffer.concat to allow `new Buffer.concat(...)` as called by legacy empeeku MPQ extractor
+const origConcat = Buffer.concat
+Buffer.concat = function (list: readonly Uint8Array[], totalLength?: number): Buffer<ArrayBuffer> {
+  return Buffer.from(origConcat(list, totalLength))
+}
+
+// Suppress unverified build warnings from hots-parser unless explicitly overridden
+if (!process.env.LOGLEVEL) {
+  process.env.LOGLEVEL = 'error'
+}
+
 type HeroProtocolDetailsPlayer = {
   m_name?: string | Buffer
   m_hero?: string | Buffer
