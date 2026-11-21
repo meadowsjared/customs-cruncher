@@ -464,6 +464,8 @@ export function createServer(): http.Server {
           first_fort_win: boolean
           first_keep_win: boolean
           version: unknown
+          player_ids: string[]
+          heroes: string[]
           bans: unknown
           picks: unknown
           xp_breakdown: unknown
@@ -495,6 +497,8 @@ export function createServer(): http.Server {
             first_fort_win,
             first_keep_win,
             version,
+            player_ids,
+            heroes,
             bans,
             picks,
             xp_breakdown,

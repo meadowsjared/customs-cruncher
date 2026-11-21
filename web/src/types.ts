@@ -177,6 +177,8 @@ export interface ReplayDetail {
   winner: number
   team0_takedowns: number
   team1_takedowns: number
+  team0_players?: string
+  team1_players?: string
   first_pick_win?: boolean
   first_objective?: number | null
   first_objective_win?: boolean
@@ -186,6 +188,8 @@ export interface ReplayDetail {
   first_keep_win?: boolean
   teams: Record<string, TeamStats>
   players: Record<string, ReplayPlayer>
+  player_ids?: string[]
+  heroes?: string[]
   bans?: Record<string, ReplayBanItem[]>
   picks?: ReplayPicks
   takedowns?: ReplayTakedown[]

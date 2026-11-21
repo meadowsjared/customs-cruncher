@@ -43,15 +43,67 @@ const targetHero = computed(() => {
   return h.replace(/_/g, ' ').trim().toLowerCase()
 })
 
+// Helper to sort players in the exact order of the HotS in-game scoreboard (based on player_ids / details.m_playerList, or team_players strings)
+function sortPlayersByScoreboard(players: ReplayPlayer[], teamNumber?: number): ReplayPlayer[] {
+  const orderList = match.value?.player_ids || []
+  const heroList = match.value?.heroes || []
+  if (orderList.length > 0 || heroList.length > 0) {
+    return [...players].sort((a, b) => {
+      let aIdx = a.ToonHandle && orderList.length > 0 ? orderList.indexOf(a.ToonHandle) : -1
+      let bIdx = b.ToonHandle && orderList.length > 0 ? orderList.indexOf(b.ToonHandle) : -1
+      if (aIdx === -1 && a.hero && heroList.length > 0) {
+        aIdx = heroList.findIndex((h) => h.toLowerCase() === a.hero.toLowerCase())
+      }
+      if (bIdx === -1 && b.hero && heroList.length > 0) {
+        bIdx = heroList.findIndex((h) => h.toLowerCase() === b.hero.toLowerCase())
+      }
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+      if (aIdx !== -1) return -1
+      if (bIdx !== -1) return 1
+      return 0
+    })
+  }
+
+  // Fallback: parse order from team0_players or team1_players string
+  const teamPlayersStr = teamNumber === 0 ? match.value?.team0_players : (teamNumber === 1 ? match.value?.team1_players : undefined)
+  if (teamPlayersStr) {
+    const parts = teamPlayersStr.split(',').map((s) => s.trim())
+    return [...players].sort((a, b) => {
+      const aHeroLower = a.hero ? a.hero.toLowerCase() : ''
+      const bHeroLower = b.hero ? b.hero.toLowerCase() : ''
+      const aNameLower = a.name ? a.name.toLowerCase() : ''
+      const bNameLower = b.name ? b.name.toLowerCase() : ''
+
+      const aIdx = parts.findIndex((part) => {
+        const pLower = part.toLowerCase()
+        return (aHeroLower && pLower.includes(`(${aHeroLower})`)) || (aNameLower && pLower.startsWith(aNameLower))
+      })
+      const bIdx = parts.findIndex((part) => {
+        const pLower = part.toLowerCase()
+        return (bHeroLower && pLower.includes(`(${bHeroLower})`)) || (bNameLower && pLower.startsWith(bNameLower))
+      })
+
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+      if (aIdx !== -1) return -1
+      if (bIdx !== -1) return 1
+      return 0
+    })
+  }
+
+  return players
+}
+
 // Match players grouped by team
 const team0Players = computed(() => {
   if (!match.value?.players) return []
-  return Object.values(match.value.players).filter((p) => p.team === 0)
+  const filtered = Object.values(match.value.players).filter((p) => p.team === 0)
+  return sortPlayersByScoreboard(filtered, 0)
 })
 
 const team1Players = computed(() => {
   if (!match.value?.players) return []
-  return Object.values(match.value.players).filter((p) => p.team === 1)
+  const filtered = Object.values(match.value.players).filter((p) => p.team === 1)
+  return sortPlayersByScoreboard(filtered, 1)
 })
 
 // Draft & bans computed data
@@ -182,117 +234,171 @@ const playerCombatBadgesMap = computed<Map<string, PlayerCombatBadge[]>>(() => {
       playerMultikillsMap.set(pKey, [])
     }
 
-    // Process multikill streaks for both teams (0 and 1)
-    for (const kTeam of [0, 1]) {
-      const teamTds = sortedTds.filter((td) => {
-        const victim = td.victim
-          ? allPlayers.find(
-              (vp) =>
-                (td.victim.player && vp.ToonHandle === td.victim.player) ||
-                (td.victim.hero && vp.hero === td.victim.hero)
-            )
-          : null
-        return victim ? victim.team !== kTeam : false
-      })
+    // Check if we have authoritative killers from the parser (victim.killedBy or killer)
+    const hasAuthoritativeKillers = sortedTds.some((td) => Boolean(td.victim?.killedBy || td.killer))
 
-      // Group takedowns occurring within 5 seconds into streaks
-      let currentStreak: typeof sortedTds = []
-      let lastTime = -999
-      const teamStreaks: (typeof sortedTds)[] = []
+    if (hasAuthoritativeKillers) {
+      // Standard HotS multikills: consecutive kills scored by the SAME player within 10 seconds
+      for (const p of allPlayers) {
+        const pHeroLower = p.hero ? p.hero.toLowerCase() : ''
+        const myKills = sortedTds.filter((td) => {
+          const killerRef = td.victim?.killedBy || td.killer
+          if (!killerRef) return false
+          if (killerRef.player && p.ToonHandle) return killerRef.player === p.ToonHandle
+          if (killerRef.hero && pHeroLower) return killerRef.hero.toLowerCase() === pHeroLower
+          return false
+        })
 
-      for (const td of teamTds) {
-        if (td.time - lastTime <= 5) {
-          currentStreak.push(td)
-        } else {
-          if (currentStreak.length >= 2) {
-            teamStreaks.push(currentStreak)
+        let currentStreak: typeof sortedTds = []
+        let lastTime = -999
+
+        for (const td of myKills) {
+          if (td.time - lastTime <= 10) {
+            currentStreak.push(td)
+          } else {
+            if (currentStreak.length >= 2) {
+              const finalTd = currentStreak[currentStreak.length - 1]
+              const tier = currentStreak.length >= 5 ? 5 : currentStreak.length
+              const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+              const awards = playerMultikillsMap.get(pKey) || []
+              awards.push({
+                tier,
+                time: finalTd.time,
+                timeStr: formatDuration(finalTd.time),
+              })
+              playerMultikillsMap.set(pKey, awards)
+            }
+            currentStreak = [td]
           }
-          currentStreak = [td]
-        }
-        lastTime = td.time
-      }
-      if (currentStreak.length >= 2) {
-        teamStreaks.push(currentStreak)
-      }
-
-      for (const streak of teamStreaks) {
-        const finalTd = streak[streak.length - 1]
-        const finalTime = finalTd.time
-        const tier = streak.length >= 5 ? 5 : streak.length
-
-        // Find the player who landed the final kill in this streak
-        let winner: (typeof allPlayers)[0] | null = null
-
-        // 1. Authoritative killer if available (from victim.killedBy or killer)
-        const killerRef = finalTd.victim?.killedBy || finalTd.killer
-        if (killerRef) {
-          winner = allPlayers.find(
-            (p) =>
-              p.team === kTeam &&
-              ((killerRef.player && p.ToonHandle === killerRef.player) ||
-                (killerRef.hero && p.hero && p.hero.toLowerCase() === killerRef.hero.toLowerCase()))
-          ) || null
+          lastTime = td.time
         }
 
-        // 2. Fallback: Determine single best candidate among finalTd participants
-        if (!winner && finalTd.killers && Array.isArray(finalTd.killers) && finalTd.killers.length > 0) {
-          const candidates = allPlayers.filter((p) => {
-            if (p.team !== kTeam) return false
-            const pHeroLower = p.hero ? p.hero.toLowerCase() : ''
-            const inKill = finalTd.killers.some(
-              (k) => (k.player && k.player === p.ToonHandle) || (k.hero && k.hero.toLowerCase() === pHeroLower)
-            )
-            if (!inKill) return false
-
-            const soloKills = p.gameStats?.SoloKill || 0
-            const multikillStat = p.gameStats?.Multikill || 0
-            if (soloKills < 2 || multikillStat <= 0) return false
-
-            const pKey = p.ToonHandle || `${p.name}-${p.hero}`
-            const currentAwards = playerMultikillsMap.get(pKey) || []
-            return currentAwards.length < multikillStat
-          })
-
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => {
-              const aHeroLower = a.hero ? a.hero.toLowerCase() : ''
-              const bHeroLower = b.hero ? b.hero.toLowerCase() : ''
-              const aStreakParticipation = streak.filter((td) =>
-                td.killers?.some((k) => (k.player && k.player === a.ToonHandle) || (k.hero && k.hero.toLowerCase() === aHeroLower))
-              ).length
-              const bStreakParticipation = streak.filter((td) =>
-                td.killers?.some((k) => (k.player && k.player === b.ToonHandle) || (k.hero && k.hero.toLowerCase() === bHeroLower))
-              ).length
-              if (bStreakParticipation !== aStreakParticipation) {
-                return bStreakParticipation - aStreakParticipation
-              }
-
-              const aSolo = a.gameStats?.SoloKill || 0
-              const bSolo = b.gameStats?.SoloKill || 0
-              if (bSolo !== aSolo) return bSolo - aSolo
-
-              const aMulti = a.gameStats?.Multikill || 0
-              const bMulti = b.gameStats?.Multikill || 0
-              if (bMulti !== aMulti) return bMulti - aMulti
-
-              const aDmg = a.gameStats?.HeroDamage || 0
-              const bDmg = b.gameStats?.HeroDamage || 0
-              return bDmg - aDmg
-            })
-            winner = candidates[0]
-          }
-        }
-
-        // Assign to the single winning player
-        if (winner) {
-          const wKey = winner.ToonHandle || `${winner.name}-${winner.hero}`
-          const awards = playerMultikillsMap.get(wKey) || []
+        if (currentStreak.length >= 2) {
+          const finalTd = currentStreak[currentStreak.length - 1]
+          const tier = currentStreak.length >= 5 ? 5 : currentStreak.length
+          const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+          const awards = playerMultikillsMap.get(pKey) || []
           awards.push({
             tier,
-            time: finalTime,
-            timeStr: formatDuration(finalTime),
+            time: finalTd.time,
+            timeStr: formatDuration(finalTd.time),
           })
-          playerMultikillsMap.set(wKey, awards)
+          playerMultikillsMap.set(pKey, awards)
+        }
+      }
+    } else {
+      // Legacy fallback for old replays without killedBy tracking: process team streaks
+      for (const kTeam of [0, 1]) {
+        const teamTds = sortedTds.filter((td) => {
+          const victim = td.victim
+            ? allPlayers.find(
+                (vp) =>
+                  (td.victim.player && vp.ToonHandle === td.victim.player) ||
+                  (td.victim.hero && vp.hero === td.victim.hero)
+              )
+            : null
+          return victim ? victim.team !== kTeam : false
+        })
+
+        // Group takedowns occurring within 5 seconds into streaks
+        let currentStreak: typeof sortedTds = []
+        let lastTime = -999
+        const teamStreaks: (typeof sortedTds)[] = []
+
+        for (const td of teamTds) {
+          if (td.time - lastTime <= 5) {
+            currentStreak.push(td)
+          } else {
+            if (currentStreak.length >= 2) {
+              teamStreaks.push(currentStreak)
+            }
+            currentStreak = [td]
+          }
+          lastTime = td.time
+        }
+        if (currentStreak.length >= 2) {
+          teamStreaks.push(currentStreak)
+        }
+
+        for (const streak of teamStreaks) {
+          const finalTd = streak[streak.length - 1]
+          const finalTime = finalTd.time
+          const tier = streak.length >= 5 ? 5 : streak.length
+
+          // Find the player who landed the final kill in this streak
+          let winner: (typeof allPlayers)[0] | null = null
+
+          // 1. Authoritative killer if available (from victim.killedBy or killer)
+          const killerRef = finalTd.victim?.killedBy || finalTd.killer
+          if (killerRef) {
+            winner = allPlayers.find(
+              (p) =>
+                p.team === kTeam &&
+                ((killerRef.player && p.ToonHandle === killerRef.player) ||
+                  (killerRef.hero && p.hero && p.hero.toLowerCase() === killerRef.hero.toLowerCase()))
+            ) || null
+          }
+
+          // 2. Fallback: Determine single best candidate among finalTd participants
+          if (!winner && finalTd.killers && Array.isArray(finalTd.killers) && finalTd.killers.length > 0) {
+            const candidates = allPlayers.filter((p) => {
+              if (p.team !== kTeam) return false
+              const pHeroLower = p.hero ? p.hero.toLowerCase() : ''
+              const inKill = finalTd.killers.some(
+                (k) => (k.player && k.player === p.ToonHandle) || (k.hero && k.hero.toLowerCase() === pHeroLower)
+              )
+              if (!inKill) return false
+
+              const soloKills = p.gameStats?.SoloKill || 0
+              const multikillStat = p.gameStats?.Multikill || 0
+              if (soloKills < 2 || multikillStat <= 0) return false
+
+              const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+              const currentAwards = playerMultikillsMap.get(pKey) || []
+              return currentAwards.length < multikillStat
+            })
+
+            if (candidates.length > 0) {
+              candidates.sort((a, b) => {
+                const aHeroLower = a.hero ? a.hero.toLowerCase() : ''
+                const bHeroLower = b.hero ? b.hero.toLowerCase() : ''
+                const aStreakParticipation = streak.filter((td) =>
+                  td.killers?.some((k) => (k.player && k.player === a.ToonHandle) || (k.hero && k.hero.toLowerCase() === aHeroLower))
+                ).length
+                const bStreakParticipation = streak.filter((td) =>
+                  td.killers?.some((k) => (k.player && k.player === b.ToonHandle) || (k.hero && k.hero.toLowerCase() === bHeroLower))
+                ).length
+                if (bStreakParticipation !== aStreakParticipation) {
+                  return bStreakParticipation - aStreakParticipation
+                }
+
+                const aSolo = a.gameStats?.SoloKill || 0
+                const bSolo = b.gameStats?.SoloKill || 0
+                if (bSolo !== aSolo) return bSolo - aSolo
+
+                const aMulti = a.gameStats?.Multikill || 0
+                const bMulti = b.gameStats?.Multikill || 0
+                if (bMulti !== aMulti) return bMulti - aMulti
+
+                const aDmg = a.gameStats?.HeroDamage || 0
+                const bDmg = b.gameStats?.HeroDamage || 0
+                return bDmg - aDmg
+              })
+              winner = candidates[0]
+            }
+          }
+
+          // Assign to the single winning player
+          if (winner) {
+            const wKey = winner.ToonHandle || `${winner.name}-${winner.hero}`
+            const awards = playerMultikillsMap.get(wKey) || []
+            awards.push({
+              tier,
+              time: finalTime,
+              timeStr: formatDuration(finalTime),
+            })
+            playerMultikillsMap.set(wKey, awards)
+          }
         }
       }
     }
@@ -1148,7 +1254,7 @@ onMounted(() => {
               </template>
               <tr class="totals-row">
                   <td>Team 1 Totals</td>
-                  <td>{{ computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }}
+                  <td>{{ (match?.team0_takedowns !== undefined && match?.team0_takedowns !== null) ? match.team0_takedowns : computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }}
                     / {{ computeTeamTotal(team0Players, 'Deaths') }}</td>
                   <td>{{ computeTeamAvgKda(team0Players) }}</td>
                   <td></td>
@@ -1345,7 +1451,7 @@ onMounted(() => {
               </template>
               <tr class="totals-row">
                   <td>Team 2 Totals</td>
-                  <td>{{ computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }}
+                  <td>{{ (match?.team1_takedowns !== undefined && match?.team1_takedowns !== null) ? match.team1_takedowns : computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }}
                     / {{ computeTeamTotal(team1Players, 'Deaths') }}</td>
                   <td>{{ computeTeamAvgKda(team1Players) }}</td>
                   <td></td>
