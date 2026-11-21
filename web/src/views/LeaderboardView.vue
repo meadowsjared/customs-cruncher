@@ -1339,6 +1339,7 @@ onUnmounted(() => {
   margin-bottom: 2rem;
   flex-wrap: wrap;
   gap: 1.25rem;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .page-title {
@@ -1469,7 +1470,7 @@ onUnmounted(() => {
   min-width: min-content;
   padding-left: 2rem;
   padding-right: 2rem;
-  transition: padding 0.25s ease;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .leaderboard-table-container {
@@ -1478,7 +1479,7 @@ onUnmounted(() => {
   padding: 0;
   border-radius: var(--radius-lg);
   background: var(--bg-surface-elevated);
-  transition: border-radius 0.25s ease;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .leaderboard-table-container.is-sticky {
@@ -1513,12 +1514,12 @@ onUnmounted(() => {
 
 .leaderboard-table thead tr th:first-child {
   border-top-left-radius: var(--radius-lg);
-  transition: border-radius 0.25s ease;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .leaderboard-table thead tr th:last-child {
   border-top-right-radius: var(--radius-lg);
-  transition: border-radius 0.25s ease;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .leaderboard-table-container.is-sticky .leaderboard-table thead tr th:first-child {
@@ -1531,12 +1532,12 @@ onUnmounted(() => {
 
 .leaderboard-table tbody tr:last-child td:first-child {
   border-bottom-left-radius: var(--radius-lg);
-  transition: border-radius 0.25s ease;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .leaderboard-table tbody tr:last-child td:last-child {
   border-bottom-right-radius: var(--radius-lg);
-  transition: border-radius 0.25s ease;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .wl-header-th {
@@ -1940,8 +1941,8 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .leaderboard-container {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .leaderboard-table th,
@@ -1986,7 +1987,7 @@ onUnmounted(() => {
   }
 
   .leaderboard-table-container {
-    border-radius: 0 !important;
+    border-radius: 0;
     border-left: none;
     border-right: none;
   }
@@ -1995,7 +1996,7 @@ onUnmounted(() => {
   .leaderboard-table thead tr th:last-child,
   .leaderboard-table tbody tr:last-child td:first-child,
   .leaderboard-table tbody tr:last-child td:last-child {
-    border-radius: 0 !important;
+    border-radius: 0;
   }
 
   .leaderboard-table thead th {
