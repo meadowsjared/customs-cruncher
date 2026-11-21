@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PlayerProfileData,
@@ -68,14 +68,24 @@ const activeTooltip = ref<ActiveTooltipState>({
   y: 0,
 })
 
-function showTalentTooltip(event: MouseEvent, talentKey: string | undefined, tierIndex: number, heroName: string) {
+function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey: string | undefined, tierIndex: number, heroName: string) {
+  let clientX = 0
+  let clientY = 0
+  if ('touches' in event && event.touches.length > 0) {
+    clientX = event.touches[0].clientX
+    clientY = event.touches[0].clientY
+  } else if ('clientX' in event) {
+    clientX = event.clientX
+    clientY = event.clientY
+  }
+
   activeTooltip.value = {
     visible: true,
     talentKey,
     tierIndex,
     heroName,
-    x: event.clientX,
-    y: event.clientY,
+    x: clientX,
+    y: clientY,
   }
 }
 
@@ -88,27 +98,56 @@ function hideTalentTooltip() {
   activeTooltip.value.visible = false
 }
 
+function isDomElement(target: EventTarget | null): target is Element {
+  return target instanceof Element
+}
+
+function handlePointerDown(e: Event) {
+  if (!activeTooltip.value.visible) return
+  if (isDomElement(e.target) && e.target.closest('.talent-slot, .hots-talent-tooltip')) {
+    return
+  }
+  hideTalentTooltip()
+}
+
 const tooltipStyle = computed(() => {
-  const padding = 16
-  const tooltipWidth = 330
-  const tooltipHeight = 220
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080
+  const isMobile = viewportWidth < 600
+  const padding = isMobile ? 12 : 16
+  const tooltipWidth = Math.min(330, viewportWidth - padding * 2)
+  const tooltipHeight = 220
 
-  let left = activeTooltip.value.x + 16
-  let top = activeTooltip.value.y + 16
+  let left: number
+  let top: number
 
-  if (left + tooltipWidth > viewportWidth - padding) {
-    left = Math.max(padding, activeTooltip.value.x - tooltipWidth - 16)
+  if (isMobile) {
+    // Horizontally center relative to tap point on mobile
+    left = activeTooltip.value.x - tooltipWidth / 2
+    // Vertically place above or below finger so tap target isn't obscured
+    if (activeTooltip.value.y > viewportHeight * 0.55) {
+      top = activeTooltip.value.y - tooltipHeight - 16
+    } else {
+      top = activeTooltip.value.y + 24
+    }
+  } else {
+    // Desktop: default to right/down from cursor, flip left if overflowing
+    left = activeTooltip.value.x + 16
+    top = activeTooltip.value.y + 16
+
+    if (left + tooltipWidth > viewportWidth - padding) {
+      left = activeTooltip.value.x - tooltipWidth - 16
+    }
   }
 
-  if (top + tooltipHeight > viewportHeight - padding) {
-    top = Math.max(padding, viewportHeight - tooltipHeight - padding)
-  }
+  // Strict clamp within screen bounds so tooltip NEVER escapes viewport bounds
+  left = Math.max(padding, Math.min(left, viewportWidth - tooltipWidth - padding))
+  top = Math.max(padding, Math.min(top, viewportHeight - tooltipHeight - padding))
 
   return {
-    left: `${left}px`,
-    top: `${top}px`,
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    maxWidth: `${tooltipWidth}px`,
   }
 })
 
@@ -510,6 +549,11 @@ onMounted(() => {
     const heroStr = typeof route.params.heroName === 'string' ? route.params.heroName : undefined
     fetchPlayerProfile(currentId, heroStr)
   }
+  window.addEventListener('pointerdown', handlePointerDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handlePointerDown)
 })
 </script>
 
@@ -953,7 +997,8 @@ onMounted(() => {
                      class="talent-slot"
                      @mouseenter="showTalentTooltip($event, tKey, tIdx, m.hero)"
                      @mousemove="updateTooltipPosition($event)"
-                     @mouseleave="hideTalentTooltip">
+                     @mouseleave="hideTalentTooltip"
+                     @click.stop="showTalentTooltip($event, tKey, tIdx, m.hero)">
                   <img v-if="tKey"
                        :src="getTalentImageUrl(tKey)"
                        :alt="formatTalentName(tKey)"

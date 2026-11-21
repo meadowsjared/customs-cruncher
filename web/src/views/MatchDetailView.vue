@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem, PlayerCombatBadge } from '../types'
 import {
@@ -548,15 +548,25 @@ const activeTooltip = ref<ActiveTooltipState>({
   y: 0,
 })
 
-function showTalentTooltip(event: MouseEvent, talentKey?: string, tierIndex: number = 0, player?: ReplayPlayer) {
+function showTalentTooltip(event: MouseEvent | TouchEvent, talentKey?: string, tierIndex: number = 0, player?: ReplayPlayer) {
+  let clientX = 0
+  let clientY = 0
+  if ('touches' in event && event.touches.length > 0) {
+    clientX = event.touches[0].clientX
+    clientY = event.touches[0].clientY
+  } else if ('clientX' in event) {
+    clientX = event.clientX
+    clientY = event.clientY
+  }
+
   activeTooltip.value = {
     visible: true,
     talentKey,
     tierIndex,
     heroName: player?.hero || '',
     player,
-    x: event.clientX,
-    y: event.clientY,
+    x: clientX,
+    y: clientY,
   }
 }
 
@@ -568,6 +578,18 @@ function updateTooltipPosition(event: MouseEvent) {
 
 function hideTalentTooltip() {
   activeTooltip.value.visible = false
+}
+
+function isDomElement(target: EventTarget | null): target is Element {
+  return target instanceof Element
+}
+
+function handlePointerDown(e: Event) {
+  if (!activeTooltip.value.visible) return
+  if (isDomElement(e.target) && e.target.closest('.talent-mini-slot, .hots-talent-tooltip')) {
+    return
+  }
+  hideTalentTooltip()
 }
 
 function getQuestIcon(type: string): string {
@@ -598,28 +620,43 @@ function getTypeBadgeClass(type?: string): string {
 }
 
 const tooltipStyle = computed(() => {
-  const padding = 16
-  const tooltipWidth = 330
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080
+  const isMobile = viewportWidth < 600
+  const padding = isMobile ? 12 : 16
+  const tooltipWidth = Math.min(330, viewportWidth - padding * 2)
   const tooltipHeight = 240
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
 
-  let left = activeTooltip.value.x + 16
-  let top = activeTooltip.value.y - 20
+  let left: number
+  let top: number
 
-  if (left + tooltipWidth > viewportWidth - padding) {
-    left = activeTooltip.value.x - tooltipWidth - 16
+  if (isMobile) {
+    // Center horizontally around the tapped talent icon on mobile
+    left = activeTooltip.value.x - tooltipWidth / 2
+    // Place vertically above if tap is in lower half of screen, below if in upper half
+    if (activeTooltip.value.y > viewportHeight * 0.55) {
+      top = activeTooltip.value.y - tooltipHeight - 16
+    } else {
+      top = activeTooltip.value.y + 24
+    }
+  } else {
+    // Desktop: default to right/down from cursor, flip left if overflowing
+    left = activeTooltip.value.x + 16
+    top = activeTooltip.value.y - 20
+
+    if (left + tooltipWidth > viewportWidth - padding) {
+      left = activeTooltip.value.x - tooltipWidth - 16
+    }
   }
-  if (top + tooltipHeight > viewportHeight - padding) {
-    top = Math.max(padding, viewportHeight - tooltipHeight - padding)
-  }
-  if (top < padding) {
-    top = padding
-  }
+
+  // Strict clamp within screen bounds so tooltip NEVER escapes viewport bounds
+  left = Math.max(padding, Math.min(left, viewportWidth - tooltipWidth - padding))
+  top = Math.max(padding, Math.min(top, viewportHeight - tooltipHeight - padding))
 
   return {
-    left: `${left}px`,
-    top: `${top}px`,
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    maxWidth: `${tooltipWidth}px`,
   }
 })
 
@@ -817,6 +854,11 @@ async function navigateToPlayerHero(player: ReplayPlayer, hero: string) {
 
 onMounted(() => {
   fetchMatchDetail()
+  window.addEventListener('pointerdown', handlePointerDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handlePointerDown)
 })
 </script>
 
@@ -1157,22 +1199,22 @@ onMounted(() => {
             <table class="scoreboard-table">
               <thead>
                 <tr>
-                  <th>Player / Hero</th>
-                  <th>K / A / D</th>
-                  <th>KAD</th>
-                  <th>Talents</th>
-                  <th>Siege Dmg</th>
-                  <th>Hero Dmg</th>
-                  <th>Heal / Shield</th>
-                  <th>Dmg Taken</th>
-                  <th>XP Contrib</th>
+                  <th class="col-player">Player / Hero</th>
+                  <th class="col-kad">K / A / D</th>
+                  <th class="col-kda">KAD</th>
+                  <th class="col-talents">Talents</th>
+                  <th class="col-stat col-siege">Siege Dmg</th>
+                  <th class="col-stat col-hero">Hero Dmg</th>
+                  <th class="col-stat col-heal">Heal / Shield</th>
+                  <th class="col-stat col-taken">Dmg Taken</th>
+                  <th class="col-stat col-xp">XP Contrib</th>
                 </tr>
               </thead>
               <tbody>
                 <template v-for="p in team0Players"
                           :key="p.ToonHandle">
                   <tr :class="{ 'highlighted-row': isPlayerHighlighted(p), 'has-badges-row': getPlayerCombatBadges(p).length > 0 }">
-                    <td class="player-cell">
+                    <td class="player-cell col-player">
                       <div class="player-info-wrap">
                         <img :src="getHeroImageUrl(p.hero)"
                              :alt="p.hero"
@@ -1209,22 +1251,23 @@ onMounted(() => {
                         </div>
                       </div>
                     </td>
-                  <td class="kad-cell">
+                  <td class="kad-cell col-kad">
                     <span class="kad-text">
                       {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} /
                       <span class="deaths-val">{{ p.gameStats?.Deaths || 0 }}</span>
                     </span>
                   </td>
-                  <td class="num-cell">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}
+                  <td class="num-cell col-kda">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}
                   </td>
-                  <td class="talents-cell">
+                  <td class="talents-cell col-talents">
                     <div class="player-talents-strip">
                       <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                            :key="idx"
                            class="talent-mini-slot"
                            @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                            @mousemove="updateTooltipPosition($event)"
-                           @mouseleave="hideTalentTooltip">
+                           @mouseleave="hideTalentTooltip"
+                           @click.stop="showTalentTooltip($event, tKey, idx, p)">
                         <img v-if="tKey"
                              :src="getTalentImageUrl(tKey)"
                              :alt="formatTalentName(tKey)"
@@ -1235,7 +1278,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-siege">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
                       <div class="stat-bar">
@@ -1245,7 +1288,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-hero">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
                       <div class="stat-bar">
@@ -1255,7 +1298,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-heal">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber((p.gameStats?.Healing || 0) +
                         (p.gameStats?.SelfHealing || 0)) }}</span>
@@ -1266,7 +1309,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-taken">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.DamageTaken) }}</span>
                       <div class="stat-bar">
@@ -1276,7 +1319,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-xp">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.ExperienceContribution) }}</span>
                       <div class="stat-bar">
@@ -1305,17 +1348,17 @@ onMounted(() => {
                 </tr>
               </template>
               <tr class="totals-row">
-                  <td>Team 1 Totals</td>
-                  <td>{{ (match?.team0_takedowns !== undefined && match?.team0_takedowns !== null) ? match.team0_takedowns : computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }}
+                  <td class="col-player">Team 1 Totals</td>
+                  <td class="col-kad">{{ (match?.team0_takedowns !== undefined && match?.team0_takedowns !== null) ? match.team0_takedowns : computeTeamTotal(team0Players, 'SoloKill') }} / {{ computeTeamTotal(team0Players, 'Assists') }}
                     / {{ computeTeamTotal(team0Players, 'Deaths') }}</td>
-                  <td>{{ computeTeamAvgKda(team0Players) }}</td>
-                  <td></td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'SiegeDamage')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'HeroDamage')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'Healing') + computeTeamTotal(team0Players,
+                  <td class="col-kda">{{ computeTeamAvgKda(team0Players) }}</td>
+                  <td class="col-talents"></td>
+                  <td class="stat-bar-cell col-stat col-siege">{{ formatNumber(computeTeamTotal(team0Players, 'SiegeDamage')) }}</td>
+                  <td class="stat-bar-cell col-stat col-hero">{{ formatNumber(computeTeamTotal(team0Players, 'HeroDamage')) }}</td>
+                  <td class="stat-bar-cell col-stat col-heal">{{ formatNumber(computeTeamTotal(team0Players, 'Healing') + computeTeamTotal(team0Players,
                     'SelfHealing')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'DamageTaken')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team0Players, 'ExperienceContribution')) }}</td>
+                  <td class="stat-bar-cell col-stat col-taken">{{ formatNumber(computeTeamTotal(team0Players, 'DamageTaken')) }}</td>
+                  <td class="stat-bar-cell col-stat col-xp">{{ formatNumber(computeTeamTotal(team0Players, 'ExperienceContribution')) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1364,22 +1407,22 @@ onMounted(() => {
             <table class="scoreboard-table">
               <thead>
                 <tr>
-                  <th>Player / Hero</th>
-                  <th>K / A / D</th>
-                  <th>KAD</th>
-                  <th>Talents</th>
-                  <th>Siege Dmg</th>
-                  <th>Hero Dmg</th>
-                  <th>Heal / Shield</th>
-                  <th>Dmg Taken</th>
-                  <th>XP Contrib</th>
+                  <th class="col-player">Player / Hero</th>
+                  <th class="col-kad">K / A / D</th>
+                  <th class="col-kda">KAD</th>
+                  <th class="col-talents">Talents</th>
+                  <th class="col-stat col-siege">Siege Dmg</th>
+                  <th class="col-stat col-hero">Hero Dmg</th>
+                  <th class="col-stat col-heal">Heal / Shield</th>
+                  <th class="col-stat col-taken">Dmg Taken</th>
+                  <th class="col-stat col-xp">XP Contrib</th>
                 </tr>
               </thead>
               <tbody>
                 <template v-for="p in team1Players"
                           :key="p.ToonHandle">
                   <tr :class="{ 'highlighted-row': isPlayerHighlighted(p), 'has-badges-row': getPlayerCombatBadges(p).length > 0 }">
-                    <td class="player-cell">
+                    <td class="player-cell col-player">
                       <div class="player-info-wrap">
                         <img :src="getHeroImageUrl(p.hero)"
                              :alt="p.hero"
@@ -1416,22 +1459,23 @@ onMounted(() => {
                         </div>
                       </div>
                     </td>
-                  <td class="kad-cell">
+                  <td class="kad-cell col-kad">
                     <span class="kad-text">
                       {{ p.gameStats?.SoloKill || 0 }} / {{ p.gameStats?.Assists || 0 }} /
                       <span class="deaths-val">{{ p.gameStats?.Deaths || 0 }}</span>
                     </span>
                   </td>
-                  <td class="num-cell">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}
+                  <td class="num-cell col-kda">{{ p.gameStats?.KDA !== undefined ? Number(p.gameStats.KDA).toFixed(1) : '-' }}
                   </td>
-                  <td class="talents-cell">
+                  <td class="talents-cell col-talents">
                     <div class="player-talents-strip">
                       <div v-for="(tKey, idx) in getPlayerTalentList(p)"
                            :key="idx"
                            class="talent-mini-slot"
                            @mouseenter="showTalentTooltip($event, tKey, idx, p)"
                            @mousemove="updateTooltipPosition($event)"
-                           @mouseleave="hideTalentTooltip">
+                           @mouseleave="hideTalentTooltip"
+                           @click.stop="showTalentTooltip($event, tKey, idx, p)">
                         <img v-if="tKey"
                              :src="getTalentImageUrl(tKey)"
                              :alt="formatTalentName(tKey)"
@@ -1442,7 +1486,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-siege">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.SiegeDamage) }}</span>
                       <div class="stat-bar">
@@ -1452,7 +1496,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-hero">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.HeroDamage) }}</span>
                       <div class="stat-bar">
@@ -1462,7 +1506,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-heal">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber((p.gameStats?.Healing || 0) +
                         (p.gameStats?.SelfHealing || 0)) }}</span>
@@ -1473,7 +1517,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-taken">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.DamageTaken) }}</span>
                       <div class="stat-bar">
@@ -1483,7 +1527,7 @@ onMounted(() => {
                       </div>
                     </div>
                   </td>
-                  <td class="stat-bar-cell">
+                  <td class="stat-bar-cell col-stat col-xp">
                     <div class="stat-bar-container">
                       <span class="stat-bar-value">{{ formatNumber(p.gameStats?.ExperienceContribution) }}</span>
                       <div class="stat-bar">
@@ -1512,17 +1556,17 @@ onMounted(() => {
                 </tr>
               </template>
               <tr class="totals-row">
-                  <td>Team 2 Totals</td>
-                  <td>{{ (match?.team1_takedowns !== undefined && match?.team1_takedowns !== null) ? match.team1_takedowns : computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }}
+                  <td class="col-player">Team 2 Totals</td>
+                  <td class="col-kad">{{ (match?.team1_takedowns !== undefined && match?.team1_takedowns !== null) ? match.team1_takedowns : computeTeamTotal(team1Players, 'SoloKill') }} / {{ computeTeamTotal(team1Players, 'Assists') }}
                     / {{ computeTeamTotal(team1Players, 'Deaths') }}</td>
-                  <td>{{ computeTeamAvgKda(team1Players) }}</td>
-                  <td></td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'SiegeDamage')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'HeroDamage')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'Healing') + computeTeamTotal(team1Players,
+                  <td class="col-kda">{{ computeTeamAvgKda(team1Players) }}</td>
+                  <td class="col-talents"></td>
+                  <td class="stat-bar-cell col-stat col-siege">{{ formatNumber(computeTeamTotal(team1Players, 'SiegeDamage')) }}</td>
+                  <td class="stat-bar-cell col-stat col-hero">{{ formatNumber(computeTeamTotal(team1Players, 'HeroDamage')) }}</td>
+                  <td class="stat-bar-cell col-stat col-heal">{{ formatNumber(computeTeamTotal(team1Players, 'Healing') + computeTeamTotal(team1Players,
                     'SelfHealing')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'DamageTaken')) }}</td>
-                  <td>{{ formatNumber(computeTeamTotal(team1Players, 'ExperienceContribution')) }}</td>
+                  <td class="stat-bar-cell col-stat col-taken">{{ formatNumber(computeTeamTotal(team1Players, 'DamageTaken')) }}</td>
+                  <td class="stat-bar-cell col-stat col-xp">{{ formatNumber(computeTeamTotal(team1Players, 'ExperienceContribution')) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1938,6 +1982,7 @@ onMounted(() => {
 .container {
   padding-left: 1rem;
   padding-right: 1rem;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 th,
@@ -1956,8 +2001,210 @@ td:last-child {
   padding-right: 1rem;
 }
 
+.table-container {
+  width: 100%;
+  container-type: inline-size;
+}
+
+@container (max-width: 1060px) {
+  table.scoreboard-table,
+  table.scoreboard-table thead,
+  table.scoreboard-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  table.scoreboard-table thead tr,
+  table.scoreboard-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    row-gap: 0.5rem;
+    width: 100%;
+    align-items: center;
+    box-sizing: border-box;
+  }
+
+  table.scoreboard-table thead tr {
+    background: var(--bg-surface-elevated);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  table.scoreboard-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  table.scoreboard-table tbody tr.has-badges-row {
+    border-bottom: none !important;
+  }
+
+  /* Line 1: Player/Hero, K/A/D, KAD, Talents */
+  .col-player {
+    grid-column: span 4;
+    padding-left: 0.75rem !important;
+  }
+
+  .col-kad {
+    grid-column: span 2;
+    text-align: center;
+  }
+
+  .col-kda {
+    grid-column: span 1;
+    text-align: center;
+  }
+
+  .col-talents {
+    grid-column: span 3;
+    padding-right: 0.75rem !important;
+  }
+
+  /* Line 2: The 5 combat stats (Siege, Hero, Heal, Taken, XP) */
+  .col-stat {
+    grid-column: span 2;
+    min-width: 0;
+    padding: 0.45rem 0.5rem 0.6rem !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  .col-stat .stat-bar-container {
+    min-width: 0 !important;
+  }
+
+  table.scoreboard-table thead .col-stat {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: transparent;
+    font-size: 0.7rem;
+    padding-bottom: 0.4rem !important;
+  }
+
+  .totals-row .col-stat {
+    border-top: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .player-badges-row {
+    width: 100%;
+    display: block !important;
+    border-top: none !important;
+  }
+
+  .player-badges-cell {
+    width: 100%;
+    display: block !important;
+    padding: 0 0.75rem 0.5rem 0.75rem !important;
+  }
+}
+
+@container (max-width: 720px) {
+  /* Line 1: Player / Hero, K/A/D, KAD */
+  .col-player {
+    grid-column: span 6;
+    padding-left: 0.75rem !important;
+  }
+
+  .col-kad {
+    grid-column: span 3;
+    text-align: center;
+  }
+
+  .col-kda {
+    grid-column: span 1;
+    text-align: center;
+  }
+
+  /* Line 2: Talents chunk below [Player, K/A/D, KAD] */
+  .col-talents {
+    grid-column: 1 / -1;
+    padding: 0.35rem 0.75rem 0.45rem !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+  }
+
+  table.scoreboard-table thead .col-talents {
+    display: none;
+  }
+
+  .totals-row .col-talents {
+    display: none;
+  }
+
+  /* Line 3: The 5 combat stats remain 20% each (span 2) */
+  .col-stat {
+    grid-column: span 2;
+  }
+}
+
+@container (max-width: 580px) {
+  /* Remove outer left/right table padding in mobile view */
+  th:first-child,
+  td:first-child {
+    padding-left: 0.35rem !important;
+  }
+
+  th:last-child,
+  td:last-child {
+    padding-right: 0.25rem !important;
+  }
+
+  /* Line 1: Compact Player, K/A/D, KAD for phone screens */
+  .col-player {
+    grid-column: span 6 !important;
+    padding-left: 0.35rem !important;
+  }
+
+  .player-info-wrap {
+    gap: 0.45rem;
+  }
+
+  .hero-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .hero-pick-row {
+    flex-wrap: wrap;
+    white-space: normal;
+    gap: 0.15rem 0.35rem;
+  }
+
+  .player-meta-badge {
+    font-size: 0.62rem;
+    padding: 0.05rem 0.25rem;
+  }
+
+  .col-kad {
+    grid-column: span 3 !important;
+    text-align: center;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.15rem !important;
+  }
+
+  .col-kda {
+    grid-column: span 1 !important;
+    text-align: center;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.15rem !important;
+  }
+
+  /* Compact the 5 combat stats on phone so numbers don't squish */
+  .col-stat {
+    padding: 0.35rem 0.15rem 0.45rem !important;
+  }
+
+  .stat-bar-value {
+    font-size: 0.72rem;
+  }
+
+  table.scoreboard-table thead .col-stat {
+    font-size: 0.58rem;
+    padding: 0.3rem 0.1rem !important;
+    letter-spacing: -0.01em;
+  }
+}
+
 .back-nav {
   margin-bottom: 1.5rem;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .match-detail-content {
@@ -1974,6 +2221,7 @@ td:last-child {
   min-height: 180px;
   display: flex;
   align-items: center;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .banner-bg {
@@ -2099,7 +2347,7 @@ td:last-child {
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   border: 1px solid var(--border-subtle);
-  transition: all 0.2s ease;
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 /* Outer borders matching winning or losing color */
@@ -2118,6 +2366,8 @@ td:last-child {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding: 0.85rem 1.25rem;
   background: var(--bg-surface-elevated);
   border-bottom: 1px solid var(--border-subtle);
@@ -2299,7 +2549,9 @@ td:last-child {
 
 .team-stats-summary {
   display: flex;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
 }
 
 .stat-pill {
@@ -2321,6 +2573,7 @@ td:last-child {
 .name-hero-col {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .name-tag-row {
@@ -2584,6 +2837,7 @@ td:last-child {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .draft-card-header {
@@ -2906,8 +3160,8 @@ td:last-child {
 .hero-pick-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.4rem;
 }
 
 .player-meta-badge {
@@ -3131,5 +3385,25 @@ img.clickable-hero-link:hover {
   color: #ffffff;
   border: 1px solid #f43f5e;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .back-nav {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .team-section,
+  .draft-overview-card,
+  .match-banner,
+  .tabs-nav,
+  .card {
+    border-radius: 0px;
+  }
 }
 </style>
