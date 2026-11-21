@@ -211,7 +211,7 @@
 
     "@keyv/serialize": ["@keyv/serialize@1.1.1", "", {}, "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA=="],
 
-    "@meadowsjared/hots-parser": ["@meadowsjared/hots-parser@github:meadowsjared/hots-parser#d82e04e", { "dependencies": { "heroprotocol": "GaryIrick/heroprotocol", "pino": "^4.17.5", "xregexp": "^4.2.0" } }, "meadowsjared-hots-parser-d82e04e", "sha512-EA3gsC48wg9oVdfrvzZsq1QIYjHap3OTnNqq7gnjmWLQgIUgtnOZ/RW/Qyx8kkoTSDxrKBTnk0Q+sBWQ8qcewA=="],
+    "@meadowsjared/hots-parser": ["@meadowsjared/hots-parser@github:meadowsjared/hots-parser#d668151", { "dependencies": { "heroprotocol": "GaryIrick/heroprotocol", "pino": "^4.17.5", "xregexp": "^4.2.0" } }, "meadowsjared-hots-parser-d668151", "sha512-w31MED8dV/7vEYLDEbLSu+Pi6Y0dHplwhzhbuPoOsETg0o50eUjstw3obqUmtRykM/Y6mDbUvmX2zu7p3E00Nw=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.2.6", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1 || 2.0.0-beta.2", "@emnapi/runtime": "^1.7.1 || 2.0.0-beta.2" } }, "sha512-mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw=="],
 
