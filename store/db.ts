@@ -3,7 +3,12 @@ import postgres from 'postgres'
 
 dotenv.config()
 
-const isProd = process.env.NODE_ENV === 'production'
+const isReimport = process.argv.some(arg => arg.includes('reimportReplays'))
+const hasDevArg = process.argv.includes(':dev') || process.argv.includes('--dev')
+
+export const isProd = isReimport
+  ? !hasDevArg && process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'dev'
+  : process.env.NODE_ENV === 'production'
 const connectionString = isProd ? process.env.DATABASE_URL_PROD : process.env.DATABASE_URL_DEV
 
 if (!connectionString) {

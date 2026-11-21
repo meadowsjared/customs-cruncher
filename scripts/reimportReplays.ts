@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { sql } from '../store/db'
+import { isProd, sql } from '../store/db'
 import { refreshPlayerStatsView } from '../store/playerStats'
 import { relinkAccountSubstitutions } from '../store/substitutions'
 import { toReplayRow } from '../types/replay'
@@ -45,7 +45,26 @@ function parseArgs(): {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
-    if (arg === '--id' && i + 1 < args.length) {
+    if (arg === '--help' || arg === '-h') {
+      console.log(`
+Re-import Replays Tool
+
+Usage:
+  bun scripts/reimportReplays.ts [options] [:dev]
+  bun run reimport:replays [options]
+  bun run reimport:replays:dev [options]
+
+Options:
+  :dev, --dev          Target development database (defaults to production)
+  :prod, --prod        Target production database (default)
+  --id <id>            Reparse a specific replay by ID
+  --limit <number>     Limit the number of replays to process
+  --force              Reparse replays even if already up to date
+  --no-optimize        Skip refreshing materialized views and analyzing DB
+  --help, -h           Show this help message
+`)
+      process.exit(0)
+    } else if (arg === '--id' && i + 1 < args.length) {
       const parsed = parseInt(args[++i], 10)
       if (!isNaN(parsed)) targetId = parsed
     } else if (arg === '--limit' && i + 1 < args.length) {
@@ -161,6 +180,7 @@ async function optimizeDb(): Promise<void> {
 
 async function main() {
   const options = parseArgs()
+  console.log(`🌐 Target Database: ${isProd ? 'PRODUCTION' : 'DEVELOPMENT'}`)
   console.log('🔍 Searching for replays to re-import...', options)
 
   const rows = await getReplaysToReparse(options)
