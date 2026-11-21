@@ -222,11 +222,20 @@ function formatOptionsForDm(options: readonly CommandOptionLike[]): string {
       if (opt.options && opt.options.length > 0) {
         return `${opt.name} ${formatOptionsForDm(opt.options)}`
       }
-      if (typeof opt.value === 'string' && /^\d{17,20}$/.test(opt.value)) {
-        return `${opt.name}: <@${opt.value}>`
+      const rawValue =
+        typeof opt.value === 'string' || typeof opt.value === 'number'
+          ? String(opt.value).replace(/[<@!>]/g, '')
+          : ''
+      if (rawValue && /^\d{17,20}$/.test(rawValue)) {
+        const mention = opt.name.toLowerCase().includes('channel') ? `<#${rawValue}>` : `<@${rawValue}>`
+        return `${opt.name}: ${mention} (ID: ${rawValue})`
       }
       if (opt.userName && opt.value !== undefined) {
-        return `${opt.name}: <@${String(opt.value)}>`
+        const idStr = String(opt.value).replace(/[<@!>]/g, '')
+        return `${opt.name}: <@${idStr}> (ID: ${idStr})`
+      }
+      if (opt.userName) {
+        return `${opt.name}: ${opt.userName}`
       }
       return opt.value !== undefined ? `${opt.name}: \`${String(opt.value)}\`` : opt.name
     })
