@@ -4015,30 +4015,59 @@ img.clickable-hero-link:hover {
 .expanded-talent-card {
   padding: 1.15rem;
   border-radius: var(--radius-md, 10px);
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
+/* HotS Selected Talent Card: Radiant Magenta/Violet Glow Frame */
 .expanded-talent-card.is-picked {
-  background: rgba(16, 185, 129, 0.12);
-  border: 1.5px solid rgba(16, 185, 129, 0.65);
-  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.22) 0%, rgba(35, 20, 68, 0.85) 100%);
+  border: 1.5px solid #d946ef;
+  box-shadow: 0 0 18px rgba(217, 70, 239, 0.35), inset 0 0 12px rgba(192, 132, 252, 0.15), 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
+.expanded-talent-card.is-picked .expanded-talent-name {
+  color: #ffffff;
+  text-shadow: 0 0 10px rgba(217, 70, 239, 0.6), 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.expanded-talent-card.is-picked .expanded-talent-desc {
+  color: #e2e8f0;
+}
+
+/* HotS Not Selected Talent Cards: Solid Deep Purple Frame */
 .expanded-talent-card.is-not-picked {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px dashed rgba(148, 163, 184, 0.25);
-  opacity: 0.62;
+  background: rgba(20, 15, 44, 0.75);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  opacity: 0.88;
+}
+
+.expanded-talent-card.is-not-picked .expanded-talent-name {
+  color: #93c5fd;
+}
+
+.expanded-talent-card.is-not-picked .expanded-talent-desc {
+  color: #94a3b8;
 }
 
 .expanded-talent-card.is-not-picked:hover {
   opacity: 1;
-  background: rgba(30, 41, 59, 0.85);
-  border-style: solid;
-  border-color: rgba(148, 163, 184, 0.5);
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 25, 62, 0.9) 100%);
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.35), 0 6px 18px rgba(0, 0, 0, 0.6);
   transform: translateY(-2px);
+}
+
+.expanded-talent-card.is-not-picked:hover .expanded-talent-name {
+  color: #ffffff;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.expanded-talent-card.is-not-picked:hover .expanded-talent-desc {
+  color: #cbd5e1;
 }
 
 .talent-card-top {
@@ -4052,9 +4081,33 @@ img.clickable-hero-link:hover {
   width: 52px;
   height: 60px;
   flex-shrink: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.talent-card-hex-fav-badge {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #f472b6 0%, #d946ef 100%);
+  border: 1px solid #fdf4ff;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(217, 70, 239, 0.8), 0 2px 4px rgba(0, 0, 0, 0.6);
+  z-index: 5;
+}
+
+.hex-fav-heart {
+  width: 10px;
+  height: 10px;
+  display: block;
 }
 
 .talent-card-hex-outer {
@@ -4067,14 +4120,21 @@ img.clickable-hero-link:hover {
   transition: all 0.2s ease;
 }
 
+/* Selected Hexagon: Glowing Violet/Magenta Bevel */
 .talent-card-hex-outer.is-picked {
-  background: linear-gradient(145deg, #f0fdf4 0%, #86efac 25%, #22c55e 55%, #15803d 80%, #bbf7d0 100%);
-  filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.75)) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.6));
+  background: linear-gradient(145deg, #ffffff 0%, #f0abfc 25%, #d946ef 55%, #7e22ce 80%, #fae8ff 100%);
+  filter: drop-shadow(0 0 10px rgba(217, 70, 239, 0.95)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
 }
 
+/* Unselected Hexagon: Steel-Blue Metallic Bevel */
 .talent-card-hex-outer.is-not-picked {
-  background: linear-gradient(145deg, #e2e8f0 0%, #94a3b8 25%, #475569 55%, #1e293b 80%, #cbd5e1 100%);
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  background: linear-gradient(145deg, #f8fafc 0%, #93c5fd 25%, #3b82f6 55%, #1e3a8a 85%, #cbd5e1 100%);
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.6));
+}
+
+.expanded-talent-card.is-not-picked:hover .talent-card-hex-outer.is-not-picked {
+  background: linear-gradient(145deg, #ffffff 0%, #a5f3fc 25%, #38bdf8 55%, #0284c7 80%, #ffffff 100%);
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.95)) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.7));
 }
 
 .talent-card-hex-inner {
@@ -4115,9 +4175,10 @@ img.clickable-hero-link:hover {
   letter-spacing: 0.05em;
   padding: 0.15rem 0.55rem;
   border-radius: var(--radius-full);
-  background: rgba(16, 185, 129, 0.25);
-  border: 1px solid rgba(16, 185, 129, 0.6);
-  color: #34d399;
+  background: rgba(217, 70, 239, 0.2);
+  border: 1px solid #d946ef;
+  color: #f5d0fe;
+  box-shadow: 0 0 8px rgba(217, 70, 239, 0.4);
 }
 
 .unpicked-badge {
@@ -4126,7 +4187,7 @@ img.clickable-hero-link:hover {
   letter-spacing: 0.03em;
   padding: 0.12rem 0.45rem;
   border-radius: var(--radius-full);
-  background: rgba(148, 163, 184, 0.1);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(148, 163, 184, 0.2);
   color: #94a3b8;
 }
