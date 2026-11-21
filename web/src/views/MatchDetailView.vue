@@ -961,8 +961,14 @@ onMounted(() => {
                   <span v-else-if="match.winner === 1"
                         class="badge badge-loss">DEFEAT</span>
                 </div>
-                <span v-if="firstPickTeam === 0"
-                      class="first-pick-tag">First Pick</span>
+                <div class="draft-title-right">
+                  <span v-if="firstPickTeam === 0"
+                        class="first-pick-tag">First Pick</span>
+                  <span v-if="match.team0_takedowns !== undefined && match.team0_takedowns !== null"
+                        class="draft-takedowns-pill">
+                    {{ match.team0_takedowns }} Takedowns
+                  </span>
+                </div>
               </div>
 
               <!-- Bans -->
@@ -1024,8 +1030,14 @@ onMounted(() => {
                   <span v-else-if="match.winner === 0"
                         class="badge badge-loss">DEFEAT</span>
                 </div>
-                <span v-if="firstPickTeam === 1"
-                      class="first-pick-tag">First Pick</span>
+                <div class="draft-title-right">
+                  <span v-if="firstPickTeam === 1"
+                        class="first-pick-tag">First Pick</span>
+                  <span v-if="match.team1_takedowns !== undefined && match.team1_takedowns !== null"
+                        class="draft-takedowns-pill">
+                    {{ match.team1_takedowns }} Takedowns
+                  </span>
+                </div>
               </div>
 
               <!-- Bans -->
@@ -2557,12 +2569,43 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .draft-title-left {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+}
+
+.draft-title-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.draft-takedowns-pill {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-full);
+}
+
+.blue-side .draft-takedowns-pill {
+  color: #bae6fd;
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.red-side .draft-takedowns-pill {
+  color: #fecdd3;
+  border-color: rgba(244, 63, 94, 0.3);
+  background: rgba(244, 63, 94, 0.1);
 }
 
 .draft-title-left .badge-win {
