@@ -23,7 +23,7 @@ export function parseReplaySync(file: string): ReplayData | null {
   try {
     const Parser: {
       processReplay: (filePath: string, options: { overrideVerifiedBuild: boolean }) => HotSReplayObject | null
-    } = require('hots-parser')
+    } = require('@meadowsjared/hots-parser')
     const replay = Parser.processReplay(file, {
       overrideVerifiedBuild: true,
     })
@@ -48,7 +48,7 @@ export function parseReplaySync(file: string): ReplayData | null {
     const players = Object.values(replay.players)
 
     // Always sync authoritative hero names from DETAILS (Blizzard replay header)
-    // because hots-parser TrackerEvent 4002 often overwrites heroes with draft/ARAM pre-selection slots
+    // because @meadowsjared/hots-parser TrackerEvent 4002 often overwrites heroes with draft/ARAM pre-selection slots
     try {
       const heroprotocol: {
         DETAILS: string
@@ -69,6 +69,20 @@ export function parseReplaySync(file: string): ReplayData | null {
         }
         if (replay.match && Array.isArray(replay.match.heroes)) {
           replay.match.heroes = players.map(p => p.hero).filter((h): h is string => Boolean(h))
+        }
+        if (replay.match && Array.isArray(replay.match.takedowns)) {
+          for (const td of replay.match.takedowns) {
+            const killerRef = td.victim?.killedBy || td.killer
+            if (killerRef?.player) {
+              const matchedKiller = players.find(p => p.ToonHandle === killerRef.player)
+              if (matchedKiller?.hero) {
+                killerRef.hero = matchedKiller.hero
+              }
+            }
+            if (td.victim?.killedBy && !td.killer) {
+              td.killer = td.victim.killedBy
+            }
+          }
         }
       }
     } catch {
@@ -131,4 +145,3 @@ if (!isMainThread && parentPort) {
     }
   })
 }
-

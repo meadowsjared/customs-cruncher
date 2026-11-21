@@ -87,6 +87,7 @@ export type ReplayXPBreakdownEntry = {
 export type ReplayTakedownParticipant = {
   player: string
   hero: string
+  killedBy?: ReplayTakedownParticipant
 }
 
 export type ReplayTakedown = {
@@ -94,6 +95,7 @@ export type ReplayTakedown = {
   time: number
   x: number
   y: number
+  killer?: ReplayTakedownParticipant
   killers: ReplayTakedownParticipant[]
   victim: ReplayTakedownParticipant
 }

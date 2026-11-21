@@ -155,9 +155,11 @@ const playerCombatBadgesMap = computed<Map<string, PlayerCombatBadge[]>>(() => {
     const killerTeam = victimPlayer ? (victimPlayer.team === 0 ? 1 : 0) : null
 
     // Credit the kill only to the single primary killer who got credit for the kill
-    const primaryKiller = firstTd?.killers && Array.isArray(firstTd.killers) && firstTd.killers.length > 0
-      ? firstTd.killers.find((k) => k.player && k.player !== '0' && k.hero !== 'Nexus Forces') || firstTd.killers[0]
-      : null
+    const primaryKiller = firstTd?.victim?.killedBy
+      || firstTd?.killer
+      || (firstTd?.killers && Array.isArray(firstTd.killers) && firstTd.killers.length > 0
+        ? firstTd.killers.find((k) => k.player && k.player !== '0' && k.hero !== 'Nexus Forces') || firstTd.killers[0]
+        : null)
 
     const firstBloodPlayerHandle = primaryKiller?.player || null
     const firstBloodHeroLower = primaryKiller?.hero ? primaryKiller.hero.toLowerCase() : null
@@ -165,6 +167,135 @@ const playerCombatBadgesMap = computed<Map<string, PlayerCombatBadge[]>>(() => {
     const victimHeroName = firstTd?.victim?.hero
       ? resolveHeroName(firstTd.victim.hero) || firstTd.victim.hero
       : 'Enemy Hero'
+
+    // 2. Multikills (chain takedowns within 5 seconds)
+    // A multikill belongs to the team that scored the takedowns and is awarded to at most ONE player:
+    // the player who landed the final killing blow (the LAST person to get the kill).
+    type MultikillRecord = {
+      tier: number
+      timeStr: string
+      time: number
+    }
+    const playerMultikillsMap = new Map<string, MultikillRecord[]>()
+    for (const p of allPlayers) {
+      const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+      playerMultikillsMap.set(pKey, [])
+    }
+
+    // Process multikill streaks for both teams (0 and 1)
+    for (const kTeam of [0, 1]) {
+      const teamTds = sortedTds.filter((td) => {
+        const victim = td.victim
+          ? allPlayers.find(
+              (vp) =>
+                (td.victim.player && vp.ToonHandle === td.victim.player) ||
+                (td.victim.hero && vp.hero === td.victim.hero)
+            )
+          : null
+        return victim ? victim.team !== kTeam : false
+      })
+
+      // Group takedowns occurring within 5 seconds into streaks
+      let currentStreak: typeof sortedTds = []
+      let lastTime = -999
+      const teamStreaks: (typeof sortedTds)[] = []
+
+      for (const td of teamTds) {
+        if (td.time - lastTime <= 5) {
+          currentStreak.push(td)
+        } else {
+          if (currentStreak.length >= 2) {
+            teamStreaks.push(currentStreak)
+          }
+          currentStreak = [td]
+        }
+        lastTime = td.time
+      }
+      if (currentStreak.length >= 2) {
+        teamStreaks.push(currentStreak)
+      }
+
+      for (const streak of teamStreaks) {
+        const finalTd = streak[streak.length - 1]
+        const finalTime = finalTd.time
+        const tier = streak.length >= 5 ? 5 : streak.length
+
+        // Find the player who landed the final kill in this streak
+        let winner: (typeof allPlayers)[0] | null = null
+
+        // 1. Authoritative killer if available (from victim.killedBy or killer)
+        const killerRef = finalTd.victim?.killedBy || finalTd.killer
+        if (killerRef) {
+          winner = allPlayers.find(
+            (p) =>
+              p.team === kTeam &&
+              ((killerRef.player && p.ToonHandle === killerRef.player) ||
+                (killerRef.hero && p.hero && p.hero.toLowerCase() === killerRef.hero.toLowerCase()))
+          ) || null
+        }
+
+        // 2. Fallback: Determine single best candidate among finalTd participants
+        if (!winner && finalTd.killers && Array.isArray(finalTd.killers) && finalTd.killers.length > 0) {
+          const candidates = allPlayers.filter((p) => {
+            if (p.team !== kTeam) return false
+            const pHeroLower = p.hero ? p.hero.toLowerCase() : ''
+            const inKill = finalTd.killers.some(
+              (k) => (k.player && k.player === p.ToonHandle) || (k.hero && k.hero.toLowerCase() === pHeroLower)
+            )
+            if (!inKill) return false
+
+            const soloKills = p.gameStats?.SoloKill || 0
+            const multikillStat = p.gameStats?.Multikill || 0
+            if (soloKills < 2 || multikillStat <= 0) return false
+
+            const pKey = p.ToonHandle || `${p.name}-${p.hero}`
+            const currentAwards = playerMultikillsMap.get(pKey) || []
+            return currentAwards.length < multikillStat
+          })
+
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              const aHeroLower = a.hero ? a.hero.toLowerCase() : ''
+              const bHeroLower = b.hero ? b.hero.toLowerCase() : ''
+              const aStreakParticipation = streak.filter((td) =>
+                td.killers?.some((k) => (k.player && k.player === a.ToonHandle) || (k.hero && k.hero.toLowerCase() === aHeroLower))
+              ).length
+              const bStreakParticipation = streak.filter((td) =>
+                td.killers?.some((k) => (k.player && k.player === b.ToonHandle) || (k.hero && k.hero.toLowerCase() === bHeroLower))
+              ).length
+              if (bStreakParticipation !== aStreakParticipation) {
+                return bStreakParticipation - aStreakParticipation
+              }
+
+              const aSolo = a.gameStats?.SoloKill || 0
+              const bSolo = b.gameStats?.SoloKill || 0
+              if (bSolo !== aSolo) return bSolo - aSolo
+
+              const aMulti = a.gameStats?.Multikill || 0
+              const bMulti = b.gameStats?.Multikill || 0
+              if (bMulti !== aMulti) return bMulti - aMulti
+
+              const aDmg = a.gameStats?.HeroDamage || 0
+              const bDmg = b.gameStats?.HeroDamage || 0
+              return bDmg - aDmg
+            })
+            winner = candidates[0]
+          }
+        }
+
+        // Assign to the single winning player
+        if (winner) {
+          const wKey = winner.ToonHandle || `${winner.name}-${winner.hero}`
+          const awards = playerMultikillsMap.get(wKey) || []
+          awards.push({
+            tier,
+            time: finalTime,
+            timeStr: formatDuration(finalTime),
+          })
+          playerMultikillsMap.set(wKey, awards)
+        }
+      }
+    }
 
     for (const p of allPlayers) {
       const pKey = p.ToonHandle || `${p.name}-${p.hero}`
@@ -188,138 +319,59 @@ const playerCombatBadgesMap = computed<Map<string, PlayerCombatBadge[]>>(() => {
         })
       }
 
-      // 2. Multikills (chain takedowns within 5 seconds, validated by player's actual kills and game engine multikill stats)
-      const soloKills = p.gameStats?.SoloKill || 0
-      const multikillStat = p.gameStats?.Multikill || 0
+      // 2. Multikill Badges
+      const awards = playerMultikillsMap.get(pKey) || []
+      const quintupleTimes = awards.filter((a) => a.tier >= 5).map((a) => a.timeStr)
+      const quadTimes = awards.filter((a) => a.tier === 4).map((a) => a.timeStr)
+      const tripleTimes = awards.filter((a) => a.tier === 3).map((a) => a.timeStr)
+      const doubleTimes = awards.filter((a) => a.tier === 2).map((a) => a.timeStr)
 
-      // Only evaluate multikills if player scored at least 2 kills and had verified multikill participation
-      if (soloKills >= 2 && multikillStat > 0) {
-        const pHeroLower = p.hero ? p.hero.toLowerCase() : ''
-        const pTds = sortedTds.filter((td) => {
-          if (!td.killers || !Array.isArray(td.killers) || td.killers.length === 0) return false
-
-          // Determine victim and verify player is on the opposing (killer) team
-          const tdVictim = td.victim
-            ? allPlayers.find(
-                (vp) =>
-                  (td.victim.player && vp.ToonHandle === td.victim.player) ||
-                  (td.victim.hero && vp.hero === td.victim.hero)
-              )
-            : null
-          const tdKillerTeam = tdVictim ? (tdVictim.team === 0 ? 1 : 0) : null
-          if (tdKillerTeam !== null && p.team !== tdKillerTeam) return false
-
-          return td.killers.some(
-            (k) => (k.player && k.player === p.ToonHandle) || (k.hero && k.hero.toLowerCase() === pHeroLower)
-          )
+      if (quintupleTimes.length > 0) {
+        const count = quintupleTimes.length
+        pBadges.push({
+          id: `${pKey}-5kill`,
+          label: count > 1 ? `5-Kill x${count}` : '5-Kill',
+          type: 'quintuple-kill',
+          tooltip: count > 1
+            ? `${count}x 5-Hero Multikill (Team Wipe) (${quintupleTimes.join(', ')})`
+            : `5-Hero Multikill (Team Wipe) (${quintupleTimes.join(', ')})`,
         })
+      }
 
-        let currentStreak = 1
-        let lastKillTime = -999
-        let streakTimes: number[] = []
-        const streakRecords: { streak: number; finalTime: number }[] = []
+      if (quadTimes.length > 0) {
+        const count = quadTimes.length
+        pBadges.push({
+          id: `${pKey}-quad`,
+          label: count > 1 ? `Quad Kill x${count}` : 'Quad Kill',
+          type: 'quad-kill',
+          tooltip: count > 1
+            ? `${count}x Quad Kill (${quadTimes.join(', ')})`
+            : `Quad Kill (${quadTimes.join(', ')})`,
+        })
+      }
 
-        for (const td of pTds) {
-          if (td.time - lastKillTime <= 5) {
-            currentStreak++
-            streakTimes.push(td.time)
-          } else {
-            if (currentStreak >= 2) {
-              streakRecords.push({
-                streak: currentStreak,
-                finalTime: streakTimes[streakTimes.length - 1],
-              })
-            }
-            currentStreak = 1
-            streakTimes = [td.time]
-          }
-          lastKillTime = td.time
-        }
-        if (currentStreak >= 2) {
-          streakRecords.push({
-            streak: currentStreak,
-            finalTime: streakTimes[streakTimes.length - 1],
-          })
-        }
+      if (tripleTimes.length > 0) {
+        const count = tripleTimes.length
+        pBadges.push({
+          id: `${pKey}-triple`,
+          label: count > 1 ? `Triple Kill x${count}` : 'Triple Kill',
+          type: 'triple-kill',
+          tooltip: count > 1
+            ? `${count}x Triple Kill (${tripleTimes.join(', ')})`
+            : `Triple Kill (${tripleTimes.join(', ')})`,
+        })
+      }
 
-        const quintupleTimes: string[] = []
-        const quadTimes: string[] = []
-        const tripleTimes: string[] = []
-        const doubleTimes: string[] = []
-
-        for (const rec of streakRecords) {
-          const s = rec.streak
-          const timeStr = formatDuration(rec.finalTime)
-          if (s >= 5 && soloKills >= 5) quintupleTimes.push(timeStr)
-          else if (s >= 4 && soloKills >= 4) quadTimes.push(timeStr)
-          else if (s >= 3 && soloKills >= 3) tripleTimes.push(timeStr)
-          else if (s >= 2 && soloKills >= 2) doubleTimes.push(timeStr)
-        }
-
-        // Constrain counts by actual kills (e.g. 2 kills can at most produce 1 double kill)
-        let quintupleCount = Math.min(quintupleTimes.length, Math.floor(soloKills / 5))
-        let quadCount = Math.min(quadTimes.length, Math.floor(soloKills / 4))
-        let tripleCount = Math.min(tripleTimes.length, Math.floor(soloKills / 3))
-        let doubleCount = Math.min(doubleTimes.length, Math.floor(soloKills / 2))
-
-        // Limit total multikills by the game engine's verified multikill count
-        const totalMultis = quintupleCount + quadCount + tripleCount + doubleCount
-        if (totalMultis > multikillStat) {
-          doubleCount = Math.max(0, multikillStat - quintupleCount - quadCount - tripleCount)
-        }
-
-        const validQuintupleTimes = quintupleTimes.slice(0, quintupleCount)
-        const validQuadTimes = quadTimes.slice(0, quadCount)
-        const validTripleTimes = tripleTimes.slice(0, tripleCount)
-        const validDoubleTimes = doubleTimes.slice(0, doubleCount)
-
-        if (quintupleCount > 0) {
-          const timesStr = validQuintupleTimes.length ? ` (${validQuintupleTimes.join(', ')})` : ''
-          pBadges.push({
-            id: `${pKey}-5kill`,
-            label: quintupleCount > 1 ? `5-Kill x${quintupleCount}` : '5-Kill',
-            type: 'quintuple-kill',
-            tooltip: quintupleCount > 1
-              ? `${quintupleCount}x 5-Hero Multikill (Team Wipe)${timesStr}`
-              : `5-Hero Multikill (Team Wipe)${timesStr}`,
-          })
-        }
-
-        if (quadCount > 0) {
-          const timesStr = validQuadTimes.length ? ` (${validQuadTimes.join(', ')})` : ''
-          pBadges.push({
-            id: `${pKey}-quad`,
-            label: quadCount > 1 ? `Quad Kill x${quadCount}` : 'Quad Kill',
-            type: 'quad-kill',
-            tooltip: quadCount > 1
-              ? `${quadCount}x Quad Kill${timesStr}`
-              : `Quad Kill${timesStr}`,
-          })
-        }
-
-        if (tripleCount > 0) {
-          const timesStr = validTripleTimes.length ? ` (${validTripleTimes.join(', ')})` : ''
-          pBadges.push({
-            id: `${pKey}-triple`,
-            label: tripleCount > 1 ? `Triple Kill x${tripleCount}` : 'Triple Kill',
-            type: 'triple-kill',
-            tooltip: tripleCount > 1
-              ? `${tripleCount}x Triple Kill${timesStr}`
-              : `Triple Kill${timesStr}`,
-          })
-        }
-
-        if (doubleCount > 0) {
-          const timesStr = validDoubleTimes.length ? ` (${validDoubleTimes.join(', ')})` : ''
-          pBadges.push({
-            id: `${pKey}-double`,
-            label: doubleCount > 1 ? `Double Kill x${doubleCount}` : 'Double Kill',
-            type: 'double-kill',
-            tooltip: doubleCount > 1
-              ? `${doubleCount}x Double Kill${timesStr}`
-              : `Double Kill${timesStr}`,
-          })
-        }
+      if (doubleTimes.length > 0) {
+        const count = doubleTimes.length
+        pBadges.push({
+          id: `${pKey}-double`,
+          label: count > 1 ? `Double Kill x${count}` : 'Double Kill',
+          type: 'double-kill',
+          tooltip: count > 1
+            ? `${count}x Double Kill (${doubleTimes.join(', ')})`
+            : `Double Kill (${doubleTimes.join(', ')})`,
+        })
       }
 
       if (pBadges.length > 0) {

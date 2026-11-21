@@ -149,6 +149,7 @@ export interface ReplayPicks {
 export interface ReplayTakedownParticipant {
   player: string
   hero: string
+  killedBy?: ReplayTakedownParticipant
 }
 
 export interface ReplayTakedown {
@@ -156,6 +157,7 @@ export interface ReplayTakedown {
   time: number
   x?: number
   y?: number
+  killer?: ReplayTakedownParticipant
   killers: ReplayTakedownParticipant[]
   victim: ReplayTakedownParticipant
 }
