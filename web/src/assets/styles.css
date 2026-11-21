@@ -518,8 +518,9 @@ tbody tr:hover {
 /* Tabs Navigation */
 .tabs-nav {
   display: flex;
+  flex-wrap: wrap;
+  flex-wrap: balance;
   gap: 0.5rem;
-  overflow-x: auto;
   padding: 0.5rem;
   background: var(--bg-surface);
   border-radius: var(--radius-lg);
@@ -535,6 +536,7 @@ tbody tr:hover {
 .tab-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   padding: 0.55rem 1.1rem;
   border-radius: var(--radius-md);
@@ -545,7 +547,22 @@ tbody tr:hover {
   font-size: 0.875rem;
   cursor: pointer;
   white-space: nowrap;
+  flex: 1 1 auto;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (max-width: 1060px) and (min-width: 641px) {
+  .tab-btn {
+    flex: 1 1 calc(33.333% - 0.5rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .tab-btn {
+    flex: 1 1 calc(50% - 0.5rem);
+    padding: 0.5rem 0.65rem;
+    font-size: 0.82rem;
+  }
 }
 
 .tab-btn:hover {
