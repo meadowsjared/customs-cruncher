@@ -774,7 +774,8 @@ onUnmounted(() => {
                   <span class="stat-deaths-text">{{ formatNumber(displayHeroStats.totalDeaths) }}</span>
                 </span>
                 <span class="stat-pill-separator">•</span>
-                <span>{{ effectiveLimit > 0 ? `Last ${displayHeroStats.total} Games` : `${displayHeroStats.total} Games` }}</span>
+                <span>{{ effectiveLimit > 0 ? `Last ${displayHeroStats.total} Games` : `${displayHeroStats.total} Games`
+                }}</span>
               </span>
             </div>
 
@@ -870,7 +871,8 @@ onUnmounted(() => {
                   <span class="stat-deaths-text">{{ formatNumber(displaySummary.totalDeaths) }}</span>
                 </span>
                 <span class="stat-pill-separator">•</span>
-                <span>{{ effectiveLimit > 0 ? `Last ${displaySummary.totalMatches} Games` : `${displaySummary.totalMatches} Games` }}</span>
+                <span>{{ effectiveLimit > 0 ? `Last ${displaySummary.totalMatches} Games` :
+                  `${displaySummary.totalMatches} Games` }}</span>
               </span>
             </div>
 
@@ -995,7 +997,8 @@ onUnmounted(() => {
 
             <div class="filter-group">
               <label>Matches:</label>
-              <select v-model="limitFilter" class="filter-limit-select">
+              <select v-model="limitFilter"
+                      class="filter-limit-select">
                 <option :value="0">All Matches</option>
                 <option :value="5">Last 5 Matches</option>
                 <option :value="10">Last 10 Matches</option>
@@ -1006,14 +1009,12 @@ onUnmounted(() => {
                 <option :value="250">Last 250 Matches</option>
                 <option :value="-1">Custom Count...</option>
               </select>
-              <input
-                v-if="limitFilter === -1"
-                v-model.number="customLimit"
-                type="number"
-                min="1"
-                placeholder="# games"
-                class="filter-custom-limit-input"
-              />
+              <input v-if="limitFilter === -1"
+                     v-model.number="customLimit"
+                     type="number"
+                     min="1"
+                     placeholder="# games"
+                     class="filter-custom-limit-input" />
             </div>
           </div>
         </div>
@@ -1082,9 +1083,9 @@ onUnmounted(() => {
                      :key="tIdx"
                      class="talent-mini-slot"
                      :class="{
-                       'is-heroic': [3, 6].includes(tIdx),
-                       'is-empty': !tKey
-                     }"
+                      'is-heroic': [3, 6].includes(tIdx),
+                      'is-empty': !tKey
+                    }"
                      :title="'Click to view all Level ' + [1, 4, 7, 10, 13, 16, 20][tIdx] + ' options'"
                      @mouseenter="showTalentTooltip($event, tKey, tIdx, m.hero)"
                      @mousemove="updateTooltipPosition($event)"
@@ -1097,7 +1098,8 @@ onUnmounted(() => {
                            :alt="formatTalentName(tKey)"
                            class="talent-mini-img"
                            @error="hideBrokenImage" />
-                      <span v-else class="talent-mini-empty">
+                      <span v-else
+                            class="talent-mini-empty">
                         {{ [1, 4, 7, 10, 13, 16, 20][tIdx] }}
                       </span>
                     </div>
@@ -1114,28 +1116,26 @@ onUnmounted(() => {
               <span class="kda-ratio">{{ m.kda.toFixed(1) }} KAD</span>
             </div>
 
-            <!-- Combat Numbers Column -->
-            <div class="match-stats-col">
-              <div class="stat-item"
-                   title="Hero Damage">
-                <span class="stat-label">Hero</span>
-                <span class="stat-val dmg-hero">{{ formatNumber(m.hero_damage) }}</span>
-              </div>
-              <div class="stat-item"
-                   title="Siege Damage">
-                <span class="stat-label">Siege</span>
-                <span class="stat-val dmg-siege">{{ formatNumber(m.siege_damage) }}</span>
-              </div>
-              <div class="stat-item"
-                   title="Healing / Shielding">
-                <span class="stat-label">Heal</span>
-                <span class="stat-val dmg-heal">{{ formatNumber(m.healing + m.self_healing) }}</span>
-              </div>
-              <div class="stat-item"
-                   title="Damage Taken">
-                <span class="stat-label">Taken</span>
-                <span class="stat-val dmg-taken">{{ formatNumber(m.damage_taken) }}</span>
-              </div>
+            <!-- Combat Stats (Direct Grid Areas) -->
+            <div class="stat-item stat-hero"
+                 title="Hero Damage">
+              <span class="stat-label">Hero</span>
+              <span class="stat-val dmg-hero">{{ formatNumber(m.hero_damage) }}</span>
+            </div>
+            <div class="stat-item stat-siege"
+                 title="Siege Damage">
+              <span class="stat-label">Siege</span>
+              <span class="stat-val dmg-siege">{{ formatNumber(m.siege_damage) }}</span>
+            </div>
+            <div class="stat-item stat-heal"
+                 title="Healing / Shielding">
+              <span class="stat-label">Heal</span>
+              <span class="stat-val dmg-heal">{{ formatNumber(m.healing + m.self_healing) }}</span>
+            </div>
+            <div class="stat-item stat-taken"
+                 title="Damage Taken">
+              <span class="stat-label">Taken</span>
+              <span class="stat-val dmg-taken">{{ formatNumber(m.damage_taken) }}</span>
             </div>
 
             <!-- Action Button -->
@@ -1228,7 +1228,8 @@ onUnmounted(() => {
             <div class="hots-build-header">
               <div class="hots-build-title-group">
                 <span class="hots-build-title">{{ resolveHeroName(expandedTier.heroName) }} Talent Build</span>
-                <div v-if="expandedTier.match" class="hots-build-player-info">
+                <div v-if="expandedTier.match"
+                     class="hots-build-player-info">
                   <span class="hots-player-name">{{ expandedTier.match.battle_tag || profileData?.player.name }}</span>
                   <span class="team-pill"
                         :class="expandedTier.match.win ? 'pill-blue' : 'pill-red'">
@@ -1244,14 +1245,30 @@ onUnmounted(() => {
                         title="Copy in-game talent build code to clipboard"
                         @click="copyMatchBuildCode(expandedTier.match)">
                   <template v-if="copiedMatchId === expandedTier.match.replay_id">
-                    <svg class="copy-btn-icon check-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="copy-btn-icon check-icon"
+                         viewBox="0 0 16 16"
+                         fill="none"
+                         stroke="currentColor"
+                         stroke-width="2"
+                         stroke-linecap="round"
+                         stroke-linejoin="round">
                       <polyline points="3.5 8.5 6.5 11.5 12.5 4.5" />
                     </svg>
                     <span>Copied!</span>
                   </template>
                   <template v-else>
-                    <svg class="copy-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="5.5" y="5.5" width="7" height="7" rx="1.2" />
+                    <svg class="copy-btn-icon"
+                         viewBox="0 0 16 16"
+                         fill="none"
+                         stroke="currentColor"
+                         stroke-width="1.6"
+                         stroke-linecap="round"
+                         stroke-linejoin="round">
+                      <rect x="5.5"
+                            y="5.5"
+                            width="7"
+                            height="7"
+                            rx="1.2" />
                       <path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
                     </svg>
                     <span>Copy</span>
@@ -1286,7 +1303,8 @@ onUnmounted(() => {
                          :alt="formatTalentName(getMatchTalentList(expandedTier.match?.talents)[tIdx])"
                          class="hots-hex-img"
                          @error="hideBrokenImage" />
-                    <span v-else class="hots-hex-empty-lvl">{{ lvl }}</span>
+                    <span v-else
+                          class="hots-hex-empty-lvl">{{ lvl }}</span>
                   </div>
                 </div>
                 <span class="hots-hex-lvl-label">Lvl {{ lvl }}</span>
@@ -1311,17 +1329,17 @@ onUnmounted(() => {
                    :key="t.key"
                    class="expanded-talent-card"
                    :class="{
-                     'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
-                     'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
-                   }">
+                    'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
+                    'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
+                  }">
                 <!-- Card Header with Hexagonal Option Icon -->
                 <div class="talent-card-top">
                   <div class="talent-card-hex-wrap">
                     <div class="talent-card-hex-outer"
                          :class="{
-                           'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
-                           'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
-                         }">
+                          'is-picked': isTalentPicked(t, expandedTier.pickedTalentKey),
+                          'is-not-picked': !isTalentPicked(t, expandedTier.pickedTalentKey)
+                        }">
                       <div class="talent-card-hex-inner">
                         <img :src="getTalentImageUrl(t.key)"
                              :alt="t.name"
@@ -1332,8 +1350,10 @@ onUnmounted(() => {
                     <span v-if="isTalentPicked(t, expandedTier.pickedTalentKey)"
                           class="talent-card-hex-fav-badge"
                           title="Selected talent">
-                      <svg viewBox="0 0 16 16" class="hex-fav-heart">
-                        <path d="M8 13.5l-5.3-5.3a3.3 3.3 0 0 1 4.7-4.7L8 4.1l.6-.6a3.3 3.3 0 0 1 4.7 4.7z" fill="currentColor" />
+                      <svg viewBox="0 0 16 16"
+                           class="hex-fav-heart">
+                        <path d="M8 13.5l-5.3-5.3a3.3 3.3 0 0 1 4.7-4.7L8 4.1l.6-.6a3.3 3.3 0 0 1 4.7 4.7z"
+                              fill="currentColor" />
                       </svg>
                     </span>
                   </div>
@@ -1372,7 +1392,8 @@ onUnmounted(() => {
             <div v-if="getTierTalents(expandedTier.heroName, expandedTier.tierIndex).length === 0"
                  class="expanded-empty-state">
               <p>No other talent options found for this tier.</p>
-              <div v-if="expandedTier.pickedTalentKey" class="fallback-picked-only">
+              <div v-if="expandedTier.pickedTalentKey"
+                   class="fallback-picked-only">
                 <strong>Picked:</strong> {{ formatTalentName(expandedTier.pickedTalentKey) }}
               </div>
             </div>
@@ -1384,8 +1405,21 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.container,
+.player-profile-view.container {
+  max-width: 1300px;
+  margin-left: calc((100% - 1300px) / 2);
+  margin-right: calc((100% - 1300px) / 2);
+  padding-left: 1rem;
+  padding-right: 1rem;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1),
+              margin 0.4s cubic-bezier(0.34, 1.3, 0.64, 1),
+              max-width 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
 .player-profile-view {
-  padding: 1.5rem 0 3rem;
+  padding-top: 1.5rem;
+  padding-bottom: 3rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -1398,6 +1432,13 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+.card,
+.profile-header-card,
+.profile-matches-section {
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .btn-back {
@@ -1892,17 +1933,38 @@ onUnmounted(() => {
   gap: 0.65rem;
 }
 
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 .player-match-row {
   display: grid;
-  grid-template-columns: 110px 170px 145px 195px 110px 1fr auto;
+  grid-template-columns: minmax(95px, 110px) max-content max-content max-content max-content repeat(4, minmax(45px, 60px)) min-content;
+  grid-template-areas: "result map hero talents kad stat-hero stat-siege stat-heal stat-taken action";
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
   background: rgba(15, 23, 42, 0.7);
   border-radius: var(--radius-md);
   padding: 0.85rem 1.15rem;
   border-left: 4px solid #64748b;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s ease, border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+@supports (grid-template-columns: subgrid) {
+  .matches-cards-list {
+    display: grid;
+    grid-template-columns: minmax(95px, 110px) max-content max-content max-content max-content repeat(4, minmax(45px, 60px)) min-content;
+    gap: 0.65rem;
+    justify-content: center;
+  }
+
+  .player-match-row {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
 }
 
 .player-match-row:hover {
@@ -1920,6 +1982,7 @@ onUnmounted(() => {
 
 /* Result Col */
 .match-result-col {
+  grid-area: result;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -1955,9 +2018,11 @@ onUnmounted(() => {
 
 /* Map Col */
 .match-map-col {
+  grid-area: map;
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  min-width: 0;
 }
 
 .map-thumb {
@@ -1972,6 +2037,7 @@ onUnmounted(() => {
 .map-meta {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .map-name {
@@ -1981,7 +2047,6 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
 }
 
 .map-duration {
@@ -1992,9 +2057,11 @@ onUnmounted(() => {
 
 /* Hero Col */
 .match-hero-col {
+  grid-area: hero;
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
 }
 
 .hero-thumb {
@@ -2018,6 +2085,8 @@ onUnmounted(() => {
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero-match-btag {
@@ -2031,6 +2100,7 @@ onUnmounted(() => {
 
 /* Talents Strip */
 .match-talents-col {
+  grid-area: talents;
   display: flex;
   align-items: center;
 }
@@ -2038,19 +2108,22 @@ onUnmounted(() => {
 .talents-strip {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
 .match-talents-col .talent-mini-hex-outer {
-  width: 23px;
-  height: 27px;
+  width: 25px;
+  height: 29px;
 }
 
 /* KDA Col */
 .match-kda-col {
+  grid-area: kad;
   display: flex;
   flex-direction: column;
+  width: max-content;
   gap: 0.15rem;
+  margin-inline: auto;
 }
 
 .kda-values {
@@ -2070,16 +2143,28 @@ onUnmounted(() => {
   font-family: var(--font-mono);
 }
 
-/* Stats Numbers Col */
-.match-stats-col {
-  display: flex;
-  gap: 1.15rem;
+/* Individual Combat Stats Grid Areas */
+.stat-hero {
+  grid-area: stat-hero;
+}
+
+.stat-siege {
+  grid-area: stat-siege;
+}
+
+.stat-heal {
+  grid-area: stat-heal;
+}
+
+.stat-taken {
+  grid-area: stat-taken;
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  min-width: 0;
 }
 
 .stat-label {
@@ -2112,6 +2197,10 @@ onUnmounted(() => {
 }
 
 /* Action Col */
+.match-action-col {
+  grid-area: action;
+}
+
 .btn-view-match {
   background: rgba(56, 189, 248, 0.12);
   border: 1px solid rgba(56, 189, 248, 0.25);
@@ -2237,26 +2326,161 @@ onUnmounted(() => {
 }
 
 /* Responsive */
-@media (max-width: 1080px) {
-  .player-match-row {
-    grid-template-columns: 100px 150px 130px 195px 100px auto;
-    gap: 0.75rem;
+@media (max-width: 1348px) {
+  .container,
+  .player-profile-view.container {
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
   }
 
-  .match-stats-col {
-    display: none;
+  .profile-nav-bar {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .card,
+  .profile-header-card,
+  .profile-matches-section,
+  .player-match-row {
+    border-radius: 0;
+  }
+
+  .card,
+  .profile-header-card,
+  .profile-matches-section {
+    border-left: none;
+    border-right: none;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1210px) {
+  .profile-matches-section .matches-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
   .player-match-row {
-    grid-template-columns: 1fr;
-    gap: 0.6rem;
+    grid-column: auto;
+    display: grid;
+    grid-template-columns: minmax(85px, 95px) minmax(200px, 220px) minmax(115px, 135px) repeat(4, minmax(50px, 1fr)) auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "result map     hero hero       hero       hero       hero       action"
+      "result talents kad  stat-hero  stat-siege stat-heal  stat-taken action";
+    row-gap: 0.65rem;
+    column-gap: 0.75rem;
+    align-items: center;
+  }
+
+  .match-result-col {
+    align-self: center;
+  }
+
+  .match-action-col {
+    align-self: center;
+    justify-self: end;
+  }
+
+  .match-kda-col {
+    margin-inline: 0;
+  }
+
+  .stat-hero,
+  .stat-siege,
+  .stat-heal,
+  .stat-taken {
+    display: flex;
+  }
+}
+
+@media (max-width: 880px) {
+  .player-match-row {
+    grid-template-columns: minmax(75px, 90px) repeat(3, minmax(55px, 1fr)) minmax(80px, 95px);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "map    map        hero       hero       action"
+      "result talents    talents    talents    kad"
+      "result stat-hero  stat-siege stat-heal  stat-taken";
+    row-gap: 0.65rem;
+    column-gap: 0.75rem;
+  }
+
+  .match-map-col {
+    justify-self: start;
+    min-width: 0;
+  }
+
+  .match-hero-col {
+    justify-self: start;
+    min-width: 0;
+  }
+
+  .match-result-col {
+    align-self: center;
+  }
+
+  .match-action-col {
+    align-self: center;
+    justify-self: end;
+  }
+
+  .match-kda-col {
+    margin-inline: 0;
+    justify-self: end;
+  }
+
+  .stat-hero,
+  .stat-siege,
+  .stat-heal,
+  .stat-taken {
+    display: flex;
   }
 
   .profile-header-top {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .profile-matches-section,
+  .profile-header-card {
+    padding: 1rem 0.75rem;
+  }
+
+  .player-match-row {
+    padding: 0.75rem;
+    column-gap: 0.5rem;
+  }
+}
+
+@media (max-width: 450px) {
+  .match-action-col {
+    display: none;
+  }
+
+  .player-match-row {
+    padding: 0.65rem 0.45rem;
+    column-gap: 0.35rem;
+    row-gap: 0.5rem;
+    grid-template-columns: minmax(65px, 75px) repeat(4, minmax(45px, 1fr));
+    grid-template-areas:
+      "map    map        hero       hero       hero"
+      "result talents    talents    talents    kad"
+      "result stat-hero  stat-siege stat-heal  stat-taken";
+  }
+
+  .match-talents-col .talent-mini-hex-outer {
+    width: 21px;
+    height: 25px;
+  }
+
+  .talents-strip {
+    gap: 2px;
   }
 }
 </style>
