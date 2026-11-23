@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import MmrTrendGraph from '../components/MmrTrendGraph.vue'
 import {
   PlayerProfileData,
   PlayerProfileMatch,
@@ -99,6 +100,25 @@ const expandedTier = ref<ExpandedTierState>({
 
 const copiedMatchId = ref<number | null>(null)
 let copyTimeout: ReturnType<typeof setTimeout> | null = null
+
+// MMR Trend Popover State
+const showMmrTrend = ref(false)
+let mmrTrendTimer: ReturnType<typeof setTimeout> | null = null
+
+function onMmrMouseEnter() {
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+  showMmrTrend.value = true
+}
+
+function onMmrMouseLeave() {
+  if (mmrTrendTimer) clearTimeout(mmrTrendTimer)
+  mmrTrendTimer = setTimeout(() => {
+    showMmrTrend.value = false
+  }, 220)
+}
 
 function openExpandedTier(talentKey: string | undefined, tierIndex: number = 0, match?: PlayerProfileMatch) {
   hideTalentTooltip()
@@ -784,8 +804,11 @@ onUnmounted(() => {
           <div class="profile-stat-pills">
             <div v-if="profileData.player.mmr != null"
                  class="stat-pill-card mmr-pill"
-                 :title="profileData.player.baseMmr ? `Base MMR: ${formatNumber(profileData.player.baseMmr)}${profileData.player.adjustment ? ` (Adjustment: ${profileData.player.adjustment > 0 ? '+' : ''}${profileData.player.adjustment})` : ''}` : 'Effective In-House MMR'">
-              <span class="stat-pill-label">Player MMR</span>
+                 @mouseenter="onMmrMouseEnter"
+                 @mouseleave="onMmrMouseLeave">
+              <span class="stat-pill-label">
+                Player MMR <span class="mmr-trend-sparkle" title="Hover for MMR Trend">📈</span>
+              </span>
               <span class="stat-pill-val val-mmr">{{ formatNumber(profileData.player.mmr) }}</span>
               <span class="stat-pill-sub">
                 <span v-if="profileData.player.baseMmr">Base: {{ formatNumber(profileData.player.baseMmr) }}</span>
@@ -795,6 +818,17 @@ onUnmounted(() => {
                 </span>
                 <span v-if="!profileData.player.baseMmr">In-House</span>
               </span>
+
+              <!-- MMR Trend Hover Popover Graph -->
+              <MmrTrendGraph
+                v-if="showMmrTrend"
+                :history="profileData.mmrHistory"
+                :current-mmr="profileData.player.mmr"
+                :base-mmr="profileData.player.baseMmr"
+                :adjustment="profileData.player.adjustment"
+                :player-name="profileData.player.name"
+                :highlight-hero="displayHeroStats?.hero"
+              />
             </div>
 
             <div class="stat-pill-card">
@@ -934,8 +968,11 @@ onUnmounted(() => {
           <div class="profile-stat-pills">
             <div v-if="displaySummary.mmr != null"
                  class="stat-pill-card mmr-pill"
-                 :title="displaySummary.baseMmr ? `Base MMR: ${formatNumber(displaySummary.baseMmr)}${displaySummary.adjustment ? ` (Adjustment: ${displaySummary.adjustment > 0 ? '+' : ''}${displaySummary.adjustment})` : ''}` : 'Effective In-House MMR'">
-              <span class="stat-pill-label">Current MMR</span>
+                 @mouseenter="onMmrMouseEnter"
+                 @mouseleave="onMmrMouseLeave">
+              <span class="stat-pill-label">
+                Current MMR <span class="mmr-trend-sparkle" title="Hover for MMR Trend">📈</span>
+              </span>
               <span class="stat-pill-val val-mmr">{{ formatNumber(displaySummary.mmr) }}</span>
               <span class="stat-pill-sub">
                 <span v-if="displaySummary.baseMmr">Base: {{ formatNumber(displaySummary.baseMmr) }}</span>
@@ -945,6 +982,16 @@ onUnmounted(() => {
                 </span>
                 <span v-if="!displaySummary.baseMmr">In-House</span>
               </span>
+
+              <!-- MMR Trend Hover Popover Graph -->
+              <MmrTrendGraph
+                v-if="showMmrTrend"
+                :history="profileData.mmrHistory"
+                :current-mmr="displaySummary.mmr"
+                :base-mmr="displaySummary.baseMmr"
+                :adjustment="displaySummary.adjustment"
+                :player-name="displaySummary.name"
+              />
             </div>
 
             <div class="stat-pill-card">
@@ -1160,7 +1207,15 @@ onUnmounted(() => {
                    @error="hideBrokenImage" />
               <div class="map-meta">
                 <span class="map-name">{{ m.map }}</span>
-                <span class="map-duration">{{ formatDuration(m.length) }}</span>
+                <div class="map-duration-row">
+                  <span class="map-duration">{{ formatDuration(m.length) }}</span>
+                  <span v-if="m.mmr_delta != null"
+                        class="match-mmr-badge"
+                        :class="m.mmr_delta > 0 ? 'mmr-up' : (m.mmr_delta < 0 ? 'mmr-down' : 'mmr-zero')"
+                        :title="m.is_rated ? `Rating change: ${m.mmr_delta > 0 ? '+' : ''}${m.mmr_delta} MMR` : 'Unrated Match'">
+                    {{ m.mmr_delta > 0 ? `+${m.mmr_delta}` : (m.mmr_delta < 0 ? m.mmr_delta : '±0') }}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1881,8 +1936,30 @@ onUnmounted(() => {
 }
 
 .mmr-pill {
+  position: relative;
   border-color: rgba(251, 191, 36, 0.28);
   background: rgba(251, 191, 36, 0.05);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mmr-pill:hover {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.1);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.2);
+}
+
+.mmr-trend-sparkle {
+  font-size: 0.72rem;
+  margin-left: 0.25rem;
+  opacity: 0.8;
+  display: inline-block;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.mmr-pill:hover .mmr-trend-sparkle {
+  opacity: 1;
+  transform: scale(1.15);
 }
 
 .mmr-adj-badge {
@@ -2513,10 +2590,43 @@ onUnmounted(() => {
   text-overflow: ellipsis;
 }
 
+.map-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .map-duration {
   font-size: 0.72rem;
   color: var(--text-dim);
   font-family: var(--font-mono);
+}
+
+.match-mmr-badge {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+
+.match-mmr-badge.mmr-up {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.match-mmr-badge.mmr-down {
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.match-mmr-badge.mmr-zero {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 /* Hero Col */

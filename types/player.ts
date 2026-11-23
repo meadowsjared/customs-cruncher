@@ -723,6 +723,9 @@ export const PLAYER_ELO_TABLES_SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_replay_player_elo_replay_id
     ON replay_player_elo (replay_id);
+
+  CREATE INDEX IF NOT EXISTS idx_replay_player_elo_battle_tag_lower
+    ON replay_player_elo (battle_tag_lower);
 `
 
 /**

@@ -19,8 +19,8 @@ export const ELO_TEAM_SCALE = 180
 /** Steady-state Elo K-factor (±10 MMR on a dead-even 50/50 match). */
 export const ELO_DEFAULT_K = 20
 
-/** Minimum number of players in a 5v5 match with a known rating for the match to be Elo-rated. */
-export const ELO_MIN_KNOWN_PLAYERS = 8
+/** Minimum number of players in a 5v5 match with a known rating for the match to be Elo-rated. Defaults to 0 (all full 5v5 matches are rated). */
+export const ELO_MIN_KNOWN_PLAYERS = 0
 
 /** Fallback seed MMR if no rated accounts exist in the database yet. */
 export const ELO_FALLBACK_SEED_MMR = 2500

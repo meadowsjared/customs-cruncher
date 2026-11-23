@@ -300,6 +300,8 @@ export interface PlayerProfileMatch {
   xp_contribution: number
   length: number
   talents: ReplayPlayerTalents | null
+  mmr_delta?: number | null
+  is_rated?: boolean | null
 }
 
 export interface PlayerHeroSpecificStats {
@@ -325,11 +327,24 @@ export interface PlayerPaginationInfo {
   totalPages: number
 }
 
+export interface PlayerMmrHistoryPoint {
+  replayId: number
+  date: string
+  mmr: number
+  preMmr: number
+  delta: number
+  isRated: boolean
+  hero?: string
+  win?: boolean
+  map?: string
+}
+
 export interface PlayerProfileData {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
   pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
+  mmrHistory?: PlayerMmrHistoryPoint[]
 }
 
 export interface HeroProfileTopPlayer {
@@ -381,6 +396,8 @@ export interface HeroProfileMatch {
   xp_contribution: number
   length: number
   talents: ReplayPlayerTalents | null
+  mmr_delta?: number | null
+  is_rated?: boolean | null
 }
 
 export interface HeroProfileData {

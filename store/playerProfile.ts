@@ -69,6 +69,8 @@ export interface PlayerProfileMatch {
   xp_contribution: number
   length: number
   talents: PlayerMatchTalents | null
+  mmr_delta?: number | null
+  is_rated?: boolean | null
 }
 
 export interface PlayerHeroSpecificStats {
@@ -102,11 +104,24 @@ export interface PlayerProfileOptions {
   scopeLimit?: number
 }
 
+export interface PlayerMmrHistoryPoint {
+  replayId: number
+  date: string
+  mmr: number
+  preMmr: number
+  delta: number
+  isRated: boolean
+  hero?: string
+  win?: boolean
+  map?: string
+}
+
 export interface PlayerProfileResult {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
   pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
+  mmrHistory?: PlayerMmrHistoryPoint[]
 }
 
 interface HotsAccountLookupRow {
@@ -134,6 +149,8 @@ interface ReplayStatsMatchRow {
   xp_contribution: number
   length: number
   talents: PlayerMatchTalents | null
+  mmr_delta: number | null
+  is_rated: boolean | null
 }
 
 export async function searchPlayers(query: string, limit = 12): Promise<PlayerSearchItem[]> {
@@ -387,9 +404,12 @@ export async function getPlayerProfile(
       f.kda, f.solo_kills, f.assists, f.deaths, f.hero_damage, f.siege_damage,
       f.healing, f.self_healing, f.damage_taken, f.xp_contribution,
       f.length,
-      r.players->f.toon_handle->'talents' as talents
+      r.players->f.toon_handle->'talents' as talents,
+      rpe.mmr_delta,
+      rpe.is_rated
     FROM filtered_matches f
     JOIN replays r ON f.replay_id = r.id
+    LEFT JOIN replay_player_elo rpe ON rpe.replay_id = f.replay_id AND rpe.battle_tag_lower = LOWER(f.hots_battle_tag)
     ORDER BY f.date DESC
     LIMIT ${limit} OFFSET ${offset}
   `
@@ -442,6 +462,8 @@ export async function getPlayerProfile(
       xp_contribution: Number(m.xp_contribution) || 0,
       length: Number(m.length) || 0,
       talents: m.talents,
+      mmr_delta: m.mmr_delta != null ? Number(m.mmr_delta) : null,
+      is_rated: m.is_rated != null ? Boolean(m.is_rated) : null,
     })
   }
 
@@ -452,32 +474,104 @@ export async function getPlayerProfile(
     role: string | null
   }
 
-  let mmrInfo: PlayerMmrLookupRow | undefined
-  if (primaryAccount.discord_id) {
-    const mmrRows = await sql<PlayerMmrLookupRow[]>`
-      SELECT mmr, base_mmr, adjustment, role
-      FROM v_player_mmr
-      WHERE discord_id = ${primaryAccount.discord_id}
-      LIMIT 1
-    `
-    mmrInfo = mmrRows[0]
-  } else if (primaryAccount.id) {
-    const mmrRows = await sql<PlayerMmrLookupRow[]>`
-      SELECT mmr, base_mmr, adjustment, role
-      FROM v_player_mmr
-      WHERE hots_account_id = ${primaryAccount.id} OR LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
-      LIMIT 1
-    `
-    mmrInfo = mmrRows[0]
-  } else {
-    const mmrRows = await sql<PlayerMmrLookupRow[]>`
-      SELECT mmr, base_mmr, adjustment, role
-      FROM v_player_mmr
-      WHERE LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
-      LIMIT 1
-    `
-    mmrInfo = mmrRows[0]
+  interface MmrHistoryRow {
+    replay_id: number
+    date: Date | string
+    pre_mmr: number
+    post_mmr: number
+    mmr_delta: number
+    is_rated: boolean
+    hero: string | null
+    win: boolean | null
+    map: string | null
   }
+
+  const mmrHistoryQuery = sql<MmrHistoryRow[]>`
+    WITH player_matches AS (
+      SELECT
+        rpe.replay_id,
+        r.date,
+        rpe.pre_mmr,
+        rpe.post_mmr,
+        rpe.mmr_delta,
+        rpe.is_rated,
+        s.hero,
+        s.win,
+        s.map,
+        ROW_NUMBER() OVER (PARTITION BY rpe.replay_id ORDER BY rpe.is_rated DESC) as rn
+      FROM replay_player_elo rpe
+      JOIN replays r ON r.id = rpe.replay_id
+      LEFT JOIN mv_replay_player_stats s ON s.replay_id = rpe.replay_id AND LOWER(s.hots_battle_tag) = rpe.battle_tag_lower
+      WHERE rpe.battle_tag_lower = ANY(${tagList})
+    )
+    SELECT
+      replay_id,
+      date,
+      pre_mmr,
+      post_mmr,
+      mmr_delta,
+      is_rated,
+      hero,
+      win,
+      map
+    FROM player_matches
+    WHERE rn = 1
+    ORDER BY date ASC, replay_id ASC;
+  `
+
+  let mmrInfo: PlayerMmrLookupRow | undefined
+  let mmrHistoryRows: MmrHistoryRow[] = []
+
+  if (primaryAccount.discord_id) {
+    const [mmrRows, historyRows] = await Promise.all([
+      sql<PlayerMmrLookupRow[]>`
+        SELECT mmr, base_mmr, adjustment, role
+        FROM v_player_mmr
+        WHERE discord_id = ${primaryAccount.discord_id}
+        LIMIT 1
+      `,
+      mmrHistoryQuery,
+    ])
+    mmrInfo = mmrRows[0]
+    mmrHistoryRows = historyRows
+  } else if (primaryAccount.id) {
+    const [mmrRows, historyRows] = await Promise.all([
+      sql<PlayerMmrLookupRow[]>`
+        SELECT mmr, base_mmr, adjustment, role
+        FROM v_player_mmr
+        WHERE hots_account_id = ${primaryAccount.id} OR LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
+        LIMIT 1
+      `,
+      mmrHistoryQuery,
+    ])
+    mmrInfo = mmrRows[0]
+    mmrHistoryRows = historyRows
+  } else {
+    const [mmrRows, historyRows] = await Promise.all([
+      sql<PlayerMmrLookupRow[]>`
+        SELECT mmr, base_mmr, adjustment, role
+        FROM v_player_mmr
+        WHERE LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
+        LIMIT 1
+      `,
+      mmrHistoryQuery,
+    ])
+    mmrInfo = mmrRows[0]
+    mmrHistoryRows = historyRows
+  }
+
+  const mmrAdjustment = mmrInfo?.adjustment != null ? Number(mmrInfo.adjustment) : 0
+  const mmrHistory: PlayerMmrHistoryPoint[] = mmrHistoryRows.map(r => ({
+    replayId: Number(r.replay_id),
+    date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+    mmr: Number(r.post_mmr) + mmrAdjustment,
+    preMmr: Number(r.pre_mmr) + mmrAdjustment,
+    delta: Number(r.mmr_delta),
+    isRated: Boolean(r.is_rated),
+    hero: r.hero || undefined,
+    win: r.win != null ? Boolean(r.win) : undefined,
+    map: r.map || undefined,
+  }))
 
   const [name, tag] = primaryAccount.hots_battle_tag.split('#')
 
@@ -511,6 +605,7 @@ export async function getPlayerProfile(
     matches: formattedMatches,
     pagination,
     heroStats,
+    mmrHistory,
   }
 }
 
