@@ -278,6 +278,13 @@ function hideBrokenImage(event: Event) {
   }
 }
 
+let lastFetchedId = ''
+let lastFetchedHeroName = ''
+let lastFetchedHeroFilter = ''
+let lastFetchedOutcome = 'all'
+let lastFetchedLimit = 0
+let lastFetchedCustomLimit: number | null = null
+
 async function fetchPlayerProfile(identifier: string, isPageOnly = false) {
   if (isPageOnly) {
     matchesLoading.value = true
@@ -326,12 +333,24 @@ async function fetchPlayerProfile(identifier: string, isPageOnly = false) {
     totalPages.value = data.pagination?.totalPages ?? 1
     page.value = data.pagination?.page ?? page.value
 
+    lastFetchedId = identifier
+    lastFetchedHeroName = activeHeroParam.value
+    lastFetchedHeroFilter = heroFilter.value.trim()
+    lastFetchedOutcome = outcomeFilter.value
+    lastFetchedLimit = limitFilter.value
+    lastFetchedCustomLimit = customLimit.value
+
     if (data.player.rowId && String(data.player.rowId) !== route.params.identifier) {
+      const q = { ...route.query }
       if (route.params.heroName) {
-        router.replace(`/player/${data.player.rowId}/hero/${route.params.heroName}`)
+        router.replace({ path: `/player/${data.player.rowId}/hero/${route.params.heroName}`, query: q })
       } else {
-        router.replace(`/player/${data.player.rowId}`)
+        router.replace({ path: `/player/${data.player.rowId}`, query: q })
       }
+    }
+
+    if (data.pagination && data.pagination.totalPages > 0 && page.value > data.pagination.totalPages) {
+      goToPage(data.pagination.totalPages)
     }
   } catch {
     error.value = 'Failed to load player profile from server.'
@@ -396,23 +415,65 @@ const activeHeroParam = computed<string>(() => {
   return ''
 })
 
-function onScopeChange() {
-  page.value = 1
-  const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
-  if (id) {
-    fetchPlayerProfile(id, false)
+function updateUrl(
+  params: { page?: number; hero?: string; outcome?: 'all' | 'win' | 'loss'; limit?: number; customLimit?: number | null },
+  replace: boolean = false
+) {
+  const query: Record<string, string> = {}
+  const targetPage = params.page !== undefined ? params.page : page.value
+  const targetHero = params.hero !== undefined ? params.hero : heroFilter.value
+  const targetOutcome = params.outcome !== undefined ? params.outcome : outcomeFilter.value
+  const targetLimit = params.limit !== undefined ? params.limit : limitFilter.value
+  const targetCustomLimit = params.customLimit !== undefined ? params.customLimit : customLimit.value
+
+  if (targetPage > 1) {
+    query.page = String(targetPage)
   }
+  if (targetHero.trim()) {
+    query.hero = targetHero.trim()
+  }
+  if (targetOutcome && targetOutcome !== 'all') {
+    query.outcome = targetOutcome
+  }
+  if (targetLimit !== 0) {
+    query.limit = String(targetLimit)
+    if (targetLimit === -1 && targetCustomLimit !== null && targetCustomLimit > 0) {
+      query.customLimit = String(targetCustomLimit)
+    }
+  }
+
+  const currentQ = route.query
+  const isSame =
+    (currentQ.page || '1') === (query.page || '1') &&
+    (currentQ.hero || '') === (query.hero || '') &&
+    (currentQ.outcome || 'all') === (query.outcome || 'all') &&
+    (currentQ.limit || '0') === (query.limit || '0') &&
+    (currentQ.customLimit || '') === (query.customLimit || '')
+
+  if (isSame) {
+    const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+    if (id) {
+      fetchPlayerProfile(id, false)
+    }
+    return
+  }
+
+  if (replace) {
+    router.replace({ path: route.path, query })
+  } else {
+    router.push({ path: route.path, query })
+  }
+}
+
+function onScopeChange() {
+  updateUrl({ page: 1, limit: limitFilter.value }, false)
 }
 
 let customLimitTimer: ReturnType<typeof setTimeout> | null = null
 function onCustomLimitInput() {
   if (customLimitTimer) clearTimeout(customLimitTimer)
   customLimitTimer = setTimeout(() => {
-    page.value = 1
-    const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
-    if (id) {
-      fetchPlayerProfile(id, false)
-    }
+    updateUrl({ page: 1, limit: -1, customLimit: customLimit.value }, false)
   }, 400)
 }
 
@@ -420,32 +481,29 @@ let heroFilterTimer: ReturnType<typeof setTimeout> | null = null
 function onHeroFilterInput() {
   if (heroFilterTimer) clearTimeout(heroFilterTimer)
   heroFilterTimer = setTimeout(() => {
-    page.value = 1
-    const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
-    if (id) {
-      fetchPlayerProfile(id, false)
-    }
+    updateUrl({ page: 1, hero: heroFilter.value }, true)
   }, 350)
 }
 
 function setOutcomeFilter(val: 'all' | 'win' | 'loss') {
   if (outcomeFilter.value === val) return
   outcomeFilter.value = val
-  page.value = 1
-  const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
-  if (id) {
-    fetchPlayerProfile(id, false)
-  }
+  updateUrl({ page: 1, outcome: val }, false)
 }
 
 function goToPage(targetPage: number) {
-  if (targetPage < 1 || (totalPages.value > 0 && targetPage > totalPages.value) || targetPage === page.value) {
-    return
-  }
+  if (targetPage < 1) targetPage = 1
+  if (totalPages.value > 0 && targetPage > totalPages.value) targetPage = totalPages.value
+  if (targetPage === page.value && matches.value.length > 0) return
+
   page.value = targetPage
-  const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
-  if (id) {
-    fetchPlayerProfile(id, true)
+  updateUrl({ page: targetPage }, false)
+
+  if (typeof window !== 'undefined') {
+    const matchesSection = document.querySelector('.profile-matches-section')
+    if (matchesSection && matchesSection.getBoundingClientRect().top < 0) {
+      matchesSection.scrollIntoView({ behavior: 'smooth' })
+    }
   }
 }
 
@@ -583,21 +641,45 @@ function navigateToPlayerSpecificHero(heroName: string) {
 }
 
 watch(
-  [() => route.params.identifier, () => route.params.heroName],
-  ([newId]) => {
-    if (typeof newId === 'string') {
-      page.value = 1
-      fetchPlayerProfile(newId, false)
+  [() => route.params.identifier, () => route.params.heroName, () => route.query],
+  ([newId, newHero, newQuery]) => {
+    if (typeof newId !== 'string') return
+
+    const qPage = parseInt(String(newQuery.page || '1'), 10)
+    const targetPage = !isNaN(qPage) && qPage >= 1 ? qPage : 1
+
+    const targetHeroFilter = typeof newQuery.hero === 'string' ? newQuery.hero : ''
+    const rawOutcome = typeof newQuery.outcome === 'string' ? newQuery.outcome.toLowerCase() : 'all'
+    const targetOutcome: 'all' | 'win' | 'loss' = (rawOutcome === 'win' || rawOutcome === 'loss') ? rawOutcome : 'all'
+    const qLimit = parseInt(String(newQuery.limit || '0'), 10)
+    const targetLimit = !isNaN(qLimit) ? qLimit : 0
+    const qCustomLimit = parseInt(String(newQuery.customLimit || '0'), 10)
+    const targetCustomLimit: number | null = !isNaN(qCustomLimit) && qCustomLimit > 0 ? qCustomLimit : null
+
+    const isPageOnly =
+      profileData.value !== null &&
+      lastFetchedId === newId &&
+      lastFetchedHeroName === (typeof newHero === 'string' ? newHero : '') &&
+      lastFetchedHeroFilter === targetHeroFilter.trim() &&
+      lastFetchedOutcome === targetOutcome &&
+      lastFetchedLimit === targetLimit &&
+      (targetLimit !== -1 || lastFetchedCustomLimit === targetCustomLimit) &&
+      targetPage !== page.value
+
+    page.value = targetPage
+    heroFilter.value = targetHeroFilter
+    outcomeFilter.value = targetOutcome
+    limitFilter.value = targetLimit
+    if (targetLimit === -1) {
+      customLimit.value = targetCustomLimit
     }
+
+    fetchPlayerProfile(newId, isPageOnly)
   },
   { immediate: true }
 )
 
 onMounted(() => {
-  const currentId = route.params.identifier
-  if (typeof currentId === 'string' && !profileData.value) {
-    fetchPlayerProfile(currentId, false)
-  }
   window.addEventListener('pointerdown', handlePointerDown)
   window.addEventListener('keydown', handleKeydown)
 })
