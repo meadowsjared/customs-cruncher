@@ -1142,6 +1142,16 @@ const tooltipStyle = computed(() => {
   margin-bottom: 2rem;
   flex-wrap: wrap;
   gap: 1.25rem;
+  transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+.card,
+.match-card,
+.pagination-container,
+.empty-state,
+.admin-toolbar,
+.assign-toast {
+  transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .header-left {
@@ -2289,6 +2299,24 @@ const tooltipStyle = computed(() => {
   }
   .pagination-controls {
     justify-content: center;
+  }
+}
+
+@media (max-width: 700px) {
+  .matches-header {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .card,
+  .match-card,
+  .pagination-container,
+  .empty-state,
+  .admin-toolbar,
+  .assign-toast {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
   }
 }
 </style>
