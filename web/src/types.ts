@@ -318,9 +318,17 @@ export interface PlayerHeroSpecificStats {
   avgDamageTaken: number
 }
 
+export interface PlayerPaginationInfo {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
 export interface PlayerProfileData {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
+  pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
 }
 

@@ -730,7 +730,19 @@ export function createServer(): http.Server {
       if (playerMatch) {
         const identifier = decodeURIComponent(playerMatch[1])
         const heroParam = urlObj.searchParams.get('hero') || undefined
-        const profile = await getPlayerProfile(identifier, heroParam)
+        const page = Math.max(1, parseInt(urlObj.searchParams.get('page') || '1', 10) || 1)
+        const limit = Math.min(100, Math.max(1, parseInt(urlObj.searchParams.get('limit') || '15', 10) || 15))
+        const outcomeParam = urlObj.searchParams.get('outcome') || undefined
+        const heroSearchParam = urlObj.searchParams.get('heroSearch') || undefined
+        const scopeLimitParam = parseInt(urlObj.searchParams.get('scopeLimit') || '0', 10) || 0
+
+        const profile = await getPlayerProfile(identifier, heroParam, {
+          page,
+          limit,
+          outcome: outcomeParam === 'win' || outcomeParam === 'loss' ? outcomeParam : undefined,
+          heroSearch: heroSearchParam?.trim() || undefined,
+          scopeLimit: scopeLimitParam > 0 ? scopeLimitParam : undefined,
+        })
 
         if (!profile) {
           sendJson(res, 404, { error: 'Player not found' })

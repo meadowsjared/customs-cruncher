@@ -2043,17 +2043,21 @@ const tooltipStyle = computed(() => {
   text-align: center;
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: var(--radius-sm);
   color: var(--text-main);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: all 0.2s ease;
+}
+
+.jump-input:hover {
+  border-color: rgba(148, 163, 184, 0.6);
 }
 
 .jump-input:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
 .btn-jump {

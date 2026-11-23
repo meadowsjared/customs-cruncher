@@ -316,15 +316,24 @@ button, input, select {
   font-family: inherit;
 }
 
+::placeholder {
+  color: #94a3b8;
+  opacity: 0.85;
+}
+
 .input-field {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   color: var(--text-main);
   padding: 0.55rem 0.9rem;
   border-radius: var(--radius-md);
   font-size: 0.9rem;
   outline: none;
   transition: all 0.2s ease;
+}
+
+.input-field:hover {
+  border-color: rgba(148, 163, 184, 0.6);
 }
 
 .input-field:focus {

@@ -39,7 +39,18 @@ const searchResults = ref<PlayerSearchItem[]>([])
 const searchLoading = ref(false)
 const showSearchDropdown = ref(false)
 
-// Filters for matches list
+// Page size constant (easily changeable)
+const PAGE_SIZE = 15
+
+// Pagination state
+const page = ref(1)
+const total = ref(0)
+const totalPages = ref(1)
+const matches = ref<PlayerProfileMatch[]>([])
+const matchesLoading = ref(false)
+const jumpPageInput = ref('')
+
+// Filters for matches list and summary
 const heroFilter = ref('')
 const outcomeFilter = ref<'all' | 'win' | 'loss'>('all')
 const limitFilter = ref<number>(0)
@@ -267,14 +278,33 @@ function hideBrokenImage(event: Event) {
   }
 }
 
-async function fetchPlayerProfile(identifier: string, heroName?: string) {
-  loading.value = true
+async function fetchPlayerProfile(identifier: string, isPageOnly = false) {
+  if (isPageOnly) {
+    matchesLoading.value = true
+  } else {
+    loading.value = true
+  }
   error.value = null
 
   try {
-    const url = heroName
-      ? `/api/player/${encodeURIComponent(identifier)}?hero=${encodeURIComponent(heroName)}`
-      : `/api/player/${encodeURIComponent(identifier)}`
+    const params = new URLSearchParams()
+    params.set('page', String(page.value))
+    params.set('limit', String(PAGE_SIZE))
+
+    if (activeHeroParam.value) {
+      params.set('hero', activeHeroParam.value)
+    }
+    if (outcomeFilter.value !== 'all') {
+      params.set('outcome', outcomeFilter.value)
+    }
+    if (heroFilter.value.trim()) {
+      params.set('heroSearch', heroFilter.value.trim())
+    }
+    if (effectiveLimit.value > 0) {
+      params.set('scopeLimit', String(effectiveLimit.value))
+    }
+
+    const url = `/api/player/${encodeURIComponent(identifier)}?${params.toString()}`
     const res = await fetch(url)
     if (!res.ok) {
       if (res.status === 404) {
@@ -283,11 +313,18 @@ async function fetchPlayerProfile(identifier: string, heroName?: string) {
         error.value = `Failed to load player (Status ${res.status}).`
       }
       profileData.value = null
+      matches.value = []
+      total.value = 0
+      totalPages.value = 1
       return
     }
 
     const data: PlayerProfileData = await res.json()
     profileData.value = data
+    matches.value = data.matches
+    total.value = data.pagination?.total ?? data.matches.length
+    totalPages.value = data.pagination?.totalPages ?? 1
+    page.value = data.pagination?.page ?? page.value
 
     if (data.player.rowId && String(data.player.rowId) !== route.params.identifier) {
       if (route.params.heroName) {
@@ -299,8 +336,12 @@ async function fetchPlayerProfile(identifier: string, heroName?: string) {
   } catch {
     error.value = 'Failed to load player profile from server.'
     profileData.value = null
+    matches.value = []
+    total.value = 0
+    totalPages.value = 1
   } finally {
     loading.value = false
+    matchesLoading.value = false
   }
 }
 
@@ -355,239 +396,176 @@ const activeHeroParam = computed<string>(() => {
   return ''
 })
 
-const filteredMatches = computed<PlayerProfileMatch[]>(() => {
-  if (!profileData.value) return []
-  let list = profileData.value.matches
+function onScopeChange() {
+  page.value = 1
+  const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+  if (id) {
+    fetchPlayerProfile(id, false)
+  }
+}
 
-  if (outcomeFilter.value === 'win') {
-    list = list.filter(m => m.win)
-  } else if (outcomeFilter.value === 'loss') {
-    list = list.filter(m => !m.win)
+let customLimitTimer: ReturnType<typeof setTimeout> | null = null
+function onCustomLimitInput() {
+  if (customLimitTimer) clearTimeout(customLimitTimer)
+  customLimitTimer = setTimeout(() => {
+    page.value = 1
+    const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+    if (id) {
+      fetchPlayerProfile(id, false)
+    }
+  }, 400)
+}
+
+let heroFilterTimer: ReturnType<typeof setTimeout> | null = null
+function onHeroFilterInput() {
+  if (heroFilterTimer) clearTimeout(heroFilterTimer)
+  heroFilterTimer = setTimeout(() => {
+    page.value = 1
+    const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+    if (id) {
+      fetchPlayerProfile(id, false)
+    }
+  }, 350)
+}
+
+function setOutcomeFilter(val: 'all' | 'win' | 'loss') {
+  if (outcomeFilter.value === val) return
+  outcomeFilter.value = val
+  page.value = 1
+  const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+  if (id) {
+    fetchPlayerProfile(id, false)
+  }
+}
+
+function goToPage(targetPage: number) {
+  if (targetPage < 1 || (totalPages.value > 0 && targetPage > totalPages.value) || targetPage === page.value) {
+    return
+  }
+  page.value = targetPage
+  const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+  if (id) {
+    fetchPlayerProfile(id, true)
+  }
+}
+
+function handleJumpPage() {
+  const parsed = parseInt(jumpPageInput.value.trim(), 10)
+  if (!isNaN(parsed)) {
+    goToPage(parsed)
+    jumpPageInput.value = ''
+  }
+}
+
+interface PaginationItem {
+  type: 'page' | 'ellipsis'
+  page?: number
+  label: string
+  active?: boolean
+  key: string
+}
+
+const paginationItems = computed<PaginationItem[]>(() => {
+  const current = page.value
+  const totalCount = Math.max(totalPages.value, current > 1 ? current : 0)
+  if (totalCount <= 1) return []
+
+  const items: PaginationItem[] = []
+
+  if (totalCount <= 7) {
+    for (let p = 1; p <= totalCount; p++) {
+      items.push({
+        type: 'page',
+        page: p,
+        label: String(p),
+        active: p === current,
+        key: `page-${p}`,
+      })
+    }
+    return items
   }
 
-  if (heroFilter.value.trim()) {
-    const h = heroFilter.value.trim().toLowerCase()
-    list = list.filter(m => m.hero.toLowerCase().includes(h) || resolveHeroName(m.hero).toLowerCase().includes(h))
+  // Always show first page
+  items.push({
+    type: 'page',
+    page: 1,
+    label: '1',
+    active: current === 1,
+    key: 'page-1',
+  })
+
+  let start = Math.max(2, current - 2)
+  let end = Math.min(totalCount - 1, current + 2)
+
+  if (current <= 4) {
+    start = 2
+    end = Math.min(totalCount - 1, 5)
+  } else if (current >= totalCount - 3) {
+    start = Math.max(2, totalCount - 4)
+    end = totalCount - 1
   }
 
-  if (effectiveLimit.value > 0) {
-    list = list.slice(0, effectiveLimit.value)
+  if (start > 2) {
+    items.push({
+      type: 'ellipsis',
+      label: '…',
+      key: 'ellipsis-left',
+    })
   }
 
-  return list
+  for (let p = start; p <= end; p++) {
+    items.push({
+      type: 'page',
+      page: p,
+      label: String(p),
+      active: p === current,
+      key: `page-${p}`,
+    })
+  }
+
+  if (end < totalCount - 1) {
+    items.push({
+      type: 'ellipsis',
+      label: '…',
+      key: 'ellipsis-right',
+    })
+  }
+
+  items.push({
+    type: 'page',
+    page: totalCount,
+    label: String(totalCount),
+    active: current === totalCount,
+    key: `page-${totalCount}`,
+  })
+
+  return items
 })
 
-const hasActiveSummaryFilters = computed<boolean>(() => {
-  return (
-    outcomeFilter.value !== 'all' ||
-    heroFilter.value.trim().length > 0 ||
-    effectiveLimit.value > 0
-  )
+const matchesRangeText = computed<string>(() => {
+  if (total.value === 0 || matches.value.length === 0) return '0'
+  const start = (page.value - 1) * PAGE_SIZE + 1
+  const end = Math.min(page.value * PAGE_SIZE, total.value)
+  if (start > end) return '0'
+  return `${start}–${end}`
 })
 
 const filterHeroStripSuffix = computed<string>(() => {
   if (effectiveLimit.value > 0) {
-    return ` (Last ${displaySummary.value?.totalMatches ?? effectiveLimit.value})`
+    return ` (Last ${total.value || effectiveLimit.value})`
   }
-  if (hasActiveSummaryFilters.value) {
+  if (outcomeFilter.value !== 'all' || heroFilter.value.trim().length > 0) {
     return ' (Filtered)'
   }
   return ''
 })
 
 const displaySummary = computed<PlayerProfileSummary | null>(() => {
-  if (!profileData.value) return null
-  if (!hasActiveSummaryFilters.value) {
-    const p = profileData.value.player
-    return {
-      ...p,
-      totalKills: p.totalKills !== undefined
-        ? p.totalKills
-        : profileData.value.matches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0),
-      totalAssists: p.totalAssists !== undefined
-        ? p.totalAssists
-        : profileData.value.matches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0),
-      totalDeaths: p.totalDeaths !== undefined
-        ? p.totalDeaths
-        : profileData.value.matches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0),
-      overallKda: p.overallKda,
-    }
-  }
-
-  const targetMatches = filteredMatches.value
-  const totalMatches = targetMatches.length
-  const wins = targetMatches.filter(m => m.win).length
-  const losses = totalMatches - wins
-  const totalKills = targetMatches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0)
-  const totalAssists = targetMatches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0)
-  const totalDeaths = targetMatches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0)
-  const winRatePct = totalMatches > 0 ? Number(((wins / totalMatches) * 100).toFixed(1)) : 0
-  const overallKda = totalMatches > 0
-    ? Number((targetMatches.reduce((acc, m) => acc + (Number(m.kda) || 0), 0) / totalMatches).toFixed(2))
-    : 0
-  const avgHeroDamage = totalMatches > 0
-    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.hero_damage) || 0), 0) / totalMatches)
-    : 0
-  const avgSiegeDamage = totalMatches > 0
-    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.siege_damage) || 0), 0) / totalMatches)
-    : 0
-  const avgHealing = totalMatches > 0
-    ? Math.round(targetMatches.reduce((acc, m) => acc + ((Number(m.healing) || 0) + (Number(m.self_healing) || 0)), 0) / totalMatches)
-    : 0
-  const avgDamageTaken = totalMatches > 0
-    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.damage_taken) || 0), 0) / totalMatches)
-    : 0
-  const avgXp = totalMatches > 0
-    ? Math.round(targetMatches.reduce((acc, m) => acc + (Number(m.xp_contribution) || 0), 0) / totalMatches)
-    : 0
-
-  const heroCounts = new Map<string, { hero: string; games: number; wins: number }>()
-  for (const m of targetMatches) {
-    const existing = heroCounts.get(m.hero)
-    if (existing) {
-      existing.games += 1
-      if (m.win) existing.wins += 1
-    } else {
-      heroCounts.set(m.hero, {
-        hero: m.hero,
-        games: 1,
-        wins: m.win ? 1 : 0,
-      })
-    }
-  }
-
-  const allHeroStats: PlayerProfileTopHero[] = Array.from(heroCounts.values()).map(h => ({
-    hero: h.hero,
-    games: h.games,
-    wins: h.wins,
-    winRatePct: h.games > 0 ? Number(((h.wins / h.games) * 100).toFixed(1)) : 0,
-  }))
-
-  const topHeroes: PlayerProfileTopHero[] = [...allHeroStats]
-    .sort((a, b) => b.games - a.games || b.winRatePct - a.winRatePct)
-    .slice(0, 5)
-
-  let eligibleForWinrate = allHeroStats.filter(h => h.games >= 3)
-  if (eligibleForWinrate.length < 3) {
-    eligibleForWinrate = allHeroStats.filter(h => h.games >= 2)
-  }
-  if (eligibleForWinrate.length < 3) {
-    eligibleForWinrate = allHeroStats
-  }
-
-  const highestWinRateHeroes: PlayerProfileTopHero[] = [...eligibleForWinrate]
-    .sort((a, b) => b.winRatePct - a.winRatePct || b.games - a.games)
-    .slice(0, 5)
-
-  const summary: PlayerProfileSummary = {
-    rowId: profileData.value.player.rowId,
-    battleTag: profileData.value.player.battleTag,
-    name: profileData.value.player.name,
-    tag: profileData.value.player.tag,
-    allTags: profileData.value.player.allTags,
-    mmr: profileData.value.player.mmr,
-    baseMmr: profileData.value.player.baseMmr,
-    adjustment: profileData.value.player.adjustment,
-    role: profileData.value.player.role,
-    totalMatches,
-    wins,
-    losses,
-    winRatePct,
-    overallKda,
-    totalKills,
-    totalAssists,
-    totalDeaths,
-    avgHeroDamage,
-    avgSiegeDamage,
-    avgHealing,
-    avgDamageTaken,
-    avgXp,
-    topHeroes,
-    highestWinRateHeroes,
-  }
-
-  return summary
+  return profileData.value?.player ?? null
 })
 
 const displayHeroStats = computed<PlayerHeroSpecificStats | null>(() => {
-  if (!profileData.value || !activeHeroParam.value) return null
-
-  const target = activeHeroParam.value.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const hasExtraHeroFilters =
-    outcomeFilter.value !== 'all' ||
-    effectiveLimit.value > 0 ||
-    (heroFilter.value.trim().length > 0 &&
-      heroFilter.value.trim().toLowerCase() !== activeHeroParam.value.toLowerCase() &&
-      heroFilter.value.trim().toLowerCase() !== resolveHeroName(activeHeroParam.value).toLowerCase())
-
-  if (!hasExtraHeroFilters && profileData.value.heroStats) {
-    const hs = profileData.value.heroStats
-    const matches = profileData.value.matches.filter(m => {
-      const raw = m.hero.toLowerCase().replace(/[^a-z0-9]/g, '')
-      const resolved = resolveHeroName(m.hero).toLowerCase().replace(/[^a-z0-9]/g, '')
-      return raw === target || resolved === target
-    })
-    return {
-      ...hs,
-      totalKills: hs.totalKills !== undefined
-        ? hs.totalKills
-        : matches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0),
-      totalAssists: hs.totalAssists !== undefined
-        ? hs.totalAssists
-        : matches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0),
-      totalDeaths: hs.totalDeaths !== undefined
-        ? hs.totalDeaths
-        : matches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0),
-      kda: hs.kda,
-    }
-  }
-
-  const matches = filteredMatches.value
-  const total = matches.length
-  const wins = matches.filter(m => m.win).length
-  const losses = total - wins
-  const totalKills = matches.reduce((acc, m) => acc + (Number(m.solo_kills) || 0), 0)
-  const totalAssists = matches.reduce((acc, m) => acc + (Number(m.assists) || 0), 0)
-  const totalDeaths = matches.reduce((acc, m) => acc + (Number(m.deaths) || 0), 0)
-  const winRatePct = total > 0 ? Number(((wins / total) * 100).toFixed(1)) : 0
-
-  let sumKda = 0
-  let sumHeroDmg = 0
-  let sumSiegeDmg = 0
-  let sumHealing = 0
-  let sumDmgTaken = 0
-
-  for (const m of matches) {
-    sumKda += Number(m.kda) || 0
-    sumHeroDmg += Number(m.hero_damage) || 0
-    sumSiegeDmg += Number(m.siege_damage) || 0
-    sumHealing += (Number(m.healing) || 0) + (Number(m.self_healing) || 0)
-    sumDmgTaken += Number(m.damage_taken) || 0
-  }
-
-  const kda = total > 0 ? Number((sumKda / total).toFixed(2)) : 0
-  const avgHeroDamage = total > 0 ? Math.round(sumHeroDmg / total) : 0
-  const avgSiegeDamage = total > 0 ? Math.round(sumSiegeDmg / total) : 0
-  const avgHealing = total > 0 ? Math.round(sumHealing / total) : 0
-  const avgDamageTaken = total > 0 ? Math.round(sumDmgTaken / total) : 0
-
-  const heroStats: PlayerHeroSpecificStats = {
-    hero: matches[0]?.hero || activeHeroParam.value,
-    total,
-    wins,
-    losses,
-    winRatePct,
-    kda,
-    totalKills,
-    totalAssists,
-    totalDeaths,
-    avgHeroDamage,
-    avgSiegeDamage,
-    avgHealing,
-    avgDamageTaken,
-  }
-
-  return heroStats
+  return profileData.value?.heroStats ?? null
 })
 
 function navigateToHeroAllPlayers(heroName: string) {
@@ -605,23 +583,11 @@ function navigateToPlayerSpecificHero(heroName: string) {
 }
 
 watch(
-  activeHeroParam,
-  newHero => {
-    if (newHero) {
-      heroFilter.value = resolveHeroName(newHero) || newHero
-    } else {
-      heroFilter.value = ''
-    }
-  },
-  { immediate: true }
-)
-
-watch(
   [() => route.params.identifier, () => route.params.heroName],
-  ([newId, newHero]) => {
+  ([newId]) => {
     if (typeof newId === 'string') {
-      const heroStr = typeof newHero === 'string' ? newHero : undefined
-      fetchPlayerProfile(newId, heroStr)
+      page.value = 1
+      fetchPlayerProfile(newId, false)
     }
   },
   { immediate: true }
@@ -630,8 +596,7 @@ watch(
 onMounted(() => {
   const currentId = route.params.identifier
   if (typeof currentId === 'string' && !profileData.value) {
-    const heroStr = typeof route.params.heroName === 'string' ? route.params.heroName : undefined
-    fetchPlayerProfile(currentId, heroStr)
+    fetchPlayerProfile(currentId, false)
   }
   window.addEventListener('pointerdown', handlePointerDown)
   window.addEventListener('keydown', handleKeydown)
@@ -796,6 +761,59 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+
+        <!-- Summary Controls Bar -->
+        <div class="summary-filter-bar">
+          <div class="summary-controls-left">
+            <span class="count-badge">{{ total }} matches</span>
+          </div>
+          <div class="summary-controls-right">
+            <div class="filter-group">
+              <label>Matches:</label>
+              <select v-model="limitFilter"
+                      class="filter-limit-select"
+                      @change="onScopeChange">
+                <option :value="0">All Matches</option>
+                <option :value="5">Last 5 Matches</option>
+                <option :value="10">Last 10 Matches</option>
+                <option :value="20">Last 20 Matches</option>
+                <option :value="30">Last 30 Matches</option>
+                <option :value="50">Last 50 Matches</option>
+                <option :value="100">Last 100 Matches</option>
+                <option :value="250">Last 250 Matches</option>
+                <option :value="-1">Custom Count...</option>
+              </select>
+              <input v-if="limitFilter === -1"
+                     v-model.number="customLimit"
+                     type="number"
+                     min="1"
+                     placeholder="# games"
+                     class="filter-custom-limit-input"
+                     @input="onCustomLimitInput" />
+            </div>
+
+            <div class="filter-group">
+              <label>Result:</label>
+              <div class="outcome-toggle-btns">
+                <button class="toggle-btn"
+                        :class="{ active: outcomeFilter === 'all' }"
+                        @click="setOutcomeFilter('all')">
+                  All
+                </button>
+                <button class="toggle-btn toggle-win"
+                        :class="{ active: outcomeFilter === 'win' }"
+                        @click="setOutcomeFilter('win')">
+                  Victory
+                </button>
+                <button class="toggle-btn toggle-loss"
+                        :class="{ active: outcomeFilter === 'loss' }"
+                        @click="setOutcomeFilter('loss')">
+                  Defeat
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- General Player Header Card (When not viewing a single hero) -->
@@ -945,60 +963,18 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Match History List Section -->
-      <div class="profile-matches-section card">
-        <div class="matches-section-header">
-          <div class="section-title-wrap">
-            <h2>
-              {{ activeHeroParam && displayHeroStats ? `${profileData.player.name}'s
-              ${resolveHeroName(displayHeroStats.hero)} Matches` : 'Match History' }}
-            </h2>
-            <span class="count-badge">
-              {{ filteredMatches.length }}
-              <template v-if="profileData && filteredMatches.length !== profileData.matches.length">
-                of {{ profileData.matches.length }}
-              </template>
-              matches
-            </span>
+        <!-- Summary Controls Bar -->
+        <div class="summary-filter-bar">
+          <div class="summary-controls-left">
+            <span class="count-badge">{{ total }} matches</span>
           </div>
-
-          <!-- Controls: Hero Filter, Outcome Filter & Match Limit -->
-          <div class="matches-filter-bar">
-            <div class="filter-group">
-              <label>Filter Hero:</label>
-              <input v-model="heroFilter"
-                     type="text"
-                     class="filter-hero-input"
-                     placeholder="Search hero..." />
-            </div>
-
-            <div class="filter-group">
-              <label>Result:</label>
-              <div class="outcome-toggle-btns">
-                <button class="toggle-btn"
-                        :class="{ active: outcomeFilter === 'all' }"
-                        @click="outcomeFilter = 'all'">
-                  All
-                </button>
-                <button class="toggle-btn toggle-win"
-                        :class="{ active: outcomeFilter === 'win' }"
-                        @click="outcomeFilter = 'win'">
-                  Victory
-                </button>
-                <button class="toggle-btn toggle-loss"
-                        :class="{ active: outcomeFilter === 'loss' }"
-                        @click="outcomeFilter = 'loss'">
-                  Defeat
-                </button>
-              </div>
-            </div>
-
+          <div class="summary-controls-right">
             <div class="filter-group">
               <label>Matches:</label>
               <select v-model="limitFilter"
-                      class="filter-limit-select">
+                      class="filter-limit-select"
+                      @change="onScopeChange">
                 <option :value="0">All Matches</option>
                 <option :value="5">Last 5 Matches</option>
                 <option :value="10">Last 10 Matches</option>
@@ -1014,20 +990,73 @@ onUnmounted(() => {
                      type="number"
                      min="1"
                      placeholder="# games"
-                     class="filter-custom-limit-input" />
+                     class="filter-custom-limit-input"
+                     @input="onCustomLimitInput" />
             </div>
+
+            <div v-if="!activeHeroParam" class="filter-group">
+              <label>Filter Hero:</label>
+              <input v-model="heroFilter"
+                     type="text"
+                     class="filter-hero-input"
+                     placeholder="Search hero..."
+                     @input="onHeroFilterInput" />
+            </div>
+
+            <div class="filter-group">
+              <label>Result:</label>
+              <div class="outcome-toggle-btns">
+                <button class="toggle-btn"
+                        :class="{ active: outcomeFilter === 'all' }"
+                        @click="setOutcomeFilter('all')">
+                  All
+                </button>
+                <button class="toggle-btn toggle-win"
+                        :class="{ active: outcomeFilter === 'win' }"
+                        @click="setOutcomeFilter('win')">
+                  Victory
+                </button>
+                <button class="toggle-btn toggle-loss"
+                        :class="{ active: outcomeFilter === 'loss' }"
+                        @click="setOutcomeFilter('loss')">
+                  Defeat
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Match History List Section -->
+      <div class="profile-matches-section card">
+        <div class="matches-section-header">
+          <div class="section-title-wrap">
+            <h2>
+              {{ activeHeroParam && displayHeroStats ? `${profileData.player.name}'s
+              ${resolveHeroName(displayHeroStats.hero)} Matches` : 'Match History' }}
+            </h2>
+            <span class="count-badge">
+              <span class="range-highlight">{{ matchesRangeText }} of {{ total }} matches</span>
+              <span v-if="totalPages > 1" class="page-subtle">(Page {{ page }}/{{ Math.max(totalPages, 1) }})</span>
+            </span>
           </div>
         </div>
 
         <!-- Matches Table -->
-        <div v-if="filteredMatches.length === 0"
+        <div v-if="matchesLoading"
+             class="loading-matches">
+          <div class="spinner"></div>
+          <p>Loading matches...</p>
+        </div>
+
+        <div v-else-if="matches.length === 0"
              class="empty-matches">
           <p>No matches match the selected filters.</p>
         </div>
 
         <div v-else
              class="matches-cards-list">
-          <div v-for="m in filteredMatches"
+          <div v-for="m in matches"
                :key="m.replay_id"
                class="player-match-row"
                :class="m.win ? 'row-victory' : 'row-defeat'"
@@ -1146,6 +1175,83 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Pagination Bar -->
+      <div v-if="totalPages > 1 || page > 1" class="pagination-container card">
+        <div class="pagination-main-row">
+          <div class="pagination-meta">
+            Showing matches <strong>{{ matchesRangeText }}</strong> of <strong>{{ total }}</strong>
+          </div>
+
+          <div class="pagination-controls">
+            <button
+              :disabled="page <= 1"
+              class="btn btn-page-nav"
+              title="First Page"
+              @click="goToPage(1)"
+            >
+              « First
+            </button>
+            <button
+              :disabled="page <= 1"
+              class="btn btn-page-nav"
+              title="Previous Page"
+              @click="goToPage(page - 1)"
+            >
+              ‹ Prev
+            </button>
+
+            <div class="page-numbers-group">
+              <template v-for="item in paginationItems" :key="item.key">
+                <span v-if="item.type === 'ellipsis'" class="page-ellipsis">…</span>
+                <button
+                  v-else
+                  class="btn-page-num"
+                  :class="{ active: item.active }"
+                  :title="`Page ${item.label}`"
+                  @click="goToPage(item.page!)"
+                >
+                  {{ item.label }}
+                </button>
+              </template>
+            </div>
+
+            <button
+              :disabled="totalPages <= 1 || page >= totalPages"
+              class="btn btn-page-nav"
+              title="Next Page"
+              @click="goToPage(page + 1)"
+            >
+              Next ›
+            </button>
+            <button
+              :disabled="totalPages <= 1 || page >= totalPages"
+              class="btn btn-page-nav"
+              title="Last Page"
+              @click="goToPage(Math.max(totalPages, 1))"
+            >
+              Last »
+            </button>
+          </div>
+        </div>
+
+        <div class="pagination-secondary-row">
+          <!-- Quick Jump Form -->
+          <form class="jump-form" @submit.prevent="handleJumpPage">
+            <label for="player-jump-input" class="jump-label">Go to page:</label>
+            <input
+              id="player-jump-input"
+              v-model="jumpPageInput"
+              type="number"
+              min="1"
+              :max="totalPages"
+              placeholder="#"
+              class="jump-input"
+            />
+            <button type="submit" class="btn btn-jump">Go</button>
+          </form>
         </div>
       </div>
     </div>
@@ -1437,7 +1543,8 @@ onUnmounted(() => {
 
 .card,
 .profile-header-card,
-.profile-matches-section {
+.profile-matches-section,
+.pagination-container {
   transition: border-radius 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
@@ -1476,8 +1583,8 @@ onUnmounted(() => {
 .player-search-input {
   width: 100%;
   padding: 0.55rem 0.75rem 0.55rem 2.2rem;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: var(--radius-md);
   color: #fff;
   font-size: 0.85rem;
@@ -1485,9 +1592,18 @@ onUnmounted(() => {
   transition: all 0.2s ease;
 }
 
+.player-search-input::placeholder {
+  color: #94a3b8;
+  opacity: 0.85;
+}
+
+.player-search-input:hover {
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
 .player-search-input:focus {
   border-color: var(--accent-cyan);
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
 }
 
 .player-search-dropdown {
@@ -1834,12 +1950,28 @@ onUnmounted(() => {
 }
 
 .count-badge {
-  font-size: 0.75rem;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-dim);
-  padding: 0.15rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  padding: 0.22rem 0.65rem;
   border-radius: var(--radius-full);
   font-family: var(--font-mono);
+  gap: 0.35rem;
+}
+
+.range-highlight {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.page-subtle {
+  color: #94a3b8;
+  font-weight: 400;
+  opacity: 0.8;
+  font-size: 0.74rem;
 }
 
 .matches-filter-bar {
@@ -1853,39 +1985,58 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-dim);
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  font-weight: 500;
 }
 
 .filter-hero-input {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: var(--radius-md);
   color: #fff;
   padding: 0.35rem 0.65rem;
   font-size: 0.8rem;
   outline: none;
+  transition: all 0.2s ease;
+}
+
+.filter-hero-input::placeholder {
+  color: #94a3b8;
+  opacity: 0.85;
+}
+
+.filter-hero-input:hover {
+  border-color: rgba(148, 163, 184, 0.6);
 }
 
 .filter-hero-input:focus {
   border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
 }
 
 .filter-limit-select,
 .filter-custom-limit-input {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: var(--radius-md);
   color: #fff;
   padding: 0.35rem 0.65rem;
   font-size: 0.8rem;
   outline: none;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-limit-select:hover,
+.filter-custom-limit-input:hover {
+  border-color: rgba(148, 163, 184, 0.6);
 }
 
 .filter-limit-select:focus,
 .filter-custom-limit-input:focus {
   border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
 }
 
 .filter-custom-limit-input {
@@ -1893,21 +2044,41 @@ onUnmounted(() => {
   cursor: text;
 }
 
+.filter-custom-limit-input::placeholder {
+  color: #94a3b8;
+  opacity: 0.85;
+}
+
 .outcome-toggle-btns {
   display: flex;
   border-radius: var(--radius-md);
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  transition: border-color 0.2s ease;
+}
+
+.outcome-toggle-btns:hover {
+  border-color: rgba(148, 163, 184, 0.6);
 }
 
 .toggle-btn {
-  background: var(--bg-surface-elevated);
+  background: rgba(15, 23, 42, 0.7);
   border: none;
-  color: var(--text-dim);
+  border-right: 1px solid rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
   padding: 0.35rem 0.75rem;
   font-size: 0.78rem;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.toggle-btn:last-child {
+  border-right: none;
+}
+
+.toggle-btn:hover {
+  color: #fff;
+  background: rgba(30, 41, 59, 0.8);
 }
 
 .toggle-btn.active {
@@ -1924,6 +2095,217 @@ onUnmounted(() => {
 .toggle-btn.toggle-loss.active {
   background: rgba(244, 63, 94, 0.25);
   color: #fb7185;
+}
+
+/* Summary Filter Bar */
+.summary-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+}
+
+.summary-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.summary-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.loading-matches {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem 1rem;
+  color: var(--text-dim);
+}
+
+/* Pagination Bar */
+.pagination-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.75rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.pagination-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.pagination-meta {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.pagination-meta strong {
+  color: var(--text-main);
+  font-family: var(--font-mono);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.btn-page-nav {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  min-height: 36px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-page-nav:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.btn-page-nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.page-numbers-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-page-num {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-page-num:hover:not(.active) {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-focus);
+  color: var(--text-main);
+}
+
+.btn-page-num.active {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+  cursor: default;
+}
+
+.page-ellipsis {
+  padding: 0 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  user-select: none;
+}
+
+.pagination-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.jump-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.jump-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.jump-input {
+  width: 72px;
+  height: 32px;
+  padding: 0 0.4rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.jump-input::placeholder {
+  color: #94a3b8;
+  opacity: 0.85;
+}
+
+.jump-input:hover {
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.jump-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.btn-jump {
+  height: 32px;
+  padding: 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-jump:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-blue);
+  color: #fff;
 }
 
 /* Matches Cards List */
@@ -2344,15 +2726,35 @@ onUnmounted(() => {
   .card,
   .profile-header-card,
   .profile-matches-section,
+  .pagination-container,
   .player-match-row {
     border-radius: 0;
   }
 
   .card,
   .profile-header-card,
-  .profile-matches-section {
+  .profile-matches-section,
+  .pagination-container {
     border-left: none;
     border-right: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .pagination-main-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .pagination-secondary-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .pagination-controls {
+    justify-content: center;
   }
 }
 
