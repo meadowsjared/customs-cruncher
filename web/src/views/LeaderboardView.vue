@@ -14,7 +14,7 @@ const route = useRoute()
 const players = ref<LeaderboardPlayer[]>([])
 const loading = ref(true)
 const search = ref('')
-const minGames = ref(10)
+const minGames = ref(30)
 const viewMode = ref<'showcase' | 'table'>('showcase')
 
 function formatDeadTime(p: LeaderboardPlayer): string {
