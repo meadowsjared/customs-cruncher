@@ -28,7 +28,7 @@
     "dev:web": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --ext .ts",
-    "test": "bun test",
+    "test": "bun test ./commands ./server ./store ./utils",
     "postinstall": "node node_modules/heroprotocol/postinstall.js"
   },
   "keywords": [],

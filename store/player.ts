@@ -20,7 +20,7 @@ import {
   HotsAccountRow,
   Player,
   PlayerIdPrefix,
-  PLAYER_MMR_FUNCTION_SQL,
+  PLAYER_ELO_TABLES_SCHEMA_SQL,
   PLAYER_MMR_VIEW_SCHEMA_SQL,
   PLAYERS_TABLES_SCHEMA_SQL,
   RegisteredPlayerAccount,
@@ -29,6 +29,7 @@ import {
 import { validateBattleTag } from '../utils/heroesOfTheStorm'
 import { requireGuildId, safeDeferUpdate, safeReply } from '../utils/interaction'
 import { sql } from './db'
+import { ensurePlayerEloPopulated, recalculateAllPlayerElo } from './elo'
 import { getHeroesProfileData } from './heroesProfile'
 import {
   addFetchingMmrTag,
@@ -123,6 +124,7 @@ export {
   isFetchingMmr,
   markAllPlayersInactive,
   PlayerIdPrefix,
+  recalculateAllPlayerElo,
   refreshPlayerStatsView,
   relinkAccountSubstitutions,
   removeInteraction,
@@ -142,17 +144,12 @@ export {
 }
 
 /**
- * Initializes the MMR calculation function and `v_player_mmr` view in PostgreSQL.
+ * Initializes the Seeded 5v5 Team Elo tables and `v_player_mmr` view in PostgreSQL.
  */
 export async function initPlayerMmrView(): Promise<void> {
-  await sql.unsafe(PLAYER_MMR_FUNCTION_SQL)
-
-  const mvExists = await sql<Array<{ oid: number }>>`
-    SELECT oid FROM pg_class WHERE relname = 'mv_replay_player_stats' AND relkind = 'm'
-  `
-  if (mvExists.length > 0) {
-    await sql.unsafe(PLAYER_MMR_VIEW_SCHEMA_SQL)
-  }
+  await sql.unsafe(PLAYER_ELO_TABLES_SCHEMA_SQL)
+  await sql.unsafe(PLAYER_MMR_VIEW_SCHEMA_SQL)
+  await ensurePlayerEloPopulated()
 }
 
 /**
@@ -712,6 +709,7 @@ export async function triggerAccountMmrFetch(battleTag: string, guildId?: string
           updated_at = NOW()
         WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
       `
+      await recalculateAllPlayerElo().catch(e => console.error('Error recalculating Elo after HP MMR fetch:', e))
     } else {
       await sql`
         UPDATE hots_accounts SET
@@ -958,6 +956,7 @@ ${validationResult.rules}
       await setPlayerRole(discordId, guildId, profileData.detectedRoles)
       player.role = profileData.detectedRoles
     }
+    await recalculateAllPlayerElo().catch(e => console.error('Error recalculating Elo after account link:', e))
     clearActivePlayersCache(guildId)
     clearActiveSubstitutionsCache(guildId)
     clearResolvedAccountCache()
@@ -1097,6 +1096,7 @@ export async function deletePlayerHotsAccounts(discordId: string): Promise<numbe
 
 export async function deleteHotsAccount(hotsBattleTag: string): Promise<number> {
   const result = await sql`DELETE FROM hots_accounts WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})`
+  await recalculateAllPlayerElo().catch(e => console.error('Error recalculating Elo after account deletion:', e))
   clearActivePlayersCache()
   clearResolvedAccountCache()
   return result.count

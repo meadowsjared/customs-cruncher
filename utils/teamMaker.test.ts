@@ -404,7 +404,7 @@ describe('teamMaker.calculateMatchupPrediction', () => {
   })
 
   it('calculates proper Elo win percentage advantage for higher MMR team', () => {
-    // 100 MMR lead should yield ~64% win probability
+    // At 5v5 team scale (180), a 100 avg MMR lead yields ~78% win probability
     const team1 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 1, 2850, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
     const team2 = Array.from({ length: 5 }, (_, i) => makeMockPlayer(i + 6, 2750, i === 0 ? 'T' : i === 1 ? 'H' : 'A'))
 
@@ -413,8 +413,8 @@ describe('teamMaker.calculateMatchupPrediction', () => {
     expect(pred.team1AvgMMR).toBe(2850)
     expect(pred.team2AvgMMR).toBe(2750)
     expect(pred.mmrDiff).toBe(100)
-    expect(pred.team1WinPct).toBe(64)
-    expect(pred.team2WinPct).toBe(36)
+    expect(pred.team1WinPct).toBe(78)
+    expect(pred.team2WinPct).toBe(22)
     expect(pred.outlookText).toContain('Team 1')
   })
 

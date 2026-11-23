@@ -686,79 +686,65 @@ export const PLAYERS_TABLES_SCHEMA_SQL = `
 `
 
 /**
- * PostgreSQL function DDL for calculating effective MMR.
- * Formula: EffectiveMMR = BaseMMR + (WinRate - 50%) * Confidence(Games) * ScalingFactor + Adjustment
+ * PostgreSQL DDL for Seeded 5v5 Team Elo rating tables (`player_elo` and `replay_player_elo`).
+ * Populated by `recalculateAllPlayerElo()` in `store/elo.ts`.
  */
-export const PLAYER_MMR_FUNCTION_SQL = `
-  CREATE OR REPLACE FUNCTION calculate_effective_mmr(
-    base_mmr INTEGER,
-    custom_games INTEGER,
-    custom_win_rate NUMERIC,
-    adjustment INTEGER DEFAULT 0
-  )
-  RETURNS INTEGER
-  LANGUAGE sql
-  IMMUTABLE
-  PARALLEL SAFE
-  AS $$
-    SELECT ROUND(
-      COALESCE(base_mmr, 0)::numeric
-      + CASE 
-          WHEN COALESCE(custom_games, 0) > 0 THEN 
-            (COALESCE(custom_win_rate, 50.0) - 50.0) * (custom_games::numeric / (custom_games + 15)::numeric) * 15.0
-          ELSE 0 
-        END
-      + COALESCE(adjustment, 0)::numeric
-    )::integer;
-  $$;
+export const PLAYER_ELO_TABLES_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS player_elo (
+    player_key TEXT PRIMARY KEY,
+    discord_id TEXT,
+    hots_account_id INTEGER,
+    base_mmr INTEGER NOT NULL DEFAULT 0,
+    elo_mmr INTEGER NOT NULL DEFAULT 0,
+    elo_games INTEGER NOT NULL DEFAULT 0,
+    custom_games INTEGER NOT NULL DEFAULT 0,
+    custom_win_rate DOUBLE PRECISION NOT NULL DEFAULT 50.0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
 
-  CREATE OR REPLACE FUNCTION calculate_effective_mmr(
-    base_mmr INTEGER,
-    custom_games INTEGER,
-    custom_win_rate DOUBLE PRECISION,
-    adjustment INTEGER DEFAULT 0
-  )
-  RETURNS INTEGER
-  LANGUAGE sql
-  IMMUTABLE
-  PARALLEL SAFE
-  AS $$
-    SELECT calculate_effective_mmr(base_mmr, custom_games, custom_win_rate::numeric, adjustment);
-  $$;
+  CREATE INDEX IF NOT EXISTS idx_player_elo_discord_id
+    ON player_elo (discord_id)
+    WHERE discord_id IS NOT NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_player_elo_hots_account_id
+    ON player_elo (hots_account_id)
+    WHERE hots_account_id IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS replay_player_elo (
+    replay_id INTEGER NOT NULL,
+    battle_tag_lower TEXT NOT NULL,
+    base_mmr INTEGER NOT NULL DEFAULT 0,
+    pre_mmr INTEGER NOT NULL DEFAULT 0,
+    post_mmr INTEGER NOT NULL DEFAULT 0,
+    mmr_delta INTEGER NOT NULL DEFAULT 0,
+    is_rated BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (replay_id, battle_tag_lower)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_replay_player_elo_replay_id
+    ON replay_player_elo (replay_id);
 `
 
 /**
  * PostgreSQL View DDL for player MMR leaderboard and statistics.
+ * Combines Seeded 5v5 Team Elo (`player_elo`) with Heroes Profile peak MMR fallback
+ * (for players with 0 rated custom games) and manual admin adjustments.
  */
 export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
   DROP VIEW IF EXISTS v_player_mmr CASCADE;
   CREATE VIEW v_player_mmr AS
-  WITH custom_stats AS (
-    SELECT
-      LOWER(ha.hots_battle_tag) AS hots_battle_tag,
-      COUNT(*)::int AS games,
-      ROUND(100.0 * AVG(CASE WHEN s.win THEN 1.0 ELSE 0.0 END)::numeric, 1)::float AS win_rate
-    FROM mv_replay_player_stats s
-    JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
-    GROUP BY LOWER(ha.hots_battle_tag)
-  ),
-  account_summary AS (
+  WITH account_summary AS (
     SELECT
       ha.id AS hots_account_id,
       ha.discord_id,
       ha.hots_battle_tag,
-      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr, 0) AS account_mmr,
-      COALESCE(cs.games, 0) AS games,
-      COALESCE(cs.win_rate, 50.0) AS win_rate
+      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr, 0) AS account_mmr
     FROM hots_accounts ha
-    LEFT JOIN custom_stats cs ON cs.hots_battle_tag = LOWER(ha.hots_battle_tag)
   ),
-  player_best AS (
+  player_base AS (
     SELECT
       discord_id,
-      COALESCE(MAX(account_mmr), 0) AS base_mmr,
-      COALESCE(MAX(games), 0) AS custom_games,
-      COALESCE((ARRAY_AGG(win_rate ORDER BY games DESC))[1], 50.0) AS custom_win_rate
+      COALESCE(MAX(account_mmr), 0) AS base_mmr
     FROM account_summary
     WHERE discord_id IS NOT NULL
     GROUP BY discord_id
@@ -771,11 +757,21 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
     COALESCE(pb.base_mmr, 0) AS account_mmr,
     COALESCE(pb.base_mmr, 0) AS base_mmr,
     COALESCE(p.adjustment, 0) AS adjustment,
-    COALESCE(pb.custom_games, 0) AS custom_games,
-    COALESCE(pb.custom_win_rate, 50.0) AS custom_win_rate,
-    GREATEST(COALESCE(calculate_effective_mmr(COALESCE(pb.base_mmr, 0), COALESCE(pb.custom_games, 0), COALESCE(pb.custom_win_rate, 50.0), p.adjustment), 0), 0)::integer AS mmr
+    COALESCE(pe.custom_games, 0) AS custom_games,
+    COALESCE(pe.custom_win_rate, 50.0) AS custom_win_rate,
+    GREATEST(
+      COALESCE(
+        CASE
+          WHEN COALESCE(pe.elo_games, 0) > 0 THEN pe.elo_mmr
+          ELSE pb.base_mmr
+        END,
+        0
+      ) + COALESCE(p.adjustment, 0),
+      0
+    )::integer AS mmr
   FROM players p
-  LEFT JOIN player_best pb ON pb.discord_id = p.discord_id
+  LEFT JOIN player_base pb ON pb.discord_id = p.discord_id
+  LEFT JOIN player_elo pe ON pe.discord_id = p.discord_id
   UNION ALL
   SELECT
     NULL::text AS discord_id,
@@ -785,10 +781,20 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
     ha.account_mmr AS account_mmr,
     ha.account_mmr AS base_mmr,
     0 AS adjustment,
-    ha.games AS custom_games,
-    ha.win_rate AS custom_win_rate,
-    GREATEST(COALESCE(calculate_effective_mmr(ha.account_mmr, ha.games, ha.win_rate, 0), 0), 0)::integer AS mmr
+    COALESCE(pe.custom_games, 0) AS custom_games,
+    COALESCE(pe.custom_win_rate, 50.0) AS custom_win_rate,
+    GREATEST(
+      COALESCE(
+        CASE
+          WHEN COALESCE(pe.elo_games, 0) > 0 THEN pe.elo_mmr
+          ELSE ha.account_mmr
+        END,
+        0
+      ),
+      0
+    )::integer AS mmr
   FROM account_summary ha
+  LEFT JOIN player_elo pe ON pe.hots_account_id = ha.hots_account_id
   WHERE ha.discord_id IS NULL;
 `
 

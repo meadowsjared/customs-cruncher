@@ -6,9 +6,10 @@ import {
   ReplayPlayerStatRow,
 } from '../types/player'
 import { sql } from './db'
+import { ensurePlayerEloPopulated, initPlayerEloTables, recalculateAllPlayerElo } from './elo'
 
 /**
- * Initializes the `mv_replay_player_stats` materialized view and its indexes in PostgreSQL.
+ * Initializes the `mv_replay_player_stats` materialized view, Elo tables, and `v_player_mmr` view in PostgreSQL.
  */
 export async function initPlayerStatsView(): Promise<void> {
   const viewExists = await sql<Array<{ oid: number }>>`
@@ -29,14 +30,17 @@ export async function initPlayerStatsView(): Promise<void> {
     }
   }
   await sql.unsafe(PLAYER_STATS_VIEW_SCHEMA_SQL)
+  await initPlayerEloTables()
   await sql.unsafe(PLAYER_MMR_VIEW_SCHEMA_SQL)
+  await ensurePlayerEloPopulated()
 }
 
 /**
- * Refreshes the `mv_replay_player_stats` materialized view concurrently so reads are never blocked.
+ * Refreshes the `mv_replay_player_stats` materialized view concurrently and recalculates Seeded 5v5 Team Elo.
  */
 export async function refreshPlayerStatsView(): Promise<void> {
   await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY mv_replay_player_stats`
+  await recalculateAllPlayerElo()
 }
 
 /**

@@ -1,4 +1,5 @@
 import { Player } from '../types/player'
+import { calculateExpectedWinProbability } from './elo'
 
 export enum MakeTeamsMode {
   OPTIMAL = 'optimal',
@@ -432,10 +433,9 @@ export function calculateMatchupPrediction(team1: Player[], team2: Player[]): Ma
   const team2AvgMMR = Math.round(t2Total / Math.max(team2.length, 1))
   const mmrDiff = team1AvgMMR - team2AvgMMR
 
-  // Standard Elo logistic win probability based on average team MMR difference
-  // Scale factor of 400: a 100-MMR lead ~ 64% win chance, 200-MMR lead ~ 76% win chance
-  const exponent = -mmrDiff / 400
-  const t1Prob = 1 / (1 + Math.pow(10, exponent))
+  // Calibrated 5v5 team-average Elo logistic curve (scale 180 ≈ 400 / √5):
+  // a 100-MMR team avg lead ~ 78% win chance, 200-MMR lead ~ 93% win chance
+  const t1Prob = calculateExpectedWinProbability(team1AvgMMR, team2AvgMMR)
   const team1WinPct = Math.max(1, Math.min(99, Math.round(t1Prob * 100)))
   const team2WinPct = 100 - team1WinPct
 
@@ -556,8 +556,8 @@ export function findSuggestedFairSwaps(
         continue
       }
 
-      // Only accept swaps that improve win deviation or keep it within a fair range (<= 15% from 50)
-      if (newWinDeviation >= currentWinDeviation && newWinDeviation > 15 && !fixesRole) {
+      // Only accept swaps that improve win deviation or MMR diff, or keep win deviation within a fair range (<= 15% from 50)
+      if (newWinDeviation >= currentWinDeviation && newDiff >= currentDiff && newWinDeviation > 15 && !fixesRole) {
         continue
       }
 

@@ -531,18 +531,15 @@ export function createServer(): http.Server {
           }
           if (tags.length > 0) {
             try {
-              const replayDate = new Date(replay.date)
               const mmrRows = await sql<{
-                hots_account_id: number
+                hots_account_id: number | null
                 battle_tag_lower: string
                 base_mmr: number
-                adjustment: number
-                games: number
-                win_rate: number
                 mmr: number
+                mmr_delta: number | null
               }[]>`
                 WITH account_details AS (
-                  SELECT
+                  SELECT DISTINCT ON (LOWER(ha.hots_battle_tag))
                     ha.id AS hots_account_id,
                     ha.discord_id,
                     LOWER(ha.hots_battle_tag) AS battle_tag_lower,
@@ -551,6 +548,7 @@ export function createServer(): http.Server {
                   FROM hots_accounts ha
                   LEFT JOIN players p ON p.discord_id = ha.discord_id
                   WHERE LOWER(ha.hots_battle_tag) IN ${sql(tags)}
+                  ORDER BY LOWER(ha.hots_battle_tag), (ha.owner_discord_id IS NULL) DESC, ha.id ASC
                 ),
                 discord_best AS (
                   SELECT
@@ -559,43 +557,38 @@ export function createServer(): http.Server {
                   FROM hots_accounts ha_all
                   WHERE ha_all.discord_id IN (SELECT discord_id FROM account_details WHERE discord_id IS NOT NULL)
                   GROUP BY ha_all.discord_id
-                ),
-                prior_stats AS (
-                  SELECT
-                    LOWER(s.hots_battle_tag) AS battle_tag_lower,
-                    COUNT(*)::int AS games,
-                    ROUND(100.0 * AVG(CASE WHEN s.win THEN 1.0 ELSE 0.0 END)::numeric, 1)::float AS win_rate
-                  FROM mv_replay_player_stats s
-                  WHERE LOWER(s.hots_battle_tag) IN ${sql(tags)}
-                    AND s.date < ${replayDate}
-                  GROUP BY LOWER(s.hots_battle_tag)
                 )
                 SELECT
                   ad.hots_account_id,
-                  ad.battle_tag_lower,
-                  COALESCE(db.base_mmr, ad.account_mmr) AS base_mmr,
-                  ad.adjustment,
-                  COALESCE(ps.games, 0) AS games,
-                  COALESCE(ps.win_rate, 50.0) AS win_rate,
+                  COALESCE(rpe.battle_tag_lower, ad.battle_tag_lower) AS battle_tag_lower,
+                  COALESCE(NULLIF(rpe.base_mmr, 0), db.base_mmr, ad.account_mmr, 0)::integer AS base_mmr,
                   GREATEST(
-                    calculate_effective_mmr(
-                      COALESCE(db.base_mmr, ad.account_mmr),
-                      COALESCE(ps.games, 0),
-                      COALESCE(ps.win_rate, 50.0),
-                      ad.adjustment
-                    ),
+                    COALESCE(
+                      NULLIF(rpe.pre_mmr, 0),
+                      db.base_mmr,
+                      ad.account_mmr,
+                      0
+                    ) + COALESCE(ad.adjustment, 0),
                     0
-                  )::integer AS mmr
+                  )::integer AS mmr,
+                  CASE WHEN rpe.is_rated THEN rpe.mmr_delta ELSE NULL END AS mmr_delta
                 FROM account_details ad
+                FULL OUTER JOIN replay_player_elo rpe
+                  ON rpe.replay_id = ${replayId}
+                  AND rpe.battle_tag_lower = ad.battle_tag_lower
                 LEFT JOIN discord_best db ON db.discord_id = ad.discord_id
-                LEFT JOIN prior_stats ps ON ps.battle_tag_lower = ad.battle_tag_lower
+                WHERE COALESCE(rpe.battle_tag_lower, ad.battle_tag_lower) IN ${sql(tags)}
               `
-              const accountMap = new Map<string, { id: number; mmr: number | null; baseMmr: number | null }>()
+              const accountMap = new Map<
+                string,
+                { id: number | null; mmr: number | null; baseMmr: number | null; mmrDelta: number | null }
+              >()
               for (const r of mmrRows) {
                 accountMap.set(r.battle_tag_lower, {
                   id: r.hots_account_id,
                   mmr: r.mmr > 0 ? r.mmr : null,
                   baseMmr: r.base_mmr > 0 ? r.base_mmr : null,
+                  mmrDelta: r.mmr_delta,
                 })
               }
               for (const [, p] of playerEntries) {
@@ -605,6 +598,9 @@ export function createServer(): http.Server {
                   p.rowId = acc?.id ?? null
                   p.mmr = acc?.mmr ?? null
                   p.baseMmr = acc?.baseMmr ?? null
+                  if (acc?.mmrDelta != null) {
+                    p.mmrDelta = acc.mmrDelta
+                  }
                 }
               }
             } catch (err) {
