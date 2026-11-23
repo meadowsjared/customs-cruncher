@@ -581,6 +581,8 @@ onUnmounted(() => {
           <option :value="5">Min 5 Games</option>
           <option :value="10">Min 10 Games</option>
           <option :value="20">Min 20 Games</option>
+          <option :value="30">Min 30 Games</option>
+          <option :value="40">Min 40 Games</option>
         </select>
       </div>
     </div>
@@ -837,7 +839,7 @@ onUnmounted(() => {
             <div class="stat-dossier-item">
               <span class="dossier-label">Avg Siege Damage</span>
               <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_siege_damage || 0))
-              }}</span>
+                }}</span>
               <span class="dossier-sub">Minion & structure clear</span>
             </div>
 
@@ -850,14 +852,14 @@ onUnmounted(() => {
             <div class="stat-dossier-item">
               <span class="dossier-label">Avg Damage Soaked</span>
               <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_damage_soaked || 0))
-              }}</span>
+                }}</span>
               <span class="dossier-sub">Mitigated & healed</span>
             </div>
 
             <div class="stat-dossier-item">
               <span class="dossier-label">Avg XP Contribution</span>
               <span class="dossier-value">{{ formatNumber(Math.round(activeFilterPlayer.avg_xp_contribution || 0))
-              }}</span>
+                }}</span>
               <span class="dossier-sub">{{ Math.round(activeFilterPlayer.avg_xpm || 0) }} XPM</span>
             </div>
 
@@ -2005,6 +2007,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 700px) {
+
   .leaderboard-table th,
   .leaderboard-table td {
     padding: 0.35rem 0.4vw !important;
