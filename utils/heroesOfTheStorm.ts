@@ -1,4 +1,12 @@
 /**
+ * Strips any trailing autocomplete display label (e.g., ` (Guest account, unlinked)`)
+ * if the Discord client submits the display label instead of the raw BattleTag value.
+ */
+export function sanitizeBattleTagInput(rawBattleTag: string): string {
+  return rawBattleTag.trim().replace(/\s+\([^)]*\)$/, '').trim()
+}
+
+/**
  * Validates a Heroes of the Storm battle tag against Blizzard's naming rules
  * @param hotsBattleTag The battle tag to validate (e.g., "PlayerName#1234")
  * @returns An object indicating whether the battle tag is valid, along with any errors and rules if invalid

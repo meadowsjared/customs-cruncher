@@ -26,7 +26,7 @@ import {
   RegisteredPlayerAccount,
   ResolvedHotsAccount,
 } from '../types/player'
-import { validateBattleTag } from '../utils/heroesOfTheStorm'
+import { sanitizeBattleTagInput, validateBattleTag } from '../utils/heroesOfTheStorm'
 import { requireGuildId, safeDeferUpdate, safeReply } from '../utils/interaction'
 import { sql } from './db'
 import { ensurePlayerEloPopulated, recalculateAllPlayerElo } from './elo'
@@ -782,10 +782,11 @@ export async function handleRegisterGuestAccount(
     | ButtonInteraction<CacheType>
     | ModalSubmitInteraction<CacheType>
     | undefined,
-  hotsBattleTag: string,
+  rawHotsBattleTag: string,
   guildId?: string,
   activate = true
 ): Promise<boolean> {
+  const hotsBattleTag = sanitizeBattleTagInput(rawHotsBattleTag)
   const validationResult = validateBattleTag(hotsBattleTag)
   if (!validationResult.isValid) {
     await safeReply(interaction, {
@@ -917,8 +918,9 @@ export async function handleAddHotsAccount(
     | ModalSubmitInteraction<CacheType>
     | undefined,
   discordId: string,
-  hotsBattleTag: string
+  rawHotsBattleTag: string
 ): Promise<false | Player> {
+  const hotsBattleTag = sanitizeBattleTagInput(rawHotsBattleTag)
   let hotsAccountAlreadyExists = false
   let userIsSelf = false
   const validationResult = validateBattleTag(hotsBattleTag)

@@ -41,6 +41,7 @@ import {
 import { DiscordUserNames } from '../types/player'
 import { announce, safePing } from '../utils/announce'
 import { getBotChannel } from '../utils/channel'
+import { sanitizeBattleTagInput } from '../utils/heroesOfTheStorm'
 import { requireGuildId, safeDeferUpdate, safeReply } from '../utils/interaction'
 import { updateLobbyMessage } from './lobby'
 import { extractDiscordIdFromInteraction, fetchDiscordNames, formatDateToMMDDYYYY } from './shared'
@@ -213,7 +214,46 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   }
 
   const query = focusedOption.value.trim().toLowerCase()
+  const subCommand = interaction.options.getSubcommand(false)
+  const isAddAccountFlow =
+    interaction.commandName === CommandIds.ADD_ACCOUNT ||
+    (interaction.commandName === CommandIds.PLAYER && subCommand === 'add-account')
+
   const registeredAccounts = await getAllRegisteredHotSAccounts(guildId)
+
+  if (isAddAccountFlow) {
+    const guestAccounts = registeredAccounts.filter(acc => !acc.discordId && !acc.ownerDiscordId)
+    const filteredGuests = query
+      ? guestAccounts.filter(acc => {
+          const tag = acc.hotsBattleTag.toLowerCase()
+          const prefix = tag.split('#')[0]
+          return tag.includes(query) || prefix === query
+        })
+      : guestAccounts
+
+    const choices: Array<{ name: string; value: string }> = filteredGuests.slice(0, 25).map(acc => ({
+      name: `${acc.hotsBattleTag} (Guest account, unlinked)`.slice(0, 100),
+      value: acc.hotsBattleTag,
+    }))
+
+    if (choices.length < 25) {
+      const unlinked = await getUnlinkedReplayAccountsForAutocomplete(query, 25 - choices.length)
+      const existingTags = new Set(choices.map(c => c.value.toLowerCase()))
+      for (const u of unlinked) {
+        if (existingTags.has(u.hotsBattleTag.toLowerCase())) continue
+        existingTags.add(u.hotsBattleTag.toLowerCase())
+        const gameText = u.gameCount === 1 ? '1 replay game' : `${u.gameCount} replay games`
+        choices.push({
+          name: `${u.hotsBattleTag} (🎮 ${gameText}, unlinked)`.slice(0, 100),
+          value: u.hotsBattleTag,
+        })
+        if (choices.length >= 25) break
+      }
+    }
+
+    await interaction.respond(choices)
+    return
+  }
 
   const rawDiscordId = interaction.options.get(CommandIds.USER)?.value
   const targetDiscordId =
@@ -224,7 +264,6 @@ export async function handleLookupAutocomplete(interaction: AutocompleteInteract
   let baseAccounts = registeredAccounts
   if (targetDiscordId) {
     baseAccounts = registeredAccounts.filter(acc => acc.discordId === targetDiscordId)
-    const subCommand = interaction.options.getSubcommand(false)
     if (subCommand === CommandIds.PRIMARY) {
       baseAccounts = baseAccounts.filter(acc => !acc.ownerDiscordId)
     }
@@ -313,7 +352,7 @@ export async function handleRegisterCommand(
   if (!guildId) return
 
   const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true).trim()
+  const hotsBattleTag = sanitizeBattleTagInput(interaction.options.getString(CommandIds.BATTLE_TAG, true))
   const shouldActivate = interaction.options.getBoolean(CommandIds.ACTIVE) ?? true
 
   if (!targetDiscordId) {
