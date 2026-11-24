@@ -17,3 +17,4 @@ logs/
 store_backup/
 *.traineddata
 web/dist/
+assets/links/*

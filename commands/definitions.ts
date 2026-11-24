@@ -466,8 +466,122 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
     ],
   },
   {
-    name: CommandIds.TWITCH,
-    description: "Show Norator's Twitch channel",
+    name: CommandIds.LINKS,
+    description: 'Show, list, or manage saved community links and streams',
+    options: [
+      {
+        name: 'show',
+        description: 'Post a saved link embed in chat',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'name',
+            description: 'The name of the saved link to show',
+            type: ApplicationCommandOptionType.String,
+            autocomplete: true,
+            required: false,
+          },
+        ],
+      },
+      {
+        name: 'list',
+        description: 'List all saved links for this server',
+        type: ApplicationCommandOptionType.Subcommand,
+      },
+      {
+        name: 'add',
+        description: 'Add or update a saved link (admin only)',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'name',
+            description: 'Short key to look up this link (e.g. norator)',
+            type: ApplicationCommandOptionType.String,
+            required: true,
+          },
+          {
+            name: 'title',
+            description: 'Embed title',
+            type: ApplicationCommandOptionType.String,
+            required: true,
+          },
+          {
+            name: 'url',
+            description: 'Destination URL (https://...)',
+            type: ApplicationCommandOptionType.String,
+            required: true,
+          },
+          {
+            name: 'description',
+            description: 'Embed description text',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'author-name',
+            description: 'Small header text above the title (e.g. Nor is bald)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'author-icon',
+            description: 'Upload an icon image for the author header',
+            type: ApplicationCommandOptionType.Attachment,
+            required: false,
+          },
+          {
+            name: 'author-icon-url',
+            description: 'Image URL for the author header icon',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'thumbnail',
+            description: 'Upload a thumbnail image (top-right of embed)',
+            type: ApplicationCommandOptionType.Attachment,
+            required: false,
+          },
+          {
+            name: 'thumbnail-url',
+            description: 'Image URL for the top-right thumbnail',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'image',
+            description: 'Upload a large banner image (bottom of embed)',
+            type: ApplicationCommandOptionType.Attachment,
+            required: false,
+          },
+          {
+            name: 'image-url',
+            description: 'Image URL for the large bottom banner',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+          {
+            name: 'color',
+            description: 'Embed accent hex color (e.g. #0099ff)',
+            type: ApplicationCommandOptionType.String,
+            required: false,
+          },
+        ],
+      },
+      {
+        name: 'remove',
+        description: 'Remove a saved link (admin only)',
+        type: ApplicationCommandOptionType.Subcommand,
+        options: [
+          {
+            name: 'name',
+            description: 'The name of the saved link to remove',
+            type: ApplicationCommandOptionType.String,
+            autocomplete: true,
+            required: true,
+          },
+        ],
+      },
+    ],
   },
   {
     name: CommandIds.REGISTER,

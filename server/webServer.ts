@@ -125,6 +125,7 @@ export function createServer(): http.Server {
   const distDir = path.resolve(process.cwd(), 'web/dist')
   const assetsMapsDir = path.resolve(process.cwd(), 'assets/maps')
   const assetsBrandingDir = path.resolve(process.cwd(), 'assets/branding')
+  const assetsLinksDir = path.resolve(process.cwd(), 'assets/links')
   const assetsHeroesDir = path.resolve(process.cwd(), 'web/src/assets/heroes')
   const assetsTalentsDir = path.resolve(process.cwd(), 'web/src/assets/talents')
 
@@ -164,6 +165,16 @@ export function createServer(): http.Server {
       if (pathname.startsWith('/api/branding/') || pathname.startsWith('/branding/')) {
         const filename = path.basename(pathname)
         const filePath = path.join(assetsBrandingDir, filename)
+        if (fs.existsSync(filePath)) {
+          sendFile(res, filePath, isHead)
+          return
+        }
+      }
+
+      // Saved link images shortcut: /api/links-assets/:filename or /links-assets/:filename
+      if (pathname.startsWith('/api/links-assets/') || pathname.startsWith('/links-assets/')) {
+        const filename = path.basename(pathname)
+        const filePath = path.join(assetsLinksDir, filename)
         if (fs.existsSync(filePath)) {
           sendFile(res, filePath, isHead)
           return

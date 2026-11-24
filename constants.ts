@@ -65,7 +65,7 @@ export const enum CommandIds {
   PLAYERS = 'players',
   PLAYERS_ALL_PAGE = 'players-all-page',
   PLAYERS_ALL_PAGE_SORT = 'players-all-page-sort',
-  TWITCH = 'twitch',
+  LINKS = 'links',
   REGISTER = 'register',
   LOOKUP = 'lookup',
   RECENT_MATCHES_LIMIT = 'num-recents',

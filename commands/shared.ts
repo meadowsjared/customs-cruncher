@@ -325,27 +325,6 @@ export async function handleGuideCommand(
   await safeReply(interaction, { embeds: [exampleEmbed], files, flags: safePing() })
 }
 
-export async function handleTwitchCommand(
-  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
-) {
-  const exampleEmbed = new EmbedBuilder()
-    .setColor(0x0099ff)
-    .setTitle("Norator's Twitch Channel")
-    .setURL('https://www.twitch.tv/norator')
-    .setAuthor({
-      name: 'Nor is bald',
-      iconURL:
-        'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png',
-      url: 'https://www.twitch.tv/norator',
-    })
-    .setDescription('Join Norator on Twitch for Heroes of the Storm content!')
-    .setThumbnail(
-      'https://static-cdn.jtvnw.net/jtv_user_pictures/f9bdb9b4-911b-4f2d-8e04-f0bde098a4d9-profile_image-70x70.png'
-    )
-
-  await safeReply(interaction, { embeds: [exampleEmbed], flags: safePing() })
-}
-
 export async function handleDeleteMessageCommand(
   interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
 ) {

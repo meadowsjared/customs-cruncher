@@ -69,7 +69,8 @@ import {
   handleRecentReplaysCommand,
 } from './replays'
 import { handleScanLobbyCommand } from './scanLobby'
-import { handleChannelCommand, handleDeleteMessageCommand, handleGuideCommand, handleTwitchCommand } from './shared'
+import { handleChannelCommand, handleDeleteMessageCommand, handleGuideCommand } from './shared'
+import { handleLinksAutocomplete, handleLinksSubCommand } from './links'
 import { logCommandInteraction } from '../utils/commandLogger'
 import {
   handleCheckTeamsCommand,
@@ -136,7 +137,7 @@ const exactHandlers = new Map<string, InteractionHandler>([
   ],
   [CommandIds.ADD_ACCOUNT, handleAddHotsAccountCommand],
   [CommandIds.ROLE, handleEditRoleCommand],
-  [CommandIds.TWITCH, handleTwitchCommand],
+  [CommandIds.LINKS, wrapSlashOnly(handleLinksSubCommand)],
   [CommandIds.REGISTER, handleRegisterCommand],
   [CommandIds.LOOKUP, handleLookupCommand],
   [CommandIds.MOVE, wrapSlashOnly(handleMoveSubCommand)],
@@ -548,6 +549,10 @@ export async function dispatchInteraction(interaction: Interaction<CacheType>): 
     }
     if (interaction.commandName === CommandIds.REPLAYS) {
       await handleReassignReplayPlayerAutocomplete(interaction)
+      return
+    }
+    if (interaction.commandName === CommandIds.LINKS) {
+      await handleLinksAutocomplete(interaction)
       return
     }
     return

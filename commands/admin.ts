@@ -894,6 +894,9 @@ export async function handlePlayerHelpCommand(
         '**`/channel set-lobby`** `[channel]` — Set lobby announcements channel',
         '**`/channel set-bot`** `[channel]` — Set bot interactions channel',
         '**`/channel show`** — Show current channel routing',
+        '**`/links add`** `name` `title` `url` — Save a community link embed',
+        '**`/links remove`** `name` — Remove a saved link',
+        '**`/links list`** — List all saved server links',
       ].join('\n')
     )
     .setFooter({ text: '🛡️ Admin Guide • Visible only to you • /guide for player commands' })
