@@ -21,6 +21,7 @@ import {
   handleAdminUnlinkedButton,
   handleAdminUnlinkedCommand,
   handlePlayerAdjustCommand,
+  handlePlayerHelpCommand,
   updateAdminActiveButtons,
 } from './admin'
 import { handleChannelSubCommand } from './channels'
@@ -240,6 +241,9 @@ async function handlePlayerSubCommand(interaction: ChatInputCommandInteraction<C
       return
     case 'unlinked':
       await handleAdminUnlinkedCommand(interaction)
+      return
+    case 'help':
+      await handlePlayerHelpCommand(interaction)
       return
     case 'move':
     default:

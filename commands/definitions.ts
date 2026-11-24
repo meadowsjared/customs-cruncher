@@ -870,6 +870,11 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           },
         ],
       },
+      {
+        name: 'help',
+        description: 'Show a cheat-sheet of all admin commands for managing players, lobbies, and matches',
+        type: ApplicationCommandOptionType.Subcommand,
+      },
     ],
   },
   {

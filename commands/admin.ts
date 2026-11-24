@@ -826,3 +826,80 @@ export async function handleAdminUnlinkedButton(interaction: ButtonInteraction<C
 
   await handleAdminUnlinkedCommand(interaction, page, sortBy, minGames, search)
 }
+
+/**
+ * Handles the `/player help` subcommand, displaying an ephemeral cheat-sheet
+ * of all admin commands for player, lobby, and match management.
+ */
+export async function handlePlayerHelpCommand(
+  interaction: ChatInputCommandInteraction<CacheType> | ButtonInteraction<CacheType>
+): Promise<void> {
+  if (!(await userIsAdmin(interaction))) {
+    await safeReply(interaction, {
+      content: 'You do not have permission to use this command.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  const playerEmbed = new EmbedBuilder()
+    .setColor(0x3b82f6)
+    .setTitle('👥 Player & Account Management')
+    .setDescription(
+      [
+        '**`/register`** `battle-tag` `[user]` `[role]` — Register a new player',
+        '**`/player add-account`** `user` `battle-tag` — Link a HotS account or alt',
+        '**`/player primary`** `user` `[battle-tag]` — Set primary HotS account',
+        '**`/player role`** `user` `[role]` — Update preferred role(s)',
+        '**`/player active`** `[user]` `[battle-tag]` `[active]` — Toggle lobby status *(no args = menu)*',
+        '**`/player adjust`** `user` `amount` — Manual MMR adjustment (`+/-`)',
+        '**`/player real-id`** `[user]` `[battle-tag]` `[name]` — Set or clear Real ID name',
+        '**`/player delete`** `user` — Delete player & linked accounts',
+        '**`/player delete-account`** `battle-tag` — Delete a specific HotS account',
+        '**`/player unlinked`** `[min-games]` `[search]` — List unlinked replay accounts',
+      ].join('\n')
+    )
+
+  const lobbyEmbed = new EmbedBuilder()
+    .setColor(0x10b981)
+    .setTitle('🎮 Lobby & Match Management')
+    .setDescription(
+      [
+        '**`/teams`** `[mode]` — Form balanced 5v5 teams',
+        '**`/clear-teams`** — Clear team assignments back to lobby',
+        '**`/clear-lobby`** — Clear all players from the active lobby',
+        '**`/scan-lobby`** `[image]` — OCR scan a lobby screenshot',
+        '**`/lobby-message`** `[action]` — Resend or update the lobby embed',
+        '**`/draft`** `[coin-flip]` — Start draft order / coin flip',
+        '**`/lookup`** `[user]` `[battle-tag]` — View player profile & match history',
+      ].join('\n')
+    )
+
+  const subEmbed = new EmbedBuilder()
+    .setColor(0xf59e0b)
+    .setTitle('🔄 Substitutions & Account Loans')
+    .setDescription(
+      [
+        '**`/sub assign`** `[substitute]` `[battle-tag]` — Loan an account *(`/assign-account`)*',
+        '**`/sub clear`** `[battle-tag]` — Clear active loans *(`/clear-assigned-accounts`)*',
+        '**`/sub list`** — List active substitutions *(`/assigned-accounts`)*',
+      ].join('\n')
+    )
+
+  const configEmbed = new EmbedBuilder()
+    .setColor(0x8b5cf6)
+    .setTitle('⚙️ Server & Channel Configuration')
+    .setDescription(
+      [
+        '**`/channel set-lobby`** `[channel]` — Set lobby announcements channel',
+        '**`/channel set-bot`** `[channel]` — Set bot interactions channel',
+        '**`/channel show`** — Show current channel routing',
+      ].join('\n')
+    )
+    .setFooter({ text: '🛡️ Admin Guide • Visible only to you • /guide for player commands' })
+
+  await safeReply(interaction, {
+    embeds: [playerEmbed, lobbyEmbed, subEmbed, configEmbed],
+    flags: MessageFlags.Ephemeral,
+  })
+}
