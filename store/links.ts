@@ -122,7 +122,39 @@ export async function getLinkByName(guildId: string, name: string): Promise<Cust
   return rows[0] ? mapRow(rows[0]) : null
 }
 
+export function extractLocalLinkAssetFilename(url?: string | null): string | null {
+  if (!url) return null
+  try {
+    const pathname = new URL(url).pathname
+    const prefix = pathname.startsWith('/api/links-assets/')
+      ? '/api/links-assets/'
+      : pathname.startsWith('/links-assets/')
+        ? '/links-assets/'
+        : null
+    if (!prefix) return null
+    const filename = path.basename(pathname.slice(prefix.length))
+    return filename && filename !== '.' && filename !== '..' ? filename : null
+  } catch {
+    return null
+  }
+}
+
+function deleteLocalLinkAsset(url?: string | null): void {
+  const filename = extractLocalLinkAssetFilename(url)
+  if (!filename) return
+  try {
+    const filePath = path.resolve(process.cwd(), 'assets/links', filename)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  } catch (err) {
+    console.error(`Failed to delete local link asset (${filename}):`, err)
+  }
+}
+
 export async function upsertLink(guildId: string, input: UpsertCustomLinkInput): Promise<CustomLink> {
+  const previous = await getLinkByName(guildId, input.name)
+
   const rows = await sql<CustomLinkRow[]>`
     INSERT INTO custom_links (
       guild_id, name, title, url, description, author_name, author_icon_url, thumbnail_url, image_url, color, created_by
@@ -152,15 +184,40 @@ export async function upsertLink(guildId: string, input: UpsertCustomLinkInput):
       updated_at = NOW()
     RETURNING *
   `
-  return mapRow(rows[0])
+  const updated = mapRow(rows[0])
+
+  if (previous) {
+    if (previous.authorIconUrl && previous.authorIconUrl !== updated.authorIconUrl) {
+      deleteLocalLinkAsset(previous.authorIconUrl)
+    }
+    if (previous.thumbnailUrl && previous.thumbnailUrl !== updated.thumbnailUrl) {
+      deleteLocalLinkAsset(previous.thumbnailUrl)
+    }
+    if (previous.imageUrl && previous.imageUrl !== updated.imageUrl) {
+      deleteLocalLinkAsset(previous.imageUrl)
+    }
+  }
+
+  return updated
 }
 
 export async function deleteLink(guildId: string, name: string): Promise<boolean> {
-  const result = await sql`
+  const deletedRows = await sql<CustomLinkRow[]>`
     DELETE FROM custom_links
     WHERE guild_id = ${guildId} AND LOWER(name) = LOWER(${name.trim()})
+    RETURNING *
   `
-  return result.count > 0
+  if (deletedRows.length === 0) {
+    return false
+  }
+
+  const deleted = deletedRows[0]
+  const assetUrls = new Set([deleted.author_icon_url, deleted.thumbnail_url, deleted.image_url])
+  for (const url of assetUrls) {
+    deleteLocalLinkAsset(url)
+  }
+
+  return true
 }
 
 function getExtensionFromAttachment(attachmentUrl: string, contentType?: string | null): string {
