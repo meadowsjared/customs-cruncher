@@ -36,7 +36,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@meadowsjared/hots-parser": "github:meadowsjared/hots-parser",
+    "@meadowsjared/hots-parser": "github:meadowsjared/hots-parser-fork",
     "csv-parse": "^7.0.3",
     "discord.js": "^14.28.1",
     "dotenv": "^18.0.10",

@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { LeaderboardPlayer } from '../types'
 import { formatNumber } from '../utils/hots'
+import RoleBadge from '../components/RoleBadge.vue'
 
 interface TargetQuery {
   type: 'rowId' | 'battleTag' | 'any'
@@ -638,11 +639,11 @@ onUnmounted(() => {
           <div>
             <div class="roast-name-row">
               <h2 class="roast-player-name">{{ activeFilterPlayer.player_name }}</h2>
-              <span v-if="activeFilterPlayer.role"
-                    class="roast-role-badge"
-                    :title="`Preferred Roles: ${activeFilterPlayer.role}`">
-                {{ activeFilterPlayer.role }}
-              </span>
+              <RoleBadge
+                v-if="activeFilterPlayer.role"
+                :role="activeFilterPlayer.role"
+                class="roast-role-badge"
+              />
               <span v-if="activeFilterPlayer.mmr != null"
                     class="roast-mmr-badge"
                     :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR'">
@@ -1126,9 +1127,12 @@ onUnmounted(() => {
                 <div class="player-name-wrapper">
                   <span class="player-title">
                     <span class="player-name-text">{{ p.player_name }}</span>
-                    <span v-if="p.role"
-                          class="player-role-pill"
-                          :title="`Preferred Roles: ${p.role}`">{{ p.role }}</span>
+                    <RoleBadge
+                      v-if="p.role"
+                      :role="p.role"
+                      size="sm"
+                      class="player-role-pill"
+                    />
                   </span>
                   <span v-if="p.hots_battle_tag"
                         class="player-tag-hint">
@@ -2583,26 +2587,12 @@ onUnmounted(() => {
 .player-role-pill {
   display: inline-block;
   margin-left: 0.45rem;
-  padding: 0.1rem 0.4rem;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: var(--radius-sm);
   vertical-align: middle;
 }
 
 .roast-role-badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: var(--radius-sm);
-  vertical-align: middle;
+  display: inline-flex;
+  align-self: center;
 }
 
 .roast-mmr-badge {

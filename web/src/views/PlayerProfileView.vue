@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MmrTrendGraph from '../components/MmrTrendGraph.vue'
+import RoleBadge from '../components/RoleBadge.vue'
 import {
   PlayerProfileData,
   PlayerProfileMatch,
@@ -942,14 +943,16 @@ onUnmounted(() => {
             </div>
             <div class="player-identity-info">
               <h1 class="player-display-name">
-                {{ displaySummary.name }}
-                <span v-if="displaySummary.tag"
-                      class="player-bnet-tag">#{{ displaySummary.tag }}</span>
-                <span v-if="displaySummary.role"
-                      class="player-role-badge"
-                      :title="`Preferred Roles: ${displaySummary.role}`">
-                  {{ displaySummary.role }}
+                <span class="player-name-group">
+                  <span class="player-name-text">{{ displaySummary.name }}</span>
+                  <span v-if="displaySummary.tag"
+                        class="player-bnet-tag">#{{ displaySummary.tag }}</span>
                 </span>
+                <RoleBadge
+                  v-if="displaySummary.role"
+                  :role="displaySummary.role"
+                  class="profile-role-badge"
+                />
               </h1>
               <div v-if="displaySummary.allTags.length > 1"
                    class="linked-accounts-wrap">
@@ -1835,6 +1838,16 @@ onUnmounted(() => {
   font-weight: 800;
   color: #fff;
   letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.player-name-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
 }
 
 .player-bnet-tag {
@@ -1842,21 +1855,12 @@ onUnmounted(() => {
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-weight: 500;
-  margin-left: 0.25rem;
 }
 
+.profile-role-badge,
 .player-role-badge {
-  display: inline-block;
-  margin-left: 0.6rem;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: var(--radius-sm);
-  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
 }
 
 .linked-accounts-wrap {
