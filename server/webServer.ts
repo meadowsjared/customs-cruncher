@@ -5,6 +5,7 @@ import { sql } from '../store/db'
 import { getPlayerAggregatedStats, getPlayerMatchHistory } from '../store/playerStats'
 import { searchPlayers, getPlayerProfile } from '../store/playerProfile'
 import { getHeroProfile } from '../store/heroProfile'
+import { resolveOgMetadata, injectOgTags } from './ogTags'
 import {
   checkAdminGateSlug,
   checkAdminPassword,
@@ -22,6 +23,7 @@ const MIME_TYPES: Record<string, string> = {
   '.js': 'application/javascript; charset=utf-8',
   '.mjs': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -775,15 +777,44 @@ export function createServer(): http.Server {
       const safePath = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '')
       const targetFile = path.join(distDir, safePath)
 
-      if (fs.existsSync(targetFile) && fs.statSync(targetFile).isFile()) {
-        sendFile(res, targetFile)
+      if (safePath !== 'index.html' && fs.existsSync(targetFile) && fs.statSync(targetFile).isFile()) {
+        sendFile(res, targetFile, req.method === 'HEAD')
         return
       }
 
-      // SPA fallback to index.html
+      // SPA HTML response with dynamic Open Graph meta tags for Discord/link previews
       const indexPath = path.join(distDir, 'index.html')
       if (fs.existsSync(indexPath)) {
-        sendFile(res, indexPath)
+        const forwardedProto = req.headers['x-forwarded-proto']
+        const proto = typeof forwardedProto === 'string'
+          ? forwardedProto.split(',')[0].trim()
+          : Array.isArray(forwardedProto) && forwardedProto.length > 0
+            ? forwardedProto[0].split(',')[0].trim()
+            : 'https'
+        const hostHeader = req.headers['x-forwarded-host'] || req.headers.host || 'storm-stats.duckdns.org'
+        const host = typeof hostHeader === 'string'
+          ? hostHeader.split(',')[0].trim()
+          : Array.isArray(hostHeader) && hostHeader.length > 0
+            ? hostHeader[0].split(',')[0].trim()
+            : 'storm-stats.duckdns.org'
+        const origin = `${proto}://${host}`
+
+        const og = await resolveOgMetadata(pathname, origin)
+        const rawHtml = fs.readFileSync(indexPath, 'utf-8')
+        const html = injectOgTags(rawHtml, og)
+        const buffer = Buffer.from(html, 'utf-8')
+
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Length': buffer.length,
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache',
+        })
+        if (req.method === 'HEAD') {
+          res.end()
+          return
+        }
+        res.end(buffer)
         return
       }
 
