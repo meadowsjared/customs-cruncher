@@ -177,7 +177,7 @@ export async function savePlayer(
   discordId: string,
   player: Player,
   hotsBattleTag?: string
-): Promise<void> {
+): Promise<boolean> {
   cachePlayerDisplayName(
     discordId,
     player.usernames.discordDisplayName,
@@ -201,9 +201,10 @@ export async function savePlayer(
       last_active = NOW()
   `
   if (!hotsBattleTag) {
-    return
+    return true
   }
-  await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
+  const added = await handleAddHotsAccount(interaction, discordId, hotsBattleTag)
+  return Boolean(added)
 }
 
 export function getPlayerFromRow(
@@ -735,6 +736,177 @@ export async function triggerAccountMmrFetch(battleTag: string, guildId?: string
         console.error('Error updating lobby message after MMR fetch:', e)
       }
     }
+  }
+}
+
+export async function upsertGuestHotsAccount(
+  hotsBattleTag: string,
+  profileData?: Awaited<ReturnType<typeof getHeroesProfileData>> | null
+): Promise<number> {
+  const qmMmr = profileData?.qmMmr ?? 0
+  const slMmr = profileData?.slMmr ?? 0
+  const arMmr = profileData?.arMmr ?? 0
+  const hpRegion = profileData?.region ?? null
+  const hpBlizzId = profileData?.blizz_id != null ? String(profileData.blizz_id) : null
+  const hpQmGames = profileData?.qmGames ?? 0
+  const hpSlGames = profileData?.slGames ?? 0
+  const hpArGames = profileData?.arGames ?? 0
+
+  const inserted = await sql<Array<{ id: number }>>`
+    INSERT INTO hots_accounts (
+      discord_id, hots_battle_tag, is_primary, hp_region, hp_blizz_id,
+      hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games
+    ) VALUES (
+      NULL, ${hotsBattleTag}, TRUE, ${hpRegion}, ${hpBlizzId},
+      ${qmMmr}, ${slMmr}, ${arMmr}, ${hpQmGames}, ${hpSlGames}, ${hpArGames}
+    )
+    ON CONFLICT (LOWER(hots_battle_tag)) WHERE owner_discord_id IS NULL DO UPDATE SET
+      hots_battle_tag = EXCLUDED.hots_battle_tag,
+      hp_region = COALESCE(EXCLUDED.hp_region, hots_accounts.hp_region),
+      hp_blizz_id = COALESCE(EXCLUDED.hp_blizz_id, hots_accounts.hp_blizz_id),
+      hp_qm_mmr = CASE WHEN EXCLUDED.hp_qm_mmr > 0 THEN EXCLUDED.hp_qm_mmr ELSE hots_accounts.hp_qm_mmr END,
+      hp_sl_mmr = CASE WHEN EXCLUDED.hp_sl_mmr > 0 THEN EXCLUDED.hp_sl_mmr ELSE hots_accounts.hp_sl_mmr END,
+      hp_ar_mmr = CASE WHEN EXCLUDED.hp_ar_mmr > 0 THEN EXCLUDED.hp_ar_mmr ELSE hots_accounts.hp_ar_mmr END,
+      hp_qm_games = CASE WHEN EXCLUDED.hp_qm_games > 0 THEN EXCLUDED.hp_qm_games ELSE hots_accounts.hp_qm_games END,
+      hp_sl_games = CASE WHEN EXCLUDED.hp_sl_games > 0 THEN EXCLUDED.hp_sl_games ELSE hots_accounts.hp_sl_games END,
+      hp_ar_games = CASE WHEN EXCLUDED.hp_ar_games > 0 THEN EXCLUDED.hp_ar_games ELSE hots_accounts.hp_ar_games END,
+      updated_at = NOW()
+    RETURNING id
+  `
+  return inserted[0].id
+}
+
+export async function handleRegisterGuestAccount(
+  interaction:
+    | ChatInputCommandInteraction<CacheType>
+    | ButtonInteraction<CacheType>
+    | ModalSubmitInteraction<CacheType>
+    | undefined,
+  hotsBattleTag: string,
+  guildId?: string,
+  activate = true
+): Promise<boolean> {
+  const validationResult = validateBattleTag(hotsBattleTag)
+  if (!validationResult.isValid) {
+    await safeReply(interaction, {
+      content: `You must provide a valid Heroes of the Storm battle tag in the format \`Name#1234\`.\nYou provided: \`${hotsBattleTag}\`
+${validationResult.errors.join('\n')}
+${validationResult.rules}
+      `,
+      flags: MessageFlags.Ephemeral,
+    })
+    return false
+  }
+
+  const existingAccounts = await sql<Array<{ id: number; discord_id: string | null; hots_battle_tag: string }>>`
+    SELECT id, discord_id, hots_battle_tag
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${hotsBattleTag})
+      AND owner_discord_id IS NULL
+    LIMIT 1
+  `
+  const existingAccount = existingAccounts[0]
+  if (existingAccount) {
+    if (existingAccount.discord_id) {
+      await safeReply(interaction, {
+        content: `\`${existingAccount.hots_battle_tag}\` is already registered to <@${existingAccount.discord_id}>.`,
+        flags: MessageFlags.Ephemeral,
+      })
+      return false
+    }
+
+    let activatedText = ''
+    if (activate && guildId) {
+      const { updated } = await setPlayerActive(
+        `${PlayerIdPrefix.HOTS_ROW_ID}${existingAccount.id}`,
+        true,
+        guildId,
+        existingAccount.hots_battle_tag
+      )
+      if (updated) {
+        await updateLobbyMessage(guildId, interaction)
+        activatedText = '\nAdded them to the active lobby.'
+      }
+    }
+
+    const nextStepText = activatedText
+      ? ''
+      : `\nYou can add them to a lobby with \`/player active battle-tag:${existingAccount.hots_battle_tag}\` or link them to Discord later with \`/register user:@player battle-tag:${existingAccount.hots_battle_tag}\`.`
+
+    await safeReply(interaction, {
+      content: `\`${existingAccount.hots_battle_tag}\` is already registered as a BattleTag-only guest account.${activatedText}${nextStepText}`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return true
+  }
+
+  try {
+    await interaction?.deferReply({
+      flags: MessageFlags.Ephemeral,
+      withResponse: true,
+    })
+  } catch (error) {
+    if (!error) {
+      console.error('Error deferring reply:', error)
+    }
+  }
+
+  addFetchingMmrTag(hotsBattleTag)
+  let profileData: Awaited<ReturnType<typeof getHeroesProfileData>> | undefined
+  try {
+    profileData = await getHeroesProfileData(hotsBattleTag)
+  } finally {
+    removeFetchingMmrTag(hotsBattleTag)
+  }
+
+  if (profileData && profileData.qmGames === -1 && profileData.slGames === -1 && profileData.arGames === -1) {
+    await safeReply(interaction, {
+      content: `Could not find Heroes Profile data for \`${hotsBattleTag}\`. Please verify the BattleTag spelling and tag number.`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return false
+  }
+
+  try {
+    const accId = await upsertGuestHotsAccount(hotsBattleTag, profileData)
+    await recalculateAllPlayerElo().catch(e => console.error('Error recalculating Elo after guest registration:', e))
+    clearResolvedAccountCache()
+
+    let activatedText = ''
+    if (activate && guildId) {
+      const { updated } = await setPlayerActive(
+        `${PlayerIdPrefix.HOTS_ROW_ID}${accId}`,
+        true,
+        guildId,
+        hotsBattleTag
+      )
+      if (updated) {
+        await updateLobbyMessage(guildId, interaction)
+        activatedText = '\nAdded them to the active lobby.'
+      }
+    }
+
+    const peakMmr = Math.max(profileData?.qmMmr ?? 0, profileData?.slMmr ?? 0, profileData?.arMmr ?? 0)
+    const mmrText = peakMmr > 0 ? `\nBase MMR (Heroes Profile): \`${peakMmr}\`` : ''
+    const noticeText = !profileData
+      ? '\n*(Note: Heroes Profile could not be reached to fetch MMR, but the guest account has been registered!)*'
+      : ''
+    const nextStepText = activatedText
+      ? ''
+      : `\nYou can add them to a lobby with \`/player active battle-tag:${hotsBattleTag}\` or link them to Discord later with \`/register user:@player battle-tag:${hotsBattleTag}\`.`
+
+    await safeReply(interaction, {
+      content: `Registered BattleTag-only guest account: \`${hotsBattleTag}\`${mmrText}${activatedText}${noticeText}${nextStepText}`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return true
+  } catch (error) {
+    console.error('Error registering guest HotS account:', error)
+    await safeReply(interaction, {
+      content: `Failed to register guest HotS account \`${hotsBattleTag}\`.\nPlease try again later.`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return false
   }
 }
 

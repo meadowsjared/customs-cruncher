@@ -847,7 +847,7 @@ export async function handlePlayerHelpCommand(
     .setTitle('👥 Player & Account Management')
     .setDescription(
       [
-        '**`/register`** `battle-tag` `[user]` `[role]` — Register a new player',
+        '**`/register`** `battle-tag` `[user]` `[role]` `[active]` — Register a player (guest if no user)',
         '**`/player add-account`** `user` `battle-tag` — Link a HotS account or alt',
         '**`/player primary`** `user` `[battle-tag]` — Set primary HotS account',
         '**`/player role`** `user` `[role]` — Update preferred role(s)',

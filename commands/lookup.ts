@@ -31,7 +31,9 @@ import {
   getPlayerRolesFormatted,
   getStoredInteraction,
   handleAddHotsAccount,
+  handleRegisterGuestAccount,
   savePlayer,
+  setPlayerActive,
   setPlayerDiscordNames,
   setPlayerRole,
   storeInteraction,
@@ -310,17 +312,25 @@ export async function handleRegisterCommand(
   const guildId = await requireGuildId(interaction)
   if (!guildId) return
 
-  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER) || interaction.user.id
+  const targetDiscordId = extractDiscordIdFromInteraction(interaction, CommandIds.USER)
+  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true).trim()
+  const shouldActivate = interaction.options.getBoolean(CommandIds.ACTIVE) ?? true
+
+  if (!targetDiscordId) {
+    await handleRegisterGuestAccount(interaction, hotsBattleTag, guildId, shouldActivate)
+    return
+  }
+
   const userOption = interaction.options.getUser(CommandIds.USER)
   const resolvedUser = userOption && userOption.id === targetDiscordId ? userOption : interaction.user
-  const hotsBattleTag = interaction.options.getString(CommandIds.BATTLE_TAG, true).trim()
   const role = interaction.options.getString(CommandIds.ROLE)
 
   const discordData = fetchDiscordNames(interaction, targetDiscordId, resolvedUser)
   const existingPlayer = await getPlayerByDiscordId(targetDiscordId, guildId)
 
+  let registeredSuccessfully = false
   if (!existingPlayer) {
-    await savePlayer(
+    registeredSuccessfully = await savePlayer(
       interaction,
       targetDiscordId,
       {
@@ -337,15 +347,22 @@ export async function handleRegisterCommand(
       },
       hotsBattleTag
     )
-    return
+  } else {
+    // If player already exists in the database
+    if (role) {
+      await setPlayerRole(targetDiscordId, guildId, role)
+    }
+    await setPlayerDiscordNames(targetDiscordId, guildId, discordData)
+    const added = await handleAddHotsAccount(interaction, targetDiscordId, hotsBattleTag)
+    registeredSuccessfully = Boolean(added)
   }
 
-  // If player already exists in the database
-  if (role) {
-    await setPlayerRole(targetDiscordId, guildId, role)
+  if (registeredSuccessfully && shouldActivate) {
+    const { updated } = await setPlayerActive(targetDiscordId, true, guildId, hotsBattleTag)
+    if (updated) {
+      await updateLobbyMessage(guildId, interaction)
+    }
   }
-  await setPlayerDiscordNames(targetDiscordId, guildId, discordData)
-  await handleAddHotsAccount(interaction, targetDiscordId, hotsBattleTag)
 }
 
 export function getWebBaseUrl(): string {

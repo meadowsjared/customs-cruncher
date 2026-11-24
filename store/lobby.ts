@@ -6,6 +6,7 @@ import {
   getActivePlayers,
   getPlayerByIdentifier,
   triggerAccountMmrFetch,
+  upsertGuestHotsAccount,
 } from './player'
 import {
   clearActivePlayersCache,
@@ -41,14 +42,7 @@ async function resolvePlayerForActive(
   if (player || !active) return player
 
   if (validateBattleTag(tag).isValid) {
-    const inserted = await sql<Array<{ id: number }>>`
-      INSERT INTO hots_accounts (discord_id, hots_battle_tag, is_primary)
-      VALUES (NULL, ${tag}, TRUE)
-      ON CONFLICT (LOWER(hots_battle_tag)) WHERE owner_discord_id IS NULL DO UPDATE SET
-        hots_battle_tag = EXCLUDED.hots_battle_tag
-      RETURNING id
-    `
-    const newAccId = inserted[0].id
+    const newAccId = await upsertGuestHotsAccount(tag)
     triggerAccountMmrFetch(tag, guildId).catch(err => {
       console.error(`Error in background MMR fetch for ${tag}:`, err)
     })

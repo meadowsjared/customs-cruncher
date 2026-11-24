@@ -482,7 +482,7 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
       {
         name: CommandIds.USER,
         type: ApplicationCommandOptionType.User,
-        description: 'The Discord member to register (defaults to yourself)',
+        description: 'The Discord member to link (leave blank to register as a BattleTag-only guest)',
         required: false,
       },
       {
@@ -494,6 +494,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
           name: label,
           value: key,
         })),
+      },
+      {
+        name: CommandIds.ACTIVE,
+        type: ApplicationCommandOptionType.Boolean,
+        description: 'Add the player to the active lobby (defaults to true)',
+        required: false,
       },
     ],
   },
