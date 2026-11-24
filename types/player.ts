@@ -359,6 +359,7 @@ export type PlayerAggregatedStats = {
   base_mmr?: number | null
   adjustment?: number | null
   role?: string | null
+  mmr_rank?: number | null
 }
 
 export type PlayerStatsFilter = {

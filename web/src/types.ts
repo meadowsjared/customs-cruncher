@@ -239,6 +239,7 @@ export interface LeaderboardPlayer {
   base_mmr?: number | null
   adjustment?: number | null
   role?: string | null
+  mmr_rank?: number | null
 }
 
 export interface PlayerSearchItem {

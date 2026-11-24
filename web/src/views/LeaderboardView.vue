@@ -425,6 +425,22 @@ function getRankBadge(p: LeaderboardPlayer): string {
   return rank > 0 ? `#${rank}` : '-'
 }
 
+const totalMmrRankedPlayers = computed(() => {
+  return players.value.filter((p) => p.mmr_rank != null).length
+})
+
+function getPlayerMmrRank(p: LeaderboardPlayer): number {
+  return p.mmr_rank ?? 0
+}
+
+function getMmrRankBadge(p: LeaderboardPlayer): string {
+  const rank = getPlayerMmrRank(p)
+  if (rank === 1) return '🥇'
+  if (rank === 2) return '🥈'
+  if (rank === 3) return '🥉'
+  return rank > 0 ? `#${rank}` : '-'
+}
+
 const filteredPlayers = computed(() => {
   const min = minGames.value
   const col = sortColumn.value
@@ -633,8 +649,12 @@ onUnmounted(() => {
       <div class="roast-header">
         <div class="roast-identity">
           <div class="roast-rank-circle"
-               :class="{ 'top-three': getPlayerRank(activeFilterPlayer) <= 3 && getPlayerRank(activeFilterPlayer) > 0 }">
-            {{ getRankBadge(activeFilterPlayer) }}
+               :title="`MMR Rank #${getPlayerMmrRank(activeFilterPlayer)} of ${totalMmrRankedPlayers}`"
+               :class="{
+                 'top-three': getPlayerMmrRank(activeFilterPlayer) <= 3 && getPlayerMmrRank(activeFilterPlayer) > 0,
+                 'compact-rank': getPlayerMmrRank(activeFilterPlayer) >= 100
+               }">
+            {{ getMmrRankBadge(activeFilterPlayer) }}
           </div>
           <div>
             <div class="roast-name-row">
@@ -799,8 +819,8 @@ onUnmounted(() => {
           <div class="roast-section-title">
             <span>📊 Full Career Combat & Macro Performance</span>
             <span class="rank-standings-pill">
-              Leaderboard Standing: {{ getRankBadge(activeFilterPlayer) }} (Position {{
-                getPlayerRank(activeFilterPlayer) }} of {{ sortedAllPlayers.length }})
+              Leaderboard Standing (MMR): {{ getMmrRankBadge(activeFilterPlayer) }} (Position {{
+                getPlayerMmrRank(activeFilterPlayer) }} of {{ totalMmrRankedPlayers }})
             </span>
           </div>
 
@@ -2239,17 +2259,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
+  flex-shrink: 0;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
-  font-size: 1.75rem;
+  font-size: 1.35rem;
   font-weight: 800;
+  line-height: 1;
   background: rgba(255, 255, 255, 0.06);
   border: 2px solid rgba(255, 255, 255, 0.15);
   color: #e2e8f0;
 }
 
+.roast-rank-circle.compact-rank {
+  font-size: 1.15rem;
+}
+
 .roast-rank-circle.top-three {
+  font-size: 1.75rem;
   border-color: #f59e0b;
   background: rgba(245, 158, 11, 0.15);
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);

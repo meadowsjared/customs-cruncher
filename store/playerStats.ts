@@ -176,7 +176,15 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
       mmr_info.mmr,
       mmr_info.base_mmr,
       COALESCE(mmr_info.adjustment, 0) AS adjustment,
-      mmr_info.role
+      mmr_info.role,
+      CASE
+        WHEN mmr_info.mmr IS NOT NULL THEN
+          ROW_NUMBER() OVER (
+            PARTITION BY (mmr_info.mmr IS NOT NULL)
+            ORDER BY mmr_info.mmr DESC NULLS LAST, a.games_played DESC, a.player_name ASC
+          )::int
+        ELSE NULL
+      END AS mmr_rank
     FROM aggregated a
     LEFT JOIN LATERAL (
       SELECT v.mmr, v.base_mmr, v.adjustment, v.role
