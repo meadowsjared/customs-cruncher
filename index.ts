@@ -10,7 +10,15 @@ process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error)
 })
 
-import { ActivityType, ChannelType, Client, GatewayIntentBits, InteractionContextType, Partials, PresenceUpdateStatus } from 'discord.js'
+import {
+  ActivityType,
+  ChannelType,
+  Client,
+  GatewayIntentBits,
+  InteractionContextType,
+  Partials,
+  PresenceUpdateStatus,
+} from 'discord.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { dispatchInteraction } from './commands/dispatcher'
@@ -113,7 +121,7 @@ client.once('clientReady', async () => {
       {
         name: 'Customs Cruncher',
         type: ActivityType.Watching,
-        url: 'https://www.twitch.tv/norator',
+        url: 'https://storm-stats.duckdns.org/',
         state: 'Heroes of the Storm',
       },
     ],
