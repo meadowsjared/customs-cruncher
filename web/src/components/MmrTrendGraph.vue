@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { PlayerMmrHistoryPoint } from '../types'
 
@@ -10,6 +10,7 @@ interface Props {
   adjustment?: number | null
   playerName?: string
   highlightHero?: string
+  anchorEl?: HTMLElement | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -18,7 +19,14 @@ const props = withDefaults(defineProps<Props>(), {
   adjustment: null,
   playerName: '',
   highlightHero: '',
+  anchorEl: null,
 })
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'mouseenter'): void
+  (e: 'mouseleave'): void
+}>()
 
 const router = useRouter()
 
@@ -264,17 +272,102 @@ function onSvgPointerMove(event: PointerEvent) {
 function onSvgPointerLeave() {
   hoveredIndex.value = null
 }
+
+// Popover positioning
+const popoverRef = ref<HTMLElement | null>(null)
+const anchorRef = ref<HTMLElement | null>(null)
+const popoverCoords = ref({ top: 0, left: 0, width: 440 })
+
+function updatePosition() {
+  const anchor = props.anchorEl || anchorRef.value?.parentElement
+  if (!anchor) return
+
+  const rect = anchor.getBoundingClientRect()
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+
+  const popoverWidth = Math.min(440, viewportWidth - 20)
+  const popoverHeight = popoverRef.value?.offsetHeight || 345
+
+  const anchorCenterX = rect.left + rect.width / 2
+  const idealLeft = anchorCenterX - popoverWidth / 2
+  const left = Math.max(10, Math.min(viewportWidth - popoverWidth - 10, idealLeft))
+
+  const spaceBelow = viewportHeight - rect.bottom
+  const placeAbove = spaceBelow < popoverHeight + 16 && rect.top > popoverHeight + 16
+
+  let top = placeAbove
+    ? rect.top - popoverHeight - 8
+    : rect.bottom + 8
+
+  top = Math.max(10, Math.min(viewportHeight - popoverHeight - 10, top))
+
+  popoverCoords.value = { top, left, width: popoverWidth }
+}
+
+function handleDocumentClick(event: MouseEvent) {
+  const path = event.composedPath()
+  const anchor = props.anchorEl || anchorRef.value?.parentElement
+  if (popoverRef.value && path.includes(popoverRef.value)) return
+  if (anchor && path.includes(anchor)) return
+  emit('close')
+}
+
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    emit('close')
+  }
+}
+
+onMounted(() => {
+  updatePosition()
+  nextTick(() => updatePosition())
+  window.addEventListener('scroll', updatePosition, true)
+  window.addEventListener('resize', updatePosition)
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', updatePosition, true)
+  window.removeEventListener('resize', updatePosition)
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('keydown', handleKeyDown)
+})
 </script>
 
 <template>
-  <div class="mmr-trend-popover" role="tooltip" @click.stop>
-    <!-- Header: Quick Summary Stats -->
-    <div class="popover-header">
-      <div class="header-title-row">
-        <span class="header-icon">📈</span>
-        <span class="header-title">MMR Progression</span>
-        <span class="header-badge">{{ stats.totalGames }} Games</span>
-      </div>
+  <span ref="anchorRef" class="mmr-trend-anchor" style="display: none;" />
+  <Teleport to="body">
+    <Transition name="mmr-popover-fade">
+      <div
+        ref="popoverRef"
+        class="mmr-trend-popover"
+        role="dialog"
+        :style="{
+          top: `${popoverCoords.top}px`,
+          left: `${popoverCoords.left}px`,
+          width: `${popoverCoords.width}px`,
+        }"
+        @click.stop
+        @mouseenter="$emit('mouseenter')"
+        @mouseleave="$emit('mouseleave')"
+      >
+        <!-- Header: Quick Summary Stats -->
+        <div class="popover-header">
+          <div class="header-title-row">
+            <span class="header-icon">📈</span>
+            <span class="header-title">MMR Progression</span>
+            <span class="header-badge">{{ stats.totalGames }} Games</span>
+            <button
+              class="popover-close-btn"
+              title="Close"
+              aria-label="Close"
+              @click.stop="$emit('close')"
+            >
+              ✕
+            </button>
+          </div>
 
       <div class="stat-highlights">
         <div class="highlight-item" title="Current In-House Rating">
@@ -313,6 +406,7 @@ function onSvgPointerLeave() {
         class="mmr-svg"
         :viewBox="`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`"
         preserveAspectRatio="none"
+        @pointerdown="onSvgPointerMove"
         @pointermove="onSvgPointerMove"
         @pointerleave="onSvgPointerLeave"
       >
@@ -458,43 +552,66 @@ function onSvgPointerLeave() {
 
     <!-- Footer Note -->
     <div class="popover-footer">
-      <span>Seeded 5v5 Team Elo • Hover graph to inspect matches</span>
+      <span>Seeded 5v5 Team Elo • Hover or drag graph to inspect</span>
     </div>
-  </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
 .mmr-trend-popover {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 440px;
-  max-width: calc(100vw - 32px);
-  background: rgba(15, 23, 42, 0.96);
+  position: fixed;
+  background: rgba(15, 23, 42, 0.97);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(251, 191, 36, 0.35);
   box-shadow:
-    0 16px 36px rgba(0, 0, 0, 0.8),
+    0 16px 36px rgba(0, 0, 0, 0.85),
     0 0 24px rgba(251, 191, 36, 0.16);
   border-radius: var(--radius-md, 12px);
-  padding: 1rem 1.15rem;
-  z-index: 9999;
+  padding: 0.9rem 1rem;
+  z-index: 99999;
   user-select: none;
   cursor: default;
   text-align: left;
-  animation: popoverFadeIn 0.18s ease-out;
+  box-sizing: border-box;
 }
 
-@keyframes popoverFadeIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -6px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
+/* Close Button */
+.popover-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-muted, #94a3b8);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 0.45rem;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.popover-close-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+/* Transition */
+.mmr-popover-fade-enter-active,
+.mmr-popover-fade-leave-active {
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.mmr-popover-fade-enter-from,
+.mmr-popover-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
 }
 
 /* Header & Stats Row */
@@ -736,5 +853,33 @@ function onSvgPointerLeave() {
   color: #64748b;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   padding-top: 0.4rem;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 440px) {
+  .mmr-trend-popover {
+    padding: 0.75rem 0.8rem;
+  }
+
+  .stat-highlights {
+    gap: 0.25rem;
+  }
+
+  .highlight-item {
+    padding: 0.3rem 0.25rem;
+  }
+
+  .hl-label {
+    font-size: 0.62rem;
+  }
+
+  .hl-val {
+    font-size: 0.8rem;
+  }
+
+  .inspect-sub {
+    flex-wrap: wrap;
+    gap: 0.25rem 0.4rem;
+  }
 }
 </style>

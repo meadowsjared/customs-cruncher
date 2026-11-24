@@ -104,6 +104,8 @@ let copyTimeout: ReturnType<typeof setTimeout> | null = null
 
 // MMR Trend Popover State
 const showMmrTrend = ref(false)
+const heroMmrPillRef = ref<HTMLElement | null>(null)
+const generalMmrPillRef = ref<HTMLElement | null>(null)
 let mmrTrendTimer: ReturnType<typeof setTimeout> | null = null
 
 function onMmrMouseEnter() {
@@ -119,6 +121,30 @@ function onMmrMouseLeave() {
   mmrTrendTimer = setTimeout(() => {
     showMmrTrend.value = false
   }, 220)
+}
+
+function cancelMmrTrendTimer() {
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+}
+
+function toggleMmrTrend(event: MouseEvent) {
+  event.stopPropagation()
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+  showMmrTrend.value = !showMmrTrend.value
+}
+
+function closeMmrTrend() {
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+  showMmrTrend.value = false
 }
 
 function openExpandedTier(talentKey: string | undefined, tierIndex: number = 0, match?: PlayerProfileMatch) {
@@ -804,11 +830,13 @@ onUnmounted(() => {
           <!-- Key Stats Badges for this hero -->
           <div class="profile-stat-pills">
             <div v-if="profileData.player.mmr != null"
+                 ref="heroMmrPillRef"
                  class="stat-pill-card mmr-pill"
                  @mouseenter="onMmrMouseEnter"
-                 @mouseleave="onMmrMouseLeave">
+                 @mouseleave="onMmrMouseLeave"
+                 @click="toggleMmrTrend">
               <span class="stat-pill-label">
-                Player MMR <span class="mmr-trend-sparkle" title="Hover for MMR Trend">📈</span>
+                Player MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
               </span>
               <span class="stat-pill-val val-mmr">{{ formatNumber(profileData.player.mmr) }}</span>
               <span class="stat-pill-sub">
@@ -829,6 +857,10 @@ onUnmounted(() => {
                 :adjustment="profileData.player.adjustment"
                 :player-name="profileData.player.name"
                 :highlight-hero="displayHeroStats?.hero"
+                :anchor-el="heroMmrPillRef"
+                @mouseenter="cancelMmrTrendTimer"
+                @mouseleave="onMmrMouseLeave"
+                @close="closeMmrTrend"
               />
             </div>
 
@@ -970,11 +1002,13 @@ onUnmounted(() => {
           <!-- Key Stats Badges -->
           <div class="profile-stat-pills">
             <div v-if="displaySummary.mmr != null"
+                 ref="generalMmrPillRef"
                  class="stat-pill-card mmr-pill"
                  @mouseenter="onMmrMouseEnter"
-                 @mouseleave="onMmrMouseLeave">
+                 @mouseleave="onMmrMouseLeave"
+                 @click="toggleMmrTrend">
               <span class="stat-pill-label">
-                Current MMR <span class="mmr-trend-sparkle" title="Hover for MMR Trend">📈</span>
+                Current MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
               </span>
               <span class="stat-pill-val val-mmr">{{ formatNumber(displaySummary.mmr) }}</span>
               <span class="stat-pill-sub">
@@ -994,6 +1028,10 @@ onUnmounted(() => {
                 :base-mmr="displaySummary.baseMmr"
                 :adjustment="displaySummary.adjustment"
                 :player-name="displaySummary.name"
+                :anchor-el="generalMmrPillRef"
+                @mouseenter="cancelMmrTrendTimer"
+                @mouseleave="onMmrMouseLeave"
+                @close="closeMmrTrend"
               />
             </div>
 
