@@ -211,7 +211,7 @@ onUnmounted(() => {
                 <span class="btn-icon">{{ roleItem.meta.icon }}</span>
                 <span class="btn-name">{{ roleItem.meta.name }}</span>
               </div>
-              <span class="btn-rank">#{{ roleItem.priority }}</span>
+              <span v-if="activeRoles.length > 1" class="btn-rank">#{{ roleItem.priority }}</span>
             </div>
           </div>
         </div>
