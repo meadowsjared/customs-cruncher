@@ -1041,10 +1041,18 @@ ${validationResult.rules}
   }
 
   try {
+    const existingPrimaryRows = await sql<Array<{ id: number }>>`
+      SELECT id
+      FROM hots_accounts
+      WHERE discord_id = ${discordId}
+        AND is_primary = TRUE
+        AND owner_discord_id IS NULL
+      LIMIT 1
+    `
     const isPrimary =
       currentAccount && currentAccount.discord_id === discordId
         ? Boolean(currentAccount.is_primary)
-        : !player.usernames.accounts || player.usernames.accounts.length <= 1
+        : existingPrimaryRows.length === 0
 
     const qmMmr = profileData?.qmMmr ?? 0
     const slMmr = profileData?.slMmr ?? 0
