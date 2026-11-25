@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import type { LeaderboardPlayer } from '../types'
+import type { LeaderboardPlayer, PlayerMmrHistoryPoint, PlayerProfileData } from '../types'
 import { formatNumber } from '../utils/hots'
 import { formatDeadTime as formatDeadTimeDuration, getPlayerRoastTitle, getTotalBm } from '../../../utils/playerRoast'
 import RoleBadge from '../components/RoleBadge.vue'
+import MmrTrendGraph from '../components/MmrTrendGraph.vue'
 
 interface TargetQuery {
   type: 'rowId' | 'battleTag' | 'any'
@@ -19,6 +20,170 @@ const search = ref('')
 const minGames = ref(30)
 const selectedMode = ref<'' | 'standard' | 'aram'>('')
 const viewMode = ref<'showcase' | 'table'>('showcase')
+
+// MMR Trend Popover State on Showcase / Roast View
+const showMmrTrend = ref(false)
+const showAramMmrTrend = ref(false)
+const roastMmrBadgeRef = ref<HTMLElement | null>(null)
+const roastAramMmrBadgeRef = ref<HTMLElement | null>(null)
+const dossierMmrRef = ref<HTMLElement | null>(null)
+const activeMmrAnchor = ref<'badge' | 'dossier'>('badge')
+let mmrTrendTimer: ReturnType<typeof setTimeout> | null = null
+let aramMmrTrendTimer: ReturnType<typeof setTimeout> | null = null
+
+interface CachedPlayerHistory {
+  mmrHistory: PlayerMmrHistoryPoint[]
+  aramMmrHistory: PlayerMmrHistoryPoint[]
+  loading: boolean
+}
+
+const playerHistoryCache = ref<Record<string, CachedPlayerHistory>>({})
+
+async function fetchPlayerMmrHistory(player: LeaderboardPlayer): Promise<void> {
+  const idKey = String(player.row_id || player.hots_battle_tag || player.player_name)
+  if (playerHistoryCache.value[idKey]?.loading || playerHistoryCache.value[idKey]?.mmrHistory?.length) {
+    return
+  }
+
+  playerHistoryCache.value[idKey] = {
+    mmrHistory: playerHistoryCache.value[idKey]?.mmrHistory || [],
+    aramMmrHistory: playerHistoryCache.value[idKey]?.aramMmrHistory || [],
+    loading: true,
+  }
+
+  try {
+    const identifier = player.row_id ? String(player.row_id) : (player.hots_battle_tag || player.player_name)
+    const res = await fetch(`/api/player/${encodeURIComponent(identifier)}?limit=1`)
+    if (res.ok) {
+      const data: PlayerProfileData = await res.json()
+      playerHistoryCache.value[idKey] = {
+        mmrHistory: data.mmrHistory || [],
+        aramMmrHistory: data.aramMmrHistory || [],
+        loading: false,
+      }
+    } else {
+      playerHistoryCache.value[idKey].loading = false
+    }
+  } catch {
+    playerHistoryCache.value[idKey].loading = false
+  }
+}
+
+const activePlayerMmrHistory = computed<PlayerMmrHistoryPoint[]>(() => {
+  const p = activeFilterPlayer.value
+  if (!p) return []
+  const idKey = String(p.row_id || p.hots_battle_tag || p.player_name)
+  return playerHistoryCache.value[idKey]?.mmrHistory || []
+})
+
+const activePlayerAramMmrHistory = computed<PlayerMmrHistoryPoint[]>(() => {
+  const p = activeFilterPlayer.value
+  if (!p) return []
+  const idKey = String(p.row_id || p.hots_battle_tag || p.player_name)
+  return playerHistoryCache.value[idKey]?.aramMmrHistory || []
+})
+
+function onMmrMouseEnter(target: 'badge' | 'dossier' = 'badge') {
+  activeMmrAnchor.value = target
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+  if (activeFilterPlayer.value) {
+    fetchPlayerMmrHistory(activeFilterPlayer.value)
+  }
+  showMmrTrend.value = true
+}
+
+function onMmrMouseLeave() {
+  if (mmrTrendTimer) clearTimeout(mmrTrendTimer)
+  mmrTrendTimer = setTimeout(() => {
+    showMmrTrend.value = false
+  }, 220)
+}
+
+function cancelMmrTrendTimer() {
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+}
+
+function toggleMmrTrend(event: MouseEvent, target: 'badge' | 'dossier' = 'badge') {
+  event.stopPropagation()
+  activeMmrAnchor.value = target
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+  if (activeFilterPlayer.value) {
+    fetchPlayerMmrHistory(activeFilterPlayer.value)
+  }
+  showMmrTrend.value = !showMmrTrend.value
+}
+
+function closeMmrTrend() {
+  if (mmrTrendTimer) {
+    clearTimeout(mmrTrendTimer)
+    mmrTrendTimer = null
+  }
+  showMmrTrend.value = false
+}
+
+function onAramMmrMouseEnter() {
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+  if (activeFilterPlayer.value) {
+    fetchPlayerMmrHistory(activeFilterPlayer.value)
+  }
+  showAramMmrTrend.value = true
+}
+
+function onAramMmrMouseLeave() {
+  if (aramMmrTrendTimer) clearTimeout(aramMmrTrendTimer)
+  aramMmrTrendTimer = setTimeout(() => {
+    showAramMmrTrend.value = false
+  }, 220)
+}
+
+function cancelAramMmrTrendTimer() {
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+}
+
+function toggleAramMmrTrend(event: MouseEvent) {
+  event.stopPropagation()
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+  if (activeFilterPlayer.value) {
+    fetchPlayerMmrHistory(activeFilterPlayer.value)
+  }
+  showAramMmrTrend.value = !showAramMmrTrend.value
+}
+
+function closeAramMmrTrend() {
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+  showAramMmrTrend.value = false
+}
+
+watch(
+  () => activeFilterPlayer.value,
+  (newPlayer) => {
+    if (newPlayer) {
+      fetchPlayerMmrHistory(newPlayer)
+    }
+  },
+  { immediate: true }
+)
 
 const showBstepsColumn = computed(() => {
   if (selectedMode.value !== 'aram') return true
@@ -788,10 +953,25 @@ onUnmounted(() => {
                          :role="activeFilterPlayer.role"
                          class="roast-role-badge" />
               <span v-if="activeFilterPlayer.mmr != null"
-                    class="roast-mmr-badge"
-                    :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR'">
-                MMR {{ formatNumber(activeFilterPlayer.mmr) }}
+                    ref="roastMmrBadgeRef"
+                    class="roast-mmr-badge mmr-pill"
+                    @mouseenter="onMmrMouseEnter('badge')"
+                    @mouseleave="onMmrMouseLeave"
+                    @click="toggleMmrTrend($event, 'badge')"
+                    :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR (Hover or tap for MMR trend)'">
+                MMR {{ formatNumber(activeFilterPlayer.mmr) }} <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
               </span>
+
+              <span v-if="activeFilterPlayer.aram_mmr != null && activeFilterPlayer.aram_mmr > 0"
+                    ref="roastAramMmrBadgeRef"
+                    class="roast-mmr-badge aram-mmr-badge mmr-pill"
+                    @mouseenter="onAramMmrMouseEnter"
+                    @mouseleave="onAramMmrMouseLeave"
+                    @click="toggleAramMmrTrend"
+                    :title="activeFilterPlayer.aram_games ? `ARAM: ${activeFilterPlayer.aram_games}G (${activeFilterPlayer.aram_win_rate ?? 50}% WR)` : 'ARAM MMR (Hover or tap for ARAM trend)'">
+                ARAM {{ formatNumber(activeFilterPlayer.aram_mmr) }} <span class="mmr-trend-sparkle" title="Hover or tap for ARAM MMR Trend">📈</span>
+              </span>
+
               <span v-if="activeFilterPlayer.hots_battle_tag"
                     class="roast-tag">
                 {{ activeFilterPlayer.hots_battle_tag }}
@@ -800,6 +980,33 @@ onUnmounted(() => {
                     class="roast-row-id">
                 Row #{{ activeFilterPlayer.row_id }}
               </span>
+
+              <!-- MMR Trend Hover Popover Graph for Standard MMR -->
+              <MmrTrendGraph
+                v-if="showMmrTrend"
+                :history="activePlayerMmrHistory"
+                :current-mmr="activeFilterPlayer.mmr ?? 0"
+                :base-mmr="activeFilterPlayer.base_mmr"
+                :adjustment="activeFilterPlayer.adjustment"
+                :player-name="activeFilterPlayer.player_name"
+                :anchor-el="activeMmrAnchor === 'badge' ? roastMmrBadgeRef : dossierMmrRef"
+                @mouseenter="cancelMmrTrendTimer"
+                @mouseleave="onMmrMouseLeave"
+                @close="closeMmrTrend"
+              />
+
+              <!-- ARAM MMR Trend Hover Popover Graph -->
+              <MmrTrendGraph
+                v-if="showAramMmrTrend"
+                :history="activePlayerAramMmrHistory"
+                :current-mmr="activeFilterPlayer.aram_mmr ?? 0"
+                :base-mmr="null"
+                :player-name="activeFilterPlayer.player_name"
+                :anchor-el="roastAramMmrBadgeRef"
+                @mouseenter="cancelAramMmrTrendTimer"
+                @mouseleave="onAramMmrMouseLeave"
+                @close="closeAramMmrTrend"
+              />
             </div>
             <div class="roast-title-badge">
               <span>{{ getPlayerRoastTitle(activeFilterPlayer) }}</span>
@@ -1023,9 +1230,13 @@ onUnmounted(() => {
               <span class="dossier-sub">Last {{ minGames }} games</span>
             </div>
 
-            <div class="stat-dossier-item"
-                 v-if="activeFilterPlayer.mmr != null">
-              <span class="dossier-label">Current MMR</span>
+            <div class="stat-dossier-item mmr-pill"
+                 ref="dossierMmrRef"
+                 v-if="activeFilterPlayer.mmr != null"
+                 @mouseenter="onMmrMouseEnter('dossier')"
+                 @mouseleave="onMmrMouseLeave"
+                 @click="toggleMmrTrend($event, 'dossier')">
+              <span class="dossier-label">Current MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span></span>
               <span class="dossier-value text-gold">{{ formatNumber(activeFilterPlayer.mmr) }}</span>
               <span class="dossier-sub"
                     v-if="activeFilterPlayer.base_mmr">
@@ -2676,7 +2887,7 @@ onUnmounted(() => {
 
 .roast-name-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
@@ -2687,20 +2898,26 @@ onUnmounted(() => {
   color: #ffffff;
   margin: 0;
   letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 .roast-tag {
   font-size: 1rem;
   color: var(--text-dim);
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
 }
 
 .roast-row-id {
+  display: inline-flex;
+  align-items: center;
   font-size: 0.8rem;
   color: #94a3b8;
   background: rgba(255, 255, 255, 0.06);
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
+  line-height: 1.2;
 }
 
 .roast-title-badge {
@@ -3011,11 +3228,12 @@ onUnmounted(() => {
 
 .roast-role-badge {
   display: inline-flex;
-  align-self: center;
+  align-items: center;
 }
 
 .roast-mmr-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 0.15rem 0.55rem;
   font-size: 0.8rem;
   font-weight: 800;
@@ -3024,6 +3242,46 @@ onUnmounted(() => {
   background: rgba(251, 191, 36, 0.12);
   border: 1px solid rgba(251, 191, 36, 0.35);
   border-radius: var(--radius-sm);
-  vertical-align: middle;
+  line-height: 1.2;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.15);
+}
+
+.roast-mmr-badge.mmr-pill {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.roast-mmr-badge.mmr-pill:hover {
+  border-color: rgba(251, 191, 36, 0.75);
+  background: rgba(251, 191, 36, 0.22);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.4);
+}
+
+.stat-dossier-item.mmr-pill {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stat-dossier-item.mmr-pill:hover {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.08);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+}
+
+.mmr-trend-sparkle {
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+  opacity: 0.85;
+  display: inline-block;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.roast-mmr-badge:hover .mmr-trend-sparkle,
+.stat-dossier-item:hover .mmr-trend-sparkle {
+  opacity: 1;
+  transform: scale(1.15);
 }
 </style>
