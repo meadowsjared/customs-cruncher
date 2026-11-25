@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { LeaderboardPlayer } from '../types'
 import { formatNumber } from '../utils/hots'
+import { formatDeadTime as formatDeadTimeDuration, getPlayerRoastTitle, getTotalBm } from '../../../utils/playerRoast'
 import RoleBadge from '../components/RoleBadge.vue'
 
 interface TargetQuery {
@@ -41,29 +42,7 @@ function getMmrTooltip(p: LeaderboardPlayer): string {
 }
 
 function formatDeadTime(p: LeaderboardPlayer): string {
-  const avg = p.avg_time_spent_dead || 0
-  const totalSecs = Math.round(avg * p.games_played)
-  if (totalSecs < 60) return `${totalSecs}s`
-  const totalMins = Math.round(totalSecs / 60)
-  if (totalMins < 60) return `${totalMins} mins`
-  const hours = (totalSecs / 3600).toFixed(1)
-  return `${hours} hours`
-}
-
-function getPlayerRoastTitle(p: LeaderboardPlayer): string {
-  const avgDeaths = p.avg_deaths || 0
-  const wr = p.win_rate_pct || 0
-  const totalBm = getTotalBm(p)
-  const spongeRatio = (p.avg_damage_taken || 0) / Math.max(1, p.avg_hero_damage || 1)
-
-  if (avgDeaths >= 4.0) return 'Professional Gray Screen Enthusiast 💀'
-  if (spongeRatio >= 2.0) return 'Certified Damage Sponge 🧽'
-  if (wr < 38) return 'Chief Charity Elo Contributor 📉'
-  if (wr < 48) return 'Struggling Coinflip Veteran 🪙'
-  if (totalBm >= 300) return 'BM Connoisseur, Objective Skeptic 💃'
-  if (avgDeaths >= 3.0) return 'Cemetery Season Ticket Holder ⚰️'
-  if (p.total_bsteps === 0 && totalBm > 0) return 'All Spray, Zero B-Step 🎨'
-  return 'Tactical Feeder in Disguise 🎯'
+  return formatDeadTimeDuration(p.avg_time_spent_dead || 0, p.games_played)
 }
 
 function getDamageSpongeRatio(p: LeaderboardPlayer): string {
@@ -415,16 +394,6 @@ function setSort(col: SortKey) {
     sortAsc.value = col === 'player_name' ? true : false
   }
   syncUrlQuery()
-}
-
-function getTotalBm(p: LeaderboardPlayer): number {
-  return (
-    (p.total_bsteps || 0) +
-    (p.total_sprays || 0) +
-    (p.total_taunts || 0) +
-    (p.total_dances || 0) +
-    (p.total_voice_lines || 0)
-  )
 }
 
 function getTotalBmDeaths(p: LeaderboardPlayer): number {
@@ -807,19 +776,17 @@ onUnmounted(() => {
           <div class="roast-rank-circle"
                :title="`MMR Rank #${getPlayerMmrRank(activeFilterPlayer)} of ${totalMmrRankedPlayers}`"
                :class="{
-                 'top-three': getPlayerMmrRank(activeFilterPlayer) <= 3 && getPlayerMmrRank(activeFilterPlayer) > 0,
-                 'compact-rank': getPlayerMmrRank(activeFilterPlayer) >= 100
-               }">
+                'top-three': getPlayerMmrRank(activeFilterPlayer) <= 3 && getPlayerMmrRank(activeFilterPlayer) > 0,
+                'compact-rank': getPlayerMmrRank(activeFilterPlayer) >= 100
+              }">
             {{ getMmrRankBadge(activeFilterPlayer) }}
           </div>
           <div>
             <div class="roast-name-row">
               <h2 class="roast-player-name">{{ activeFilterPlayer.player_name }}</h2>
-              <RoleBadge
-                v-if="activeFilterPlayer.role"
-                :role="activeFilterPlayer.role"
-                class="roast-role-badge"
-              />
+              <RoleBadge v-if="activeFilterPlayer.role"
+                         :role="activeFilterPlayer.role"
+                         class="roast-role-badge" />
               <span v-if="activeFilterPlayer.mmr != null"
                     class="roast-mmr-badge"
                     :title="activeFilterPlayer.base_mmr ? `Base: ${formatNumber(activeFilterPlayer.base_mmr)}${activeFilterPlayer.adjustment ? ` (${activeFilterPlayer.adjustment > 0 ? '+' : ''}${activeFilterPlayer.adjustment})` : ''}` : 'Effective MMR'">
@@ -1095,7 +1062,8 @@ onUnmounted(() => {
               <th class="sortable mmr-col mmr-col-detailed"
                   :title="selectedMode === 'aram' ? 'Current ARAM Effective MMR' : 'Current In-House Effective MMR'"
                   @click="setSort('mmr')">
-                {{ selectedMode === 'aram' ? 'ARAM MMR' : 'MMR' }} {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : '' }}
+                {{ selectedMode === 'aram' ? 'ARAM MMR' : 'MMR' }} {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : ''
+                }}
               </th>
               <!-- Win Rate (Detailed) -->
               <th class="sortable wr-col-detailed"
@@ -1157,7 +1125,8 @@ onUnmounted(() => {
                           :class="{ active: sortColumn === 'mmr' }"
                           :title="selectedMode === 'aram' ? 'Sort by ARAM MMR' : 'Sort by MMR'"
                           @click="setSort('mmr')">
-                      {{ selectedMode === 'aram' ? 'ARAM' : 'MMR' }}{{ sortColumn === 'mmr' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                      {{ selectedMode === 'aram' ? 'ARAM' : 'MMR' }}{{ sortColumn === 'mmr' ? (sortAsc ? ' ▲' : ' ▼') :
+                        '' }}
                     </span>
                     <span class="wr-clickable"
                           :class="{ active: sortColumn === 'win_rate_pct' }"
@@ -1413,12 +1382,10 @@ onUnmounted(() => {
                 <div class="player-name-wrapper">
                   <span class="player-title">
                     <span class="player-name-text">{{ p.player_name }}</span>
-                    <RoleBadge
-                      v-if="p.role"
-                      :role="p.role"
-                      size="sm"
-                      class="player-role-pill"
-                    />
+                    <RoleBadge v-if="p.role"
+                               :role="p.role"
+                               size="sm"
+                               class="player-role-pill" />
                   </span>
                   <span v-if="p.hots_battle_tag"
                         class="player-tag-hint">
@@ -1550,7 +1517,8 @@ onUnmounted(() => {
                        class="bm-outcomes">
                     <span v-if="(p.total_bstep_deaths ?? 0) > 0"
                           class="bm-tag bm-tag-sm bm-deaths-tag"
-                          :title="`${p.total_bstep_deaths} deaths while B-stepping`">💀 {{ p.total_bstep_deaths }}</span>
+                          :title="`${p.total_bstep_deaths} deaths while B-stepping`">💀 {{ p.total_bstep_deaths
+                          }}</span>
                     <span v-if="(p.total_bstep_td ?? 0) > 0"
                           class="bm-tag bm-tag-sm bm-td-tag"
                           :title="`${p.total_bstep_td} takedowns while B-stepping`">⚔️ {{ p.total_bstep_td }}</span>
