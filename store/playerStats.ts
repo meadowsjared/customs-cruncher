@@ -43,6 +43,8 @@ export async function refreshPlayerStatsView(): Promise<void> {
   await recalculateAllPlayerElo()
 }
 
+const ARAM_MAPS = ['Silver City', 'Lost Cavern', 'Braxis Outpost', 'Industrial District']
+
 /**
  * Quickly aggregates stats per player from the indexed `mv_replay_player_stats` materialized view,
  * using a CTE + Window Function (`ROW_NUMBER() OVER (...)`) to include both all-time stats
@@ -53,6 +55,7 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
   const playerName = filter.playerName ?? null
   const hero = filter.hero ?? null
   const map = filter.map ?? null
+  const mode = filter.mode ?? null
   const recentGames = Math.max(1, Math.min(filter.recentGames ?? 10, 50))
 
   return await sql<PlayerAggregatedStats[]>`
@@ -72,11 +75,17 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
         ha.is_primary,
         ha.hots_battle_tag AS mapped_battle_tag
       FROM mv_replay_player_stats m
+      JOIN replays r ON r.id = m.replay_id
       LEFT JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(m.hots_battle_tag)
       WHERE (${toonHandle}::text IS NULL OR m.toon_handle = ${toonHandle})
         AND (${playerName}::text IS NULL OR m.player_name ILIKE ${playerName})
         AND (${hero}::text IS NULL OR m.hero = ${hero})
         AND (${map}::text IS NULL OR m.map = ${map})
+        AND (
+          (${mode}::text IS NULL AND (m.mode = -1 OR r.guild_id IS NOT NULL))
+          OR (${mode} = 'aram' AND (m.mode IN (50031, 50101) OR m.map = ANY(${ARAM_MAPS})) AND (m.mode = -1 OR r.guild_id IS NOT NULL))
+          OR (${mode} = 'standard' AND m.mode = -1 AND NOT (m.map = ANY(${ARAM_MAPS})))
+        )
     ),
     ranked_games AS (
       SELECT
@@ -148,9 +157,17 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
         ROUND(AVG(time_spent_dead)::numeric, 1)::double precision AS avg_time_spent_dead,
         SUM(votes)::int AS total_votes,
         SUM(bsteps_count)::int AS total_bsteps,
+        SUM(bstep_deaths)::int AS total_bstep_deaths,
+        SUM(bstep_td)::int AS total_bstep_td,
         SUM(sprays_count)::int AS total_sprays,
+        SUM(spray_deaths)::int AS total_spray_deaths,
+        SUM(spray_td)::int AS total_spray_td,
         SUM(taunts_count)::int AS total_taunts,
+        SUM(taunt_deaths)::int AS total_taunt_deaths,
+        SUM(taunt_td)::int AS total_taunt_td,
         SUM(dances_count)::int AS total_dances,
+        SUM(dance_deaths)::int AS total_dance_deaths,
+        SUM(dance_td)::int AS total_dance_td,
         SUM(voice_lines_count)::int AS total_voice_lines,
         CASE
           WHEN COUNT(*) >= ${recentGames} THEN
@@ -174,11 +191,19 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
     SELECT
       a.*,
       mmr_info.mmr,
+      mmr_info.aram_mmr,
+      mmr_info.aram_games,
+      mmr_info.aram_win_rate,
       mmr_info.base_mmr,
       COALESCE(mmr_info.adjustment, 0) AS adjustment,
       mmr_info.role,
       CASE
-        WHEN mmr_info.mmr IS NOT NULL THEN
+        WHEN (${mode} = 'aram' AND mmr_info.aram_mmr IS NOT NULL) THEN
+          ROW_NUMBER() OVER (
+            PARTITION BY (mmr_info.aram_mmr IS NOT NULL)
+            ORDER BY mmr_info.aram_mmr DESC NULLS LAST, a.games_played DESC, a.player_name ASC
+          )::int
+        WHEN (${mode} IS DISTINCT FROM 'aram' AND mmr_info.mmr IS NOT NULL) THEN
           ROW_NUMBER() OVER (
             PARTITION BY (mmr_info.mmr IS NOT NULL)
             ORDER BY mmr_info.mmr DESC NULLS LAST, a.games_played DESC, a.player_name ASC
@@ -187,7 +212,7 @@ export async function getPlayerAggregatedStats(filter: PlayerStatsFilter = {}): 
       END AS mmr_rank
     FROM aggregated a
     LEFT JOIN LATERAL (
-      SELECT v.mmr, v.base_mmr, v.adjustment, v.role
+      SELECT v.mmr, v.aram_mmr, v.aram_games, v.aram_win_rate, v.base_mmr, v.adjustment, v.role
       FROM v_player_mmr v
       WHERE (a.discord_id IS NOT NULL AND v.discord_id = a.discord_id)
          OR (a.discord_id IS NULL AND (

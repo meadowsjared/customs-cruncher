@@ -10,6 +10,7 @@ export interface ReplaySummary {
   team1_players: string[]
   heroes: string[]
   guild_id?: string | null
+  mode?: number
 }
 
 export interface ServerInfo {
@@ -106,6 +107,10 @@ export interface ReplayPlayer {
   win: boolean
   rowId?: number | null
   mmr?: number | null
+  aramMmr?: number | null
+  aramBaseMmr?: number | null
+  aramGames?: number | null
+  aramWinRate?: number | null
   baseMmr?: number | null
   gameStats?: PlayerGameStats
   talents?: ReplayPlayerTalents
@@ -229,13 +234,24 @@ export interface LeaderboardPlayer {
   avg_kill_participation_pct?: number
   avg_time_spent_dead?: number
   total_bsteps: number
+  total_bstep_deaths?: number
+  total_bstep_td?: number
   total_sprays: number
+  total_spray_deaths?: number
+  total_spray_td?: number
   total_taunts: number
+  total_taunt_deaths?: number
+  total_taunt_td?: number
   total_dances: number
+  total_dance_deaths?: number
+  total_dance_td?: number
   total_voice_lines?: number
   recent_10_win_rate_pct?: number
   recent_10_avg_dpm?: number
   mmr?: number | null
+  aram_mmr?: number | null
+  aram_games?: number | null
+  aram_win_rate?: number | null
   base_mmr?: number | null
   adjustment?: number | null
   role?: string | null
@@ -262,6 +278,10 @@ export interface PlayerProfileSummary {
   tag: string
   allTags: string[]
   mmr?: number | null
+  aramMmr?: number | null
+  aramBaseMmr?: number | null
+  aramGames?: number | null
+  aramWinRate?: number | null
   baseMmr?: number | null
   adjustment?: number | null
   role?: string | null
@@ -346,6 +366,7 @@ export interface PlayerProfileData {
   pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
   mmrHistory?: PlayerMmrHistoryPoint[]
+  aramMmrHistory?: PlayerMmrHistoryPoint[]
 }
 
 export interface HeroProfileTopPlayer {

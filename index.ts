@@ -29,6 +29,7 @@ import { sql } from './store/db'
 import { getBotChannel } from './utils/channel'
 import { startWebServer, stopWebServer } from './server/webServer'
 import { initCommandLogger } from './utils/commandLogger'
+import { seedImportRulesForGuilds } from './store/importRules'
 
 export const client = new Client({
   intents: [
@@ -173,6 +174,9 @@ client.once('clientReady', async () => {
     })
 
   console.log(`Bot is ready! Logged in as ${client.user?.tag}`)
+  seedImportRulesForGuilds(client.guilds.cache).catch(err => {
+    console.error('Error seeding replay import rules for guilds:', err)
+  })
   if (client.application?.id) {
     const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${client.application.id}&permissions=8&scope=bot%20applications.commands`
     console.log(`Bot Invite Link (Guild Install):\n${inviteUrl}`)
@@ -213,12 +217,18 @@ async function startBot(maxRetries = 10, delayMs = 5000): Promise<void> {
   }
 }
 
-if (process.env.NODE_ENV !== 'test') {
+const isMainEntry =
+  typeof process !== 'undefined' &&
+  Array.isArray(process.argv) &&
+  process.argv[1] != null &&
+  (process.argv[1].endsWith('index.ts') || process.argv[1].endsWith('index.js'))
+
+if (isMainEntry && process.env.NODE_ENV !== 'test') {
   void startWebServer().catch(err => {
     console.error('[WebServer] Failed to start web server:', err)
   })
+  void startBot()
 }
-void startBot()
 
 // Graceful shutdown handler
 const shutdown = async () => {

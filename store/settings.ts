@@ -119,6 +119,21 @@ export async function getGameHostId(guildId: string): Promise<string | null> {
 }
 
 /**
+ * Returns whether the current lobby session for a guild is in ARAM mode (balancing with ARAM MMR).
+ */
+export async function getIsAramLobby(guildId: string): Promise<boolean> {
+  const val = await getSetting('is_aram_lobby', guildId)
+  return val === 'true'
+}
+
+/**
+ * Sets whether the current lobby session for a guild is in ARAM mode.
+ */
+export async function setIsAramLobby(guildId: string, isAram: boolean): Promise<boolean> {
+  return await setSetting('is_aram_lobby', isAram ? 'true' : 'false', guildId)
+}
+
+/**
  * Saves the configured game host user ID for a guild.
  */
 export async function setGameHostId(guildId: string, hostId: string): Promise<boolean> {

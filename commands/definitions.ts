@@ -97,6 +97,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
               'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
             required: false,
           },
+          {
+            name: 'aram',
+            type: ApplicationCommandOptionType.Boolean,
+            description: 'Use ARAM MMR for team balancing in this lobby (defaults to False)',
+            required: false,
+          },
         ],
       },
       {
@@ -115,6 +121,12 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             type: ApplicationCommandOptionType.Boolean,
             description:
               'Synchronize lobby exactly to screenshot (defaults to False; removes absent players when True)',
+            required: false,
+          },
+          {
+            name: 'aram',
+            type: ApplicationCommandOptionType.Boolean,
+            description: 'Use ARAM MMR for team balancing in this lobby (defaults to False)',
             required: false,
           },
         ],
@@ -1111,6 +1123,90 @@ export const slashCommands: ApplicationCommandDataResolvable[] = [
             type: ApplicationCommandOptionType.User,
             description: 'Player who actually played in this replay',
             required: true,
+          },
+        ],
+      },
+      {
+        name: 'rules',
+        description: 'View or configure replay import rules for this server',
+        type: ApplicationCommandOptionType.SubcommandGroup,
+        options: [
+          {
+            name: 'show',
+            description: 'Show current replay import rules for this server',
+            type: ApplicationCommandOptionType.Subcommand,
+          },
+          {
+            name: 'add-player',
+            description: 'Add a BattleTag to the replay import roster',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+              {
+                name: CommandIds.BATTLE_TAG,
+                description: 'BattleTag to add (e.g. Name#1234)',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+              },
+            ],
+          },
+          {
+            name: 'remove-player',
+            description: 'Remove a BattleTag from the replay import roster',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+              {
+                name: CommandIds.BATTLE_TAG,
+                description: 'BattleTag to remove (e.g. Name#1234)',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+              },
+            ],
+          },
+          {
+            name: 'set-min-party',
+            description: 'Set minimum number of roster players in the same party for QM/ARAM imports',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+              {
+                name: 'size',
+                description: 'Minimum roster players in the same party (0-5)',
+                type: ApplicationCommandOptionType.Integer,
+                required: true,
+                minValue: 0,
+                maxValue: 5,
+              },
+            ],
+          },
+          {
+            name: 'set-modes',
+            description: 'Choose which HotS game modes to import for this server',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+              {
+                name: 'modes',
+                description: 'Allowed game modes preset',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+                choices: [
+                  { name: 'Custom Only (-1)', value: 'custom' },
+                  { name: 'Custom + ARAM (-1, 50101, 50031)', value: 'custom_aram' },
+                  { name: 'Custom + QM + ARAM (-1, 50001, 50101, 50031)', value: 'custom_qm_aram' },
+                ],
+              },
+            ],
+          },
+          {
+            name: 'set-dest',
+            description: 'Set the destination folder where replays for this server are copied',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+              {
+                name: 'folder',
+                description: 'Absolute directory path (e.g. /mnt/Accounts/BeerHots)',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+              },
+            ],
           },
         ],
       },

@@ -247,6 +247,9 @@ export function getPlayerFromRow(
     draftOrder: flatPlayer.draft_order ?? NaN,
     adjustment: flatPlayer.adjustment,
     mmr: flatPlayer.mmr,
+    aramMmr: flatPlayer.aram_mmr ?? undefined,
+    aramGames: flatPlayer.aram_games ?? undefined,
+    aramWinRate: flatPlayer.aram_win_rate ?? undefined,
     customGames: flatPlayer.custom_games ?? undefined,
     customWinRate: flatPlayer.custom_win_rate ?? undefined,
     lastActive: flatPlayer.last_active instanceof Date ? flatPlayer.last_active : new Date(flatPlayer.last_active),
@@ -288,6 +291,9 @@ export async function getActivePlayers(guildId: string): Promise<Player[]> {
       lp.draft_order,
       COALESCE(p.last_active, NOW()) AS last_active,
       COALESCE(v.mmr, 0) AS mmr,
+      v.aram_mmr,
+      v.aram_games,
+      v.aram_win_rate,
       v.custom_games,
       v.custom_win_rate
     FROM lobby_players lp
@@ -574,6 +580,9 @@ export async function getAllPlayers(
       NULL::int AS lobby_rank,
       NULL::int AS draft_order,
       COALESCE(v.mmr, 0) AS mmr,
+      v.aram_mmr,
+      v.aram_games,
+      v.aram_win_rate,
       v.custom_games,
       v.custom_win_rate
     FROM players p
@@ -637,6 +646,9 @@ export async function getNearbyPlayersByMmr(
       NULL::int AS lobby_rank,
       NULL::int AS draft_order,
       COALESCE(v.mmr, 0) AS mmr,
+      v.aram_mmr,
+      v.aram_games,
+      v.aram_win_rate,
       v.custom_games,
       v.custom_win_rate
     FROM players p
@@ -1455,6 +1467,9 @@ export async function getPlayerByDiscordId(
       lp.lobby_rank,
       lp.draft_order,
       COALESCE(v.mmr, 0) AS mmr,
+      v.aram_mmr,
+      v.aram_games,
+      v.aram_win_rate,
       v.custom_games,
       v.custom_win_rate
     FROM players p
@@ -1545,6 +1560,9 @@ async function buildGuestPlayer(account: HotsAccountRow, guildId: string): Promi
       lp.draft_order,
       NOW() AS last_active,
       COALESCE(v.mmr, 0) AS mmr,
+      v.aram_mmr,
+      v.aram_games,
+      v.aram_win_rate,
       v.custom_games,
       v.custom_win_rate
     FROM hots_accounts ha

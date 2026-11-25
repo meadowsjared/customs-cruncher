@@ -385,6 +385,7 @@ export function createServer(): http.Server {
           heroes: string[]
           player_ids: string[]
           guild_id: string | null
+          mode: number
           total_count: number
         }>>`
           SELECT
@@ -400,15 +401,17 @@ export function createServer(): http.Server {
             heroes,
             player_ids,
             guild_id,
+            mode,
             COUNT(*) OVER()::int AS total_count
           FROM replays
           WHERE
             (${mapFilter}::text IS NULL OR map ILIKE ${'%' + (mapFilter || '') + '%'})
             AND (
-              ${modeFilter}::text IS NULL
-              OR ${modeFilter} = ''
-              OR (${modeFilter} = 'aram' AND map = ANY(${ARAM_MAPS}))
-              OR (${modeFilter} = 'standard' AND NOT (map = ANY(${ARAM_MAPS})))
+              (${modeFilter}::text IS NULL AND (mode = -1 OR guild_id IS NOT NULL))
+              OR (${modeFilter} = '' AND (mode = -1 OR guild_id IS NOT NULL))
+              OR (${modeFilter} = 'aram' AND (mode IN (50031, 50101) OR map = ANY(${ARAM_MAPS})) AND (mode = -1 OR guild_id IS NOT NULL))
+              OR (${modeFilter} = 'quick_match' AND mode = 50001)
+              OR (${modeFilter} = 'standard' AND mode = -1 AND NOT (map = ANY(${ARAM_MAPS})))
             )
             AND (
               ${guildFilter}::text IS NULL
@@ -443,6 +446,7 @@ export function createServer(): http.Server {
             team1_players: r.team1_players.split(',').map(s => s.trim()).filter(Boolean),
             heroes: r.heroes,
             guild_id: r.guild_id ?? null,
+            mode: r.mode,
           })),
           pagination: {
             page,
@@ -653,8 +657,10 @@ export function createServer(): http.Server {
           urlObj.searchParams.get('q') ||
           urlObj.searchParams.get('search')
         const recentGames = parseInt(urlObj.searchParams.get('recent') || '10', 10) || 10
+        const rawMode = urlObj.searchParams.get('mode')?.trim().toLowerCase() || ''
+        const mode = rawMode === 'aram' || rawMode === 'standard' ? rawMode : undefined
 
-        let stats = await getPlayerAggregatedStats({ recentGames })
+        let stats = await getPlayerAggregatedStats({ recentGames, mode })
         const accounts = await sql<{ id: number; hots_battle_tag: string }[]>`
           SELECT id, hots_battle_tag FROM hots_accounts
         `

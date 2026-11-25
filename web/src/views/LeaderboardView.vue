@@ -16,7 +16,29 @@ const players = ref<LeaderboardPlayer[]>([])
 const loading = ref(true)
 const search = ref('')
 const minGames = ref(30)
+const selectedMode = ref<'' | 'standard' | 'aram'>('')
 const viewMode = ref<'showcase' | 'table'>('showcase')
+
+const showBstepsColumn = computed(() => {
+  if (selectedMode.value !== 'aram') return true
+  return filteredPlayers.value.some((p) => (p.total_bsteps || 0) > 0)
+})
+
+function getActiveMmr(p: LeaderboardPlayer): number | null {
+  if (selectedMode.value === 'aram') {
+    return p.aram_mmr != null && p.aram_mmr > 0 ? p.aram_mmr : null
+  }
+  return p.mmr != null && p.mmr > 0 ? p.mmr : null
+}
+
+function getMmrTooltip(p: LeaderboardPlayer): string {
+  if (selectedMode.value === 'aram') {
+    return p.aram_games ? `ARAM: ${p.aram_games}G (${p.aram_win_rate ?? 50}% WR)` : 'ARAM Effective MMR (Seeded)'
+  }
+  return p.base_mmr
+    ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}`
+    : 'Effective In-House MMR'
+}
 
 function formatDeadTime(p: LeaderboardPlayer): string {
   const avg = p.avg_time_spent_dead || 0
@@ -63,21 +85,69 @@ function getBmCommentary(p: LeaderboardPlayer): string {
 type SortKey =
   | 'player_name'
   | 'mmr'
+  | 'aram_mmr'
   | 'games_played'
   | 'wins'
   | 'losses'
   | 'win_rate_pct'
   | 'overall_kda'
+  | 'total_deaths'
+  | 'avg_deaths'
   | 'avg_hero_damage'
   | 'avg_healing'
   | 'avg_siege_damage'
   | 'total_bsteps'
+  | 'total_bstep_deaths'
+  | 'total_bstep_td'
   | 'total_sprays'
+  | 'total_spray_deaths'
+  | 'total_spray_td'
   | 'total_taunts'
+  | 'total_taunt_deaths'
+  | 'total_taunt_td'
   | 'total_dances'
+  | 'total_dance_deaths'
+  | 'total_dance_td'
   | 'total_voice_lines'
   | 'total_bm'
+  | 'total_bm_deaths'
   | 'recent_10_win_rate_pct'
+
+const VALID_SORT_KEYS: readonly SortKey[] = [
+  'player_name',
+  'mmr',
+  'aram_mmr',
+  'games_played',
+  'wins',
+  'losses',
+  'win_rate_pct',
+  'overall_kda',
+  'total_deaths',
+  'avg_deaths',
+  'avg_hero_damage',
+  'avg_healing',
+  'avg_siege_damage',
+  'total_bsteps',
+  'total_bstep_deaths',
+  'total_bstep_td',
+  'total_sprays',
+  'total_spray_deaths',
+  'total_spray_td',
+  'total_taunts',
+  'total_taunt_deaths',
+  'total_taunt_td',
+  'total_dances',
+  'total_dance_deaths',
+  'total_dance_td',
+  'total_voice_lines',
+  'total_bm',
+  'total_bm_deaths',
+  'recent_10_win_rate_pct',
+]
+
+function isSortKey(val: string): val is SortKey {
+  return VALID_SORT_KEYS.some((k) => k === val)
+}
 
 const sortColumn = ref<SortKey>('games_played')
 const sortAsc = ref(false)
@@ -249,7 +319,12 @@ function clearFilter() {
 async function fetchLeaderboard() {
   loading.value = true
   try {
-    const res = await fetch(`/api/leaderboard?recent=${minGames.value}`)
+    const params = new URLSearchParams()
+    params.set('recent', String(minGames.value))
+    if (selectedMode.value) {
+      params.set('mode', selectedMode.value)
+    }
+    const res = await fetch(`/api/leaderboard?${params.toString()}`)
     const text = await res.text()
     const data: { players: LeaderboardPlayer[] } = JSON.parse(text)
     players.value = data.players || []
@@ -260,7 +335,59 @@ async function fetchLeaderboard() {
   }
 }
 
-watch(minGames, () => {
+function syncUrlQuery() {
+  const nextQuery: Record<string, string> = {}
+  for (const [k, v] of Object.entries(route.query)) {
+    if (k === 'sort' || k === 'dir' || k === 'mode' || k === 'minGames') continue
+    if (typeof v === 'string' && v) {
+      nextQuery[k] = v
+    }
+  }
+  if (sortColumn.value !== 'games_played' || sortAsc.value) {
+    nextQuery.sort = sortColumn.value
+    nextQuery.dir = sortAsc.value ? 'asc' : 'desc'
+  }
+  if (selectedMode.value) {
+    nextQuery.mode = selectedMode.value
+  }
+  if (minGames.value !== 30) {
+    nextQuery.minGames = String(minGames.value)
+  }
+  router.replace({ query: nextQuery })
+}
+
+watch(
+  () => route.query,
+  (q) => {
+    const rawSort = typeof q.sort === 'string' ? q.sort.trim() : ''
+    if (rawSort && isSortKey(rawSort)) {
+      sortColumn.value = rawSort
+    } else if (!rawSort) {
+      sortColumn.value = 'games_played'
+    }
+
+    const rawDir = typeof q.dir === 'string' ? q.dir.trim().toLowerCase() : ''
+    if (rawDir === 'asc') {
+      sortAsc.value = true
+    } else if (rawDir === 'desc') {
+      sortAsc.value = false
+    } else if (!rawSort) {
+      sortAsc.value = false
+    }
+
+    const rawMode = typeof q.mode === 'string' ? q.mode.trim().toLowerCase() : ''
+    selectedMode.value = rawMode === 'standard' || rawMode === 'aram' ? rawMode : ''
+
+    const rawMin = typeof q.minGames === 'string' ? parseInt(q.minGames, 10) : NaN
+    if (!isNaN(rawMin) && rawMin > 0) {
+      minGames.value = rawMin
+    }
+  },
+  { immediate: true }
+)
+
+watch([minGames, selectedMode], () => {
+  syncUrlQuery()
   fetchLeaderboard()
 })
 
@@ -287,6 +414,7 @@ function setSort(col: SortKey) {
     sortColumn.value = col
     sortAsc.value = col === 'player_name' ? true : false
   }
+  syncUrlQuery()
 }
 
 function getTotalBm(p: LeaderboardPlayer): number {
@@ -299,12 +427,33 @@ function getTotalBm(p: LeaderboardPlayer): number {
   )
 }
 
+function getTotalBmDeaths(p: LeaderboardPlayer): number {
+  return (
+    (p.total_bstep_deaths || 0) +
+    (p.total_spray_deaths || 0) +
+    (p.total_taunt_deaths || 0) +
+    (p.total_dance_deaths || 0)
+  )
+}
+
+function getBmDeathsTooltip(p: LeaderboardPlayer): string {
+  const parts: string[] = []
+  if (p.total_bstep_deaths) parts.push(`B-Step: ${p.total_bstep_deaths}`)
+  if (p.total_spray_deaths) parts.push(`Spray: ${p.total_spray_deaths}`)
+  if (p.total_taunt_deaths) parts.push(`Taunt: ${p.total_taunt_deaths}`)
+  if (p.total_dance_deaths) parts.push(`Dance: ${p.total_dance_deaths}`)
+  return parts.length > 0 ? `Deaths while BM-ing (${parts.join(', ')})` : 'No deaths while BM-ing'
+}
+
 function getSortValue(p: LeaderboardPlayer, key: SortKey): number {
   if (key === 'total_bm') {
     return getTotalBm(p)
   }
+  if (key === 'total_bm_deaths') {
+    return getTotalBmDeaths(p)
+  }
   if (key === 'mmr') {
-    return p.mmr ?? 0
+    return getActiveMmr(p) ?? 0
   }
   if (key === 'player_name') {
     return 0
@@ -333,8 +482,8 @@ const sortedAllPlayers = computed(() => {
     }
 
     if (col === 'mmr') {
-      const aVal = a.mmr != null && a.mmr > 0 ? a.mmr : null
-      const bVal = b.mmr != null && b.mmr > 0 ? b.mmr : null
+      const aVal = getActiveMmr(a)
+      const bVal = getActiveMmr(b)
 
       if (aVal === null && bVal === null) {
         return b.games_played - a.games_played
@@ -471,8 +620,8 @@ const filteredPlayers = computed(() => {
     }
 
     if (col === 'mmr') {
-      const aVal = a.mmr != null && a.mmr > 0 ? a.mmr : null
-      const bVal = b.mmr != null && b.mmr > 0 ? b.mmr : null
+      const aVal = getActiveMmr(a)
+      const bVal = getActiveMmr(b)
 
       if (aVal === null && bVal === null) {
         return b.games_played - a.games_played
@@ -590,6 +739,13 @@ onUnmounted(() => {
                type="text"
                placeholder="Search player, tag, or row ID..."
                class="input-field search-input" />
+
+        <select v-model="selectedMode"
+                class="input-field mode-select">
+          <option value="">All Modes</option>
+          <option value="standard">Standard</option>
+          <option value="aram">ARAM</option>
+        </select>
 
         <select v-model="minGames"
                 class="input-field min-games-select">
@@ -937,9 +1093,9 @@ onUnmounted(() => {
               </th>
               <!-- MMR (Detailed) -->
               <th class="sortable mmr-col mmr-col-detailed"
-                  title="Current In-House Effective MMR"
+                  :title="selectedMode === 'aram' ? 'Current ARAM Effective MMR' : 'Current In-House Effective MMR'"
                   @click="setSort('mmr')">
-                MMR {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : '' }}
+                {{ selectedMode === 'aram' ? 'ARAM MMR' : 'MMR' }} {{ sortColumn === 'mmr' ? (sortAsc ? '▲' : '▼') : '' }}
               </th>
               <!-- Win Rate (Detailed) -->
               <th class="sortable wr-col-detailed"
@@ -999,9 +1155,9 @@ onUnmounted(() => {
                   <div class="stat-trio-header-row">
                     <span class="wr-clickable"
                           :class="{ active: sortColumn === 'mmr' }"
-                          title="Sort by MMR"
+                          :title="selectedMode === 'aram' ? 'Sort by ARAM MMR' : 'Sort by MMR'"
                           @click="setSort('mmr')">
-                      MMR{{ sortColumn === 'mmr' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                      {{ selectedMode === 'aram' ? 'ARAM' : 'MMR' }}{{ sortColumn === 'mmr' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
                     </span>
                     <span class="wr-clickable"
                           :class="{ active: sortColumn === 'win_rate_pct' }"
@@ -1038,6 +1194,26 @@ onUnmounted(() => {
               <th class="sortable kad-col-detailed"
                   @click="setSort('overall_kda')">
                 KAD {{ sortColumn === 'overall_kda' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+
+              <!-- Deaths (Detailed) -->
+              <th class="kad-col-detailed bm-header-th">
+                <div class="bm-header-wrap">
+                  <span class="bm-clickable"
+                        :class="{ active: sortColumn === 'total_deaths' }"
+                        title="Sort by Total Deaths"
+                        @click="setSort('total_deaths')">
+                    Deaths{{ sortColumn === 'total_deaths' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <div class="bm-sub-sort">
+                    <span class="bm-clickable bm-sub-death"
+                          :class="{ active: sortColumn === 'avg_deaths' }"
+                          title="Sort by Avg Deaths per Game"
+                          @click="setSort('avg_deaths')">
+                      Avg/G{{ sortColumn === 'avg_deaths' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                    </span>
+                  </div>
+                </div>
               </th>
 
               <!-- Stacked Games / KAD (compact screens) -->
@@ -1093,21 +1269,106 @@ onUnmounted(() => {
                   </span>
                 </div>
               </th>
-              <th class="sortable bm-col-detailed"
-                  @click="setSort('total_bsteps')">
-                B-Steps {{ sortColumn === 'total_bsteps' ? (sortAsc ? '▲' : '▼') : '' }}
+              <th v-if="showBstepsColumn"
+                  class="bm-col-detailed bm-header-th">
+                <div class="bm-header-wrap">
+                  <span class="bm-clickable"
+                        :class="{ active: sortColumn === 'total_bsteps' }"
+                        title="Sort by B-Steps"
+                        @click="setSort('total_bsteps')">
+                    B-Steps{{ sortColumn === 'total_bsteps' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <div class="bm-sub-sort">
+                    <span class="bm-clickable bm-sub-death"
+                          :class="{ active: sortColumn === 'total_bstep_deaths' }"
+                          title="Sort by B-Step Deaths"
+                          @click="setSort('total_bstep_deaths')">
+                      💀{{ sortColumn === 'total_bstep_deaths' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                    <span class="combat-sep">/</span>
+                    <span class="bm-clickable bm-sub-td"
+                          :class="{ active: sortColumn === 'total_bstep_td' }"
+                          title="Sort by B-Step Takedowns"
+                          @click="setSort('total_bstep_td')">
+                      ⚔️{{ sortColumn === 'total_bstep_td' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                  </div>
+                </div>
               </th>
-              <th class="sortable bm-col-detailed"
-                  @click="setSort('total_sprays')">
-                Sprays {{ sortColumn === 'total_sprays' ? (sortAsc ? '▲' : '▼') : '' }}
+              <th class="bm-col-detailed bm-header-th">
+                <div class="bm-header-wrap">
+                  <span class="bm-clickable"
+                        :class="{ active: sortColumn === 'total_sprays' }"
+                        title="Sort by Sprays"
+                        @click="setSort('total_sprays')">
+                    Sprays{{ sortColumn === 'total_sprays' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <div class="bm-sub-sort">
+                    <span class="bm-clickable bm-sub-death"
+                          :class="{ active: sortColumn === 'total_spray_deaths' }"
+                          title="Sort by Spray Deaths"
+                          @click="setSort('total_spray_deaths')">
+                      💀{{ sortColumn === 'total_spray_deaths' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                    <span class="combat-sep">/</span>
+                    <span class="bm-clickable bm-sub-td"
+                          :class="{ active: sortColumn === 'total_spray_td' }"
+                          title="Sort by Spray Takedowns"
+                          @click="setSort('total_spray_td')">
+                      ⚔️{{ sortColumn === 'total_spray_td' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                  </div>
+                </div>
               </th>
-              <th class="sortable bm-col-detailed"
-                  @click="setSort('total_taunts')">
-                Taunts {{ sortColumn === 'total_taunts' ? (sortAsc ? '▲' : '▼') : '' }}
+              <th class="bm-col-detailed bm-header-th">
+                <div class="bm-header-wrap">
+                  <span class="bm-clickable"
+                        :class="{ active: sortColumn === 'total_taunts' }"
+                        title="Sort by Taunts"
+                        @click="setSort('total_taunts')">
+                    Taunts{{ sortColumn === 'total_taunts' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <div class="bm-sub-sort">
+                    <span class="bm-clickable bm-sub-death"
+                          :class="{ active: sortColumn === 'total_taunt_deaths' }"
+                          title="Sort by Taunt Deaths"
+                          @click="setSort('total_taunt_deaths')">
+                      💀{{ sortColumn === 'total_taunt_deaths' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                    <span class="combat-sep">/</span>
+                    <span class="bm-clickable bm-sub-td"
+                          :class="{ active: sortColumn === 'total_taunt_td' }"
+                          title="Sort by Taunt Takedowns"
+                          @click="setSort('total_taunt_td')">
+                      ⚔️{{ sortColumn === 'total_taunt_td' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                  </div>
+                </div>
               </th>
-              <th class="sortable bm-col-detailed"
-                  @click="setSort('total_dances')">
-                Dances {{ sortColumn === 'total_dances' ? (sortAsc ? '▲' : '▼') : '' }}
+              <th class="bm-col-detailed bm-header-th">
+                <div class="bm-header-wrap">
+                  <span class="bm-clickable"
+                        :class="{ active: sortColumn === 'total_dances' }"
+                        title="Sort by Dances"
+                        @click="setSort('total_dances')">
+                    Dances{{ sortColumn === 'total_dances' ? (sortAsc ? ' ▲' : ' ▼') : '' }}
+                  </span>
+                  <div class="bm-sub-sort">
+                    <span class="bm-clickable bm-sub-death"
+                          :class="{ active: sortColumn === 'total_dance_deaths' }"
+                          title="Sort by Dance Deaths"
+                          @click="setSort('total_dance_deaths')">
+                      💀{{ sortColumn === 'total_dance_deaths' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                    <span class="combat-sep">/</span>
+                    <span class="bm-clickable bm-sub-td"
+                          :class="{ active: sortColumn === 'total_dance_td' }"
+                          title="Sort by Dance Takedowns"
+                          @click="setSort('total_dance_td')">
+                      ⚔️{{ sortColumn === 'total_dance_td' ? (sortAsc ? '▲' : '▼') : '' }}
+                    </span>
+                  </div>
+                </div>
               </th>
               <th class="sortable bm-col-detailed"
                   @click="setSort('total_voice_lines')">
@@ -1116,6 +1377,11 @@ onUnmounted(() => {
               <th class="sortable bm-col-detailed"
                   @click="setSort('total_bm')">
                 Total BM {{ sortColumn === 'total_bm' ? (sortAsc ? '▲' : '▼') : '' }}
+              </th>
+              <th class="sortable bm-col-detailed"
+                  title="Deaths within 5s of B-Stepping, Spraying, Taunting, or Dancing"
+                  @click="setSort('total_bm_deaths')">
+                BM Deaths {{ sortColumn === 'total_bm_deaths' ? (sortAsc ? '▲' : '▼') : '' }}
               </th>
               <th class="sortable bm-col-stacked"
                   @click="setSort('total_bm')"
@@ -1164,10 +1430,10 @@ onUnmounted(() => {
 
               <!-- MMR (Detailed) -->
               <td class="num-cell mmr-cell mmr-cell-detailed">
-                <span v-if="p.mmr != null"
+                <span v-if="getActiveMmr(p) != null"
                       class="mmr-val"
-                      :title="p.base_mmr ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}` : 'Effective In-House MMR'">
-                  {{ formatNumber(p.mmr) }}
+                      :title="getMmrTooltip(p)">
+                  {{ formatNumber(getActiveMmr(p) ?? 0) }}
                 </span>
                 <span v-else
                       class="text-dim">-</span>
@@ -1208,10 +1474,10 @@ onUnmounted(() => {
               <td class="stat-trio-cell-stacked">
                 <div class="stat-trio-stacked-wrapper">
                   <div class="stat-trio-top-row">
-                    <span v-if="p.mmr != null"
+                    <span v-if="getActiveMmr(p) != null"
                           class="mmr-val stat-trio-mmr"
-                          :title="p.base_mmr ? `Base: ${formatNumber(p.base_mmr)}${p.adjustment ? ` (${p.adjustment > 0 ? '+' : ''}${p.adjustment})` : ''}` : 'Effective In-House MMR'">
-                      {{ formatNumber(p.mmr) }}
+                          :title="getMmrTooltip(p)">
+                      {{ formatNumber(getActiveMmr(p) ?? 0) }}
                     </span>
                     <span v-else
                           class="text-dim">-</span>
@@ -1233,6 +1499,15 @@ onUnmounted(() => {
 
               <!-- KDA (Detailed) -->
               <td class="num-cell bold-cell kad-cell-detailed">{{ p.overall_kda.toFixed(2) }}</td>
+
+              <!-- Deaths (Detailed) -->
+              <td class="num-cell kad-cell-detailed deaths-cell"
+                  :title="`${formatNumber(p.total_deaths)} total deaths (${(p.avg_deaths ?? 0).toFixed(2)} avg/game)`">
+                <div class="deaths-cell-stack">
+                  <span class="deaths-total-val">{{ formatNumber(p.total_deaths) }}</span>
+                  <span class="deaths-avg-val">{{ (p.avg_deaths ?? 0).toFixed(1) }}/g</span>
+                </div>
+              </td>
 
               <!-- Stacked Games / KAD (compact screens) -->
               <td class="num-cell games-kad-cell-stacked">
@@ -1266,33 +1541,78 @@ onUnmounted(() => {
               </td>
 
               <!-- B-Steps (detailed) -->
-              <td class="bm-cell bm-cell-detailed">
-                <span v-if="p.total_bsteps > 0"
-                      class="bm-tag">👟 {{ p.total_bsteps }}</span>
+              <td v-if="showBstepsColumn"
+                  class="bm-cell bm-cell-detailed">
+                <div v-if="p.total_bsteps > 0"
+                     class="bm-cell-stack">
+                  <span class="bm-tag">👟 {{ p.total_bsteps }}</span>
+                  <div v-if="(p.total_bstep_deaths ?? 0) > 0 || (p.total_bstep_td ?? 0) > 0"
+                       class="bm-outcomes">
+                    <span v-if="(p.total_bstep_deaths ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-deaths-tag"
+                          :title="`${p.total_bstep_deaths} deaths while B-stepping`">💀 {{ p.total_bstep_deaths }}</span>
+                    <span v-if="(p.total_bstep_td ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-td-tag"
+                          :title="`${p.total_bstep_td} takedowns while B-stepping`">⚔️ {{ p.total_bstep_td }}</span>
+                  </div>
+                </div>
                 <span v-else
                       class="text-dim">-</span>
               </td>
 
               <!-- Sprays (detailed) -->
               <td class="bm-cell bm-cell-detailed">
-                <span v-if="p.total_sprays > 0"
-                      class="bm-tag">🎨 {{ p.total_sprays }}</span>
+                <div v-if="p.total_sprays > 0"
+                     class="bm-cell-stack">
+                  <span class="bm-tag">🎨 {{ p.total_sprays }}</span>
+                  <div v-if="(p.total_spray_deaths ?? 0) > 0 || (p.total_spray_td ?? 0) > 0"
+                       class="bm-outcomes">
+                    <span v-if="(p.total_spray_deaths ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-deaths-tag"
+                          :title="`${p.total_spray_deaths} deaths while spraying`">💀 {{ p.total_spray_deaths }}</span>
+                    <span v-if="(p.total_spray_td ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-td-tag"
+                          :title="`${p.total_spray_td} takedowns while spraying`">⚔️ {{ p.total_spray_td }}</span>
+                  </div>
+                </div>
                 <span v-else
                       class="text-dim">-</span>
               </td>
 
               <!-- Taunts (detailed) -->
               <td class="bm-cell bm-cell-detailed">
-                <span v-if="p.total_taunts > 0"
-                      class="bm-tag">🗣️ {{ p.total_taunts }}</span>
+                <div v-if="p.total_taunts > 0"
+                     class="bm-cell-stack">
+                  <span class="bm-tag">🗣️ {{ p.total_taunts }}</span>
+                  <div v-if="(p.total_taunt_deaths ?? 0) > 0 || (p.total_taunt_td ?? 0) > 0"
+                       class="bm-outcomes">
+                    <span v-if="(p.total_taunt_deaths ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-deaths-tag"
+                          :title="`${p.total_taunt_deaths} deaths while taunting`">💀 {{ p.total_taunt_deaths }}</span>
+                    <span v-if="(p.total_taunt_td ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-td-tag"
+                          :title="`${p.total_taunt_td} takedowns while taunting`">⚔️ {{ p.total_taunt_td }}</span>
+                  </div>
+                </div>
                 <span v-else
                       class="text-dim">-</span>
               </td>
 
               <!-- Dances (detailed) -->
               <td class="bm-cell bm-cell-detailed">
-                <span v-if="p.total_dances > 0"
-                      class="bm-tag">💃 {{ p.total_dances }}</span>
+                <div v-if="p.total_dances > 0"
+                     class="bm-cell-stack">
+                  <span class="bm-tag">💃 {{ p.total_dances }}</span>
+                  <div v-if="(p.total_dance_deaths ?? 0) > 0 || (p.total_dance_td ?? 0) > 0"
+                       class="bm-outcomes">
+                    <span v-if="(p.total_dance_deaths ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-deaths-tag"
+                          :title="`${p.total_dance_deaths} deaths while dancing`">💀 {{ p.total_dance_deaths }}</span>
+                    <span v-if="(p.total_dance_td ?? 0) > 0"
+                          class="bm-tag bm-tag-sm bm-td-tag"
+                          :title="`${p.total_dance_td} takedowns while dancing`">⚔️ {{ p.total_dance_td }}</span>
+                  </div>
+                </div>
                 <span v-else
                       class="text-dim">-</span>
               </td>
@@ -1309,6 +1629,15 @@ onUnmounted(() => {
               <td class="bm-cell bm-cell-detailed">
                 <span v-if="getTotalBm(p) > 0"
                       class="bm-tag bm-total-tag">🔥 {{ getTotalBm(p) }}</span>
+                <span v-else
+                      class="text-dim">-</span>
+              </td>
+
+              <!-- BM Deaths (detailed) -->
+              <td class="bm-cell bm-cell-detailed">
+                <span v-if="getTotalBmDeaths(p) > 0"
+                      class="bm-tag bm-deaths-tag"
+                      :title="getBmDeathsTooltip(p)">💀 {{ getTotalBmDeaths(p) }}</span>
                 <span v-else
                       class="text-dim">-</span>
               </td>
@@ -1747,6 +2076,7 @@ onUnmounted(() => {
 
 .bm-cell {
   white-space: nowrap;
+  text-align: center;
 }
 
 .bm-total-tag {
@@ -1756,9 +2086,103 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.bm-deaths-tag {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  font-weight: 700;
+}
+
+.bm-td-tag {
+  background: rgba(52, 211, 153, 0.14);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #34d399;
+  font-weight: 700;
+}
+
+.bm-tag-sm {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.38rem;
+  line-height: 1.2;
+}
+
+.bm-header-th {
+  vertical-align: middle;
+  text-align: center;
+}
+
+.bm-header-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.bm-clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.bm-clickable:hover,
+.bm-clickable.active {
+  color: #fff;
+}
+
+.bm-sub-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.bm-sub-death.active {
+  color: #f87171;
+}
+
+.bm-sub-td.active {
+  color: #34d399;
+}
+
+.bm-cell-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.deaths-cell {
+  text-align: center;
+}
+
+.deaths-cell-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.deaths-total-val {
+  font-weight: 700;
+  color: #f87171;
+}
+
+.deaths-avg-val {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.bm-outcomes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .bm-col-detailed,
 .bm-cell-detailed {
   display: table-cell;
+  text-align: center;
 }
 
 .bm-col-stacked,

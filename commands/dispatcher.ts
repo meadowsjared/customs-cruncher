@@ -67,6 +67,7 @@ import {
   handleReassignReplayPlayerAutocomplete,
   handleReassignReplayPlayerCommand,
   handleRecentReplaysCommand,
+  handleReplaysRulesCommand,
 } from './replays'
 import { handleScanLobbyCommand } from './scanLobby'
 import { handleChannelCommand, handleDeleteMessageCommand, handleGuideCommand } from './shared'
@@ -274,6 +275,12 @@ async function handleSubSubCommand(interaction: ChatInputCommandInteraction<Cach
  * Handles subcommands for `/replays <subcommand>`
  */
 async function handleReplaysSubCommand(interaction: ChatInputCommandInteraction<CacheType>) {
+  const subcommandGroup = interaction.options.getSubcommandGroup(false)
+  if (subcommandGroup === 'rules') {
+    await handleReplaysRulesCommand(interaction)
+    return
+  }
+
   const subcommand = interaction.options.getSubcommand(false)
   switch (subcommand) {
     case 'import':

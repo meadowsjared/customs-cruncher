@@ -97,6 +97,7 @@ export async function getHeroProfile(heroQuery: string): Promise<HeroProfileResu
     JOIN replays r ON s.replay_id = r.id
     LEFT JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
     WHERE REGEXP_REPLACE(LOWER(s.hero), '[^a-z0-9]', '', 'g') = ${normalized}
+      AND (s.mode = -1 OR r.guild_id IS NOT NULL)
     ORDER BY s.date DESC
     LIMIT 200
   `

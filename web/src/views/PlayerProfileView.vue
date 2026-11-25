@@ -104,9 +104,13 @@ let copyTimeout: ReturnType<typeof setTimeout> | null = null
 
 // MMR Trend Popover State
 const showMmrTrend = ref(false)
+const showAramMmrTrend = ref(false)
 const heroMmrPillRef = ref<HTMLElement | null>(null)
 const generalMmrPillRef = ref<HTMLElement | null>(null)
+const heroAramMmrPillRef = ref<HTMLElement | null>(null)
+const generalAramMmrPillRef = ref<HTMLElement | null>(null)
 let mmrTrendTimer: ReturnType<typeof setTimeout> | null = null
+let aramMmrTrendTimer: ReturnType<typeof setTimeout> | null = null
 
 function onMmrMouseEnter() {
   if (mmrTrendTimer) {
@@ -145,6 +149,45 @@ function closeMmrTrend() {
     mmrTrendTimer = null
   }
   showMmrTrend.value = false
+}
+
+function onAramMmrMouseEnter() {
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+  showAramMmrTrend.value = true
+}
+
+function onAramMmrMouseLeave() {
+  if (aramMmrTrendTimer) clearTimeout(aramMmrTrendTimer)
+  aramMmrTrendTimer = setTimeout(() => {
+    showAramMmrTrend.value = false
+  }, 220)
+}
+
+function cancelAramMmrTrendTimer() {
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+}
+
+function toggleAramMmrTrend(event: MouseEvent) {
+  event.stopPropagation()
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+  showAramMmrTrend.value = !showAramMmrTrend.value
+}
+
+function closeAramMmrTrend() {
+  if (aramMmrTrendTimer) {
+    clearTimeout(aramMmrTrendTimer)
+    aramMmrTrendTimer = null
+  }
+  showAramMmrTrend.value = false
 }
 
 function openExpandedTier(talentKey: string | undefined, tierIndex: number = 0, match?: PlayerProfileMatch) {
@@ -829,39 +872,72 @@ onUnmounted(() => {
 
           <!-- Key Stats Badges for this hero -->
           <div class="profile-stat-pills">
-            <div v-if="profileData.player.mmr != null"
-                 ref="heroMmrPillRef"
-                 class="stat-pill-card mmr-pill"
-                 @mouseenter="onMmrMouseEnter"
-                 @mouseleave="onMmrMouseLeave"
-                 @click="toggleMmrTrend">
-              <span class="stat-pill-label">
-                Player MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
-              </span>
-              <span class="stat-pill-val val-mmr">{{ formatNumber(profileData.player.mmr) }}</span>
-              <span class="stat-pill-sub">
-                <span v-if="profileData.player.baseMmr">Base: {{ formatNumber(profileData.player.baseMmr) }}</span>
-                <span v-if="profileData.player.adjustment"
-                      class="mmr-adj-badge">
-                  ({{ profileData.player.adjustment > 0 ? '+' : '' }}{{ profileData.player.adjustment }})
+            <div v-if="profileData.player.mmr != null || (profileData.player.aramMmr != null && profileData.player.aramMmr > 0)"
+                 class="mmr-group-box">
+              <div v-if="profileData.player.mmr != null"
+                   ref="heroMmrPillRef"
+                   class="stat-pill-card mmr-pill"
+                   @mouseenter="onMmrMouseEnter"
+                   @mouseleave="onMmrMouseLeave"
+                   @click="toggleMmrTrend">
+                <span class="stat-pill-label">
+                  Player MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
                 </span>
-                <span v-if="!profileData.player.baseMmr">In-House</span>
-              </span>
+                <span class="stat-pill-val val-mmr">{{ formatNumber(profileData.player.mmr) }}</span>
+                <span class="stat-pill-sub">
+                  <span v-if="profileData.player.baseMmr">Base: {{ formatNumber(profileData.player.baseMmr) }}</span>
+                  <span v-if="profileData.player.adjustment"
+                        class="mmr-adj-badge">
+                    ({{ profileData.player.adjustment > 0 ? '+' : '' }}{{ profileData.player.adjustment }})
+                  </span>
+                  <span v-if="!profileData.player.baseMmr">In-House</span>
+                </span>
 
-              <!-- MMR Trend Hover Popover Graph -->
-              <MmrTrendGraph
-                v-if="showMmrTrend"
-                :history="profileData.mmrHistory"
-                :current-mmr="profileData.player.mmr"
-                :base-mmr="profileData.player.baseMmr"
-                :adjustment="profileData.player.adjustment"
-                :player-name="profileData.player.name"
-                :highlight-hero="displayHeroStats?.hero"
-                :anchor-el="heroMmrPillRef"
-                @mouseenter="cancelMmrTrendTimer"
-                @mouseleave="onMmrMouseLeave"
-                @close="closeMmrTrend"
-              />
+                <!-- MMR Trend Hover Popover Graph -->
+                <MmrTrendGraph
+                  v-if="showMmrTrend"
+                  :history="profileData.mmrHistory"
+                  :current-mmr="profileData.player.mmr"
+                  :base-mmr="profileData.player.baseMmr"
+                  :adjustment="profileData.player.adjustment"
+                  :player-name="profileData.player.name"
+                  :highlight-hero="displayHeroStats?.hero"
+                  :anchor-el="heroMmrPillRef"
+                  @mouseenter="cancelMmrTrendTimer"
+                  @mouseleave="onMmrMouseLeave"
+                  @close="closeMmrTrend"
+                />
+              </div>
+
+              <div v-if="profileData.player.aramMmr != null && profileData.player.aramMmr > 0"
+                   ref="heroAramMmrPillRef"
+                   class="stat-pill-card mmr-pill aram-mmr-pill"
+                   @mouseenter="onAramMmrMouseEnter"
+                   @mouseleave="onAramMmrMouseLeave"
+                   @click="toggleAramMmrTrend">
+                <span class="stat-pill-label">
+                  ARAM MMR <span class="mmr-trend-sparkle" title="Hover or tap for ARAM MMR Trend">📈</span>
+                </span>
+                <span class="stat-pill-val val-aram-mmr">{{ formatNumber(profileData.player.aramMmr) }}</span>
+                <span class="stat-pill-sub">
+                  <span v-if="profileData.player.aramGames">{{ profileData.player.aramGames }}G · {{ profileData.player.aramWinRate ?? 50 }}% WR</span>
+                  <span v-else>Seeded</span>
+                </span>
+
+                <!-- ARAM MMR Trend Hover Popover Graph -->
+                <MmrTrendGraph
+                  v-if="showAramMmrTrend"
+                  :history="profileData.aramMmrHistory"
+                  :current-mmr="profileData.player.aramMmr"
+                  :base-mmr="profileData.player.aramBaseMmr"
+                  :player-name="profileData.player.name"
+                  :highlight-hero="displayHeroStats?.hero"
+                  :anchor-el="heroAramMmrPillRef"
+                  @mouseenter="cancelAramMmrTrendTimer"
+                  @mouseleave="onAramMmrMouseLeave"
+                  @close="closeAramMmrTrend"
+                />
+              </div>
             </div>
 
             <div class="stat-pill-card">
@@ -1001,38 +1077,70 @@ onUnmounted(() => {
 
           <!-- Key Stats Badges -->
           <div class="profile-stat-pills">
-            <div v-if="displaySummary.mmr != null"
-                 ref="generalMmrPillRef"
-                 class="stat-pill-card mmr-pill"
-                 @mouseenter="onMmrMouseEnter"
-                 @mouseleave="onMmrMouseLeave"
-                 @click="toggleMmrTrend">
-              <span class="stat-pill-label">
-                Current MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
-              </span>
-              <span class="stat-pill-val val-mmr">{{ formatNumber(displaySummary.mmr) }}</span>
-              <span class="stat-pill-sub">
-                <span v-if="displaySummary.baseMmr">Base: {{ formatNumber(displaySummary.baseMmr) }}</span>
-                <span v-if="displaySummary.adjustment"
-                      class="mmr-adj-badge">
-                  ({{ displaySummary.adjustment > 0 ? '+' : '' }}{{ displaySummary.adjustment }})
+            <div v-if="displaySummary.mmr != null || (displaySummary.aramMmr != null && displaySummary.aramMmr > 0)"
+                 class="mmr-group-box">
+              <div v-if="displaySummary.mmr != null"
+                   ref="generalMmrPillRef"
+                   class="stat-pill-card mmr-pill"
+                   @mouseenter="onMmrMouseEnter"
+                   @mouseleave="onMmrMouseLeave"
+                   @click="toggleMmrTrend">
+                <span class="stat-pill-label">
+                  Current MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
                 </span>
-                <span v-if="!displaySummary.baseMmr">In-House</span>
-              </span>
+                <span class="stat-pill-val val-mmr">{{ formatNumber(displaySummary.mmr) }}</span>
+                <span class="stat-pill-sub">
+                  <span v-if="displaySummary.baseMmr">Base: {{ formatNumber(displaySummary.baseMmr) }}</span>
+                  <span v-if="displaySummary.adjustment"
+                        class="mmr-adj-badge">
+                    ({{ displaySummary.adjustment > 0 ? '+' : '' }}{{ displaySummary.adjustment }})
+                  </span>
+                  <span v-if="!displaySummary.baseMmr">In-House</span>
+                </span>
 
-              <!-- MMR Trend Hover Popover Graph -->
-              <MmrTrendGraph
-                v-if="showMmrTrend"
-                :history="profileData.mmrHistory"
-                :current-mmr="displaySummary.mmr"
-                :base-mmr="displaySummary.baseMmr"
-                :adjustment="displaySummary.adjustment"
-                :player-name="displaySummary.name"
-                :anchor-el="generalMmrPillRef"
-                @mouseenter="cancelMmrTrendTimer"
-                @mouseleave="onMmrMouseLeave"
-                @close="closeMmrTrend"
-              />
+                <!-- MMR Trend Hover Popover Graph -->
+                <MmrTrendGraph
+                  v-if="showMmrTrend"
+                  :history="profileData.mmrHistory"
+                  :current-mmr="displaySummary.mmr"
+                  :base-mmr="displaySummary.baseMmr"
+                  :adjustment="displaySummary.adjustment"
+                  :player-name="displaySummary.name"
+                  :anchor-el="generalMmrPillRef"
+                  @mouseenter="cancelMmrTrendTimer"
+                  @mouseleave="onMmrMouseLeave"
+                  @close="closeMmrTrend"
+                />
+              </div>
+
+              <div v-if="displaySummary.aramMmr != null && displaySummary.aramMmr > 0"
+                   ref="generalAramMmrPillRef"
+                   class="stat-pill-card mmr-pill aram-mmr-pill"
+                   @mouseenter="onAramMmrMouseEnter"
+                   @mouseleave="onAramMmrMouseLeave"
+                   @click="toggleAramMmrTrend">
+                <span class="stat-pill-label">
+                  ARAM MMR <span class="mmr-trend-sparkle" title="Hover or tap for ARAM MMR Trend">📈</span>
+                </span>
+                <span class="stat-pill-val val-aram-mmr">{{ formatNumber(displaySummary.aramMmr) }}</span>
+                <span class="stat-pill-sub">
+                  <span v-if="displaySummary.aramGames">{{ displaySummary.aramGames }}G · {{ displaySummary.aramWinRate ?? 50 }}% WR</span>
+                  <span v-else>Seeded</span>
+                </span>
+
+                <!-- ARAM MMR Trend Hover Popover Graph -->
+                <MmrTrendGraph
+                  v-if="showAramMmrTrend"
+                  :history="profileData.aramMmrHistory"
+                  :current-mmr="displaySummary.aramMmr"
+                  :base-mmr="displaySummary.aramBaseMmr"
+                  :player-name="displaySummary.name"
+                  :anchor-el="generalAramMmrPillRef"
+                  @mouseenter="cancelAramMmrTrendTimer"
+                  @mouseleave="onAramMmrMouseLeave"
+                  @close="closeAramMmrTrend"
+                />
+              </div>
             </div>
 
             <div class="stat-pill-card">
@@ -1975,6 +2083,25 @@ onUnmounted(() => {
 
 .val-mmr {
   color: var(--accent-gold);
+}
+
+.val-aram-mmr {
+  color: #fbbf24;
+}
+
+.mmr-group-box {
+  display: flex;
+  gap: 0.65rem;
+  align-items: stretch;
+  padding: 0.4rem;
+  border-radius: calc(var(--radius-md) + 4px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.aram-mmr-pill {
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.05);
 }
 
 .mmr-pill {

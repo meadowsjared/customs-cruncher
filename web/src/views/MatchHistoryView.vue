@@ -26,6 +26,12 @@ const selectedMode = ref('')
 const selectedServer = ref('')
 const jumpPageInput = ref('')
 
+const isBeerHotsServerSelected = computed(() => {
+  if (!selectedServer.value) return false
+  const server = servers.value.find(s => s.id === selectedServer.value)
+  return Boolean(server && server.name.toLowerCase().includes('beer hots'))
+})
+
 // Admin State
 const isAdmin = ref(false)
 const servers = ref<ServerInfo[]>([])
@@ -308,6 +314,9 @@ function onModeChange() {
 }
 
 function onServerChange() {
+  if (selectedMode.value === 'quick_match' && !isBeerHotsServerSelected.value) {
+    selectedMode.value = ''
+  }
   updateUrl({ page: 1, map: selectedMap.value, mode: selectedMode.value, server: selectedServer.value }, false)
 }
 
@@ -502,7 +511,7 @@ watch(
     const targetSearch = typeof newQuery.search === 'string' ? newQuery.search : ''
     const targetMap = typeof newQuery.map === 'string' ? newQuery.map : ''
     const rawMode = typeof newQuery.mode === 'string' ? newQuery.mode.toLowerCase() : ''
-    const targetMode = rawMode === 'aram' || rawMode === 'standard' ? rawMode : ''
+    const targetMode = rawMode === 'aram' || rawMode === 'standard' || rawMode === 'quick_match' ? rawMode : ''
     const targetServer = typeof newQuery.server === 'string' ? newQuery.server : ''
     const qLimit = parseInt(String(newQuery.limit || '15'), 10)
     const targetLimit = !isNaN(qLimit) && qLimit >= 1 && qLimit <= 100 ? qLimit : 15
@@ -677,6 +686,7 @@ const tooltipStyle = computed(() => {
           <option value="">All Modes</option>
           <option value="standard">Standard</option>
           <option value="aram">ARAM</option>
+          <option v-if="isBeerHotsServerSelected" value="quick_match">Quick Match</option>
         </select>
 
         <select v-model="selectedServer" class="input-field server-select" @change="onServerChange">
@@ -788,7 +798,8 @@ const tooltipStyle = computed(() => {
           <div class="map-text">
             <span class="map-name">{{ match.map }}</span>
             <span class="match-meta">#{{ match.id }} • {{ formatDuration(match.length) }}</span>
-            <span v-if="isAramMap(match.map)" class="aram-badge">ARAM</span>
+            <span v-if="match.mode === 50101 || match.mode === 50031 || isAramMap(match.map)" class="aram-badge">ARAM</span>
+            <span v-else-if="match.mode === 50001" class="qm-badge">QM</span>
             <span v-if="!selectedServer" class="server-badge" :class="{ 'unassigned-badge': !match.guild_id }">
               {{ getServerName(match.guild_id) }}
             </span>
@@ -1364,6 +1375,8 @@ const tooltipStyle = computed(() => {
   color: #60a5fa;
   border: 1px solid rgba(59, 130, 246, 0.3);
   max-width: fit-content;
+  text-wrap: balance;
+  text-align: center;
 }
 
 .unassigned-badge {
@@ -1749,6 +1762,23 @@ const tooltipStyle = computed(() => {
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.4);
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+  margin-top: 0.25rem;
+}
+
+.qm-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
   margin-top: 0.25rem;
 }
 

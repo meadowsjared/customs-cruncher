@@ -18,6 +18,7 @@ import {
 } from '../constants'
 import { client } from '../index'
 import { getLobbyMessages, saveLobbyMessage } from '../store/channels'
+import { getIsAramLobby, setIsAramLobby } from '../store/settings'
 import {
   getActivePlayers,
   getPlayerByDiscordId,
@@ -98,7 +99,10 @@ async function generateLobbyStatusMessage(guildId: string, pPreviousPlayersList?
   }
   const playerListWithLabelsString = playerListWithLabels.join('\n')
 
-  return `A new game has started! All players have been marked as inactive.\n\n${playerListWithLabelsString}\n\nPlease click below if you are going to play.`
+  const isAram = await getIsAramLobby(guildId)
+  const aramBanner = isAram ? '\n🎲 **ARAM Lobby** *(using ARAM MMR)*' : ''
+
+  return `A new game has started! All players have been marked as inactive.${aramBanner}\n\n${playerListWithLabelsString}\n\nPlease click below if you are going to play.`
 }
 
 /** generates the list of previous players */
@@ -161,6 +165,8 @@ export async function handleNewGameCommand(
 
   const screenshot = interaction.isChatInputCommand() ? interaction.options.getAttachment(CommandIds.SCREENSHOT) : null
   const sync = interaction.isChatInputCommand() ? (interaction.options.getBoolean(CommandIds.SYNC) ?? false) : false
+  const isAram = interaction.isChatInputCommand() ? (interaction.options.getBoolean('aram') ?? false) : false
+  await setIsAramLobby(guildId, isAram)
 
   if (screenshot) {
     if (isBotChannel) {

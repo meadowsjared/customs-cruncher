@@ -25,6 +25,37 @@ type HeroProtocolDetails = {
 }
 
 /**
+ * Extracts per-player 8-byte party IDs from the `replay.server.battlelobby` binary buffer.
+ * In HotS's bit-packed battlelobby format, each BattleTag (`[tagByteLen][tagBytes]`) is preceded by:
+ * - Solo queue: `[0x20][tagByteLen][tagBytes]`
+ * - Partied:    `[0x10][8-byte partyId][tagByteLen][tagBytes]`
+ */
+export function extractPartyIdsFromBattleLobby(
+  lobbyBuf: Buffer,
+  battleTags: string[]
+): Map<string, string | null> {
+  const result = new Map<string, string | null>()
+  let searchFrom = 0
+  for (const tag of battleTags) {
+    const tagBuf = Buffer.from(tag, 'utf8')
+    let idx = lobbyBuf.indexOf(tagBuf, searchFrom)
+    if (idx === -1) {
+      idx = lobbyBuf.indexOf(tagBuf)
+    }
+    if (idx >= 2 && lobbyBuf[idx - 1] === tagBuf.length) {
+      searchFrom = idx + tagBuf.length
+      if (idx >= 10 && (lobbyBuf[idx - 10] & 0xf0) === 0x10 && lobbyBuf[idx - 2] !== 0x20) {
+        const partyHex = lobbyBuf.subarray(idx - 9, idx - 1).toString('hex')
+        result.set(tag.toLowerCase(), /^0+$/.test(partyHex) ? null : partyHex)
+      } else {
+        result.set(tag.toLowerCase(), null)
+      }
+    }
+  }
+  return result
+}
+
+/**
  * Parses a Heroes of the Storm replay file using hots-parser and extracts relevant information.
  * Isolated from Discord and DB layers so it can safely run in background worker threads.
  *
@@ -39,7 +70,9 @@ export function parseReplaySync(file: string): ReplayData | null {
       overrideVerifiedBuild: true,
     })
     if (!replay || !replay.match) {
-      console.error(`Invalid or incomplete replay data for file: ${file}`)
+      if (process.env.QUIET_REPLAY_PARSER !== '1') {
+        console.error(`Invalid or incomplete replay data for file: ${file}`)
+      }
       return null
     }
 
@@ -63,9 +96,12 @@ export function parseReplaySync(file: string): ReplayData | null {
     try {
       const heroprotocol: {
         DETAILS: string
-        get: (part: string, filePath: string) => HeroProtocolDetails | null
+        INITDATA: string
+        get: (part: string, filePath: string) => unknown
       } = require('heroprotocol')
-      const details = heroprotocol.get(heroprotocol.DETAILS, file)
+      const rawDetails = heroprotocol.get(heroprotocol.DETAILS, file)
+      const details: HeroProtocolDetails | null =
+        rawDetails && typeof rawDetails === 'object' ? rawDetails : null
       if (details && Array.isArray(details.m_playerList)) {
         for (const player of players) {
           const match = details.m_playerList.find(p => {
@@ -96,8 +132,19 @@ export function parseReplaySync(file: string): ReplayData | null {
           }
         }
       }
+
+      // Extract party membership from replay.server.battlelobby (8-byte party ID preceding each BattleTag)
+      const rawLobby = heroprotocol.get('replay.server.battlelobby', file)
+      if (Buffer.isBuffer(rawLobby)) {
+        const playerTags = players.map(p => `${p.name}#${p.tag}`)
+        const partyByTag = extractPartyIdsFromBattleLobby(rawLobby, playerTags)
+        for (const player of players) {
+          const key = `${player.name}#${player.tag}`.toLowerCase()
+          player.partyId = partyByTag.get(key) ?? null
+        }
+      }
     } catch {
-      // Ignore if details cannot be parsed
+      // Ignore if details/battlelobby cannot be parsed
     }
 
     const formatPlayerEntry = (p: { name: string; tag: number; hero?: string }) => {

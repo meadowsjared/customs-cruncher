@@ -13,6 +13,7 @@ import {
 } from 'discord.js'
 import { CommandIds } from '../constants'
 import { deleteLobbyMessages, getChannels, getLobbyMessages, saveLobbyMessage } from '../store/channels'
+import { getIsAramLobby } from '../store/settings'
 import {
   changeTeams,
   formatPlayerDisplay,
@@ -141,8 +142,20 @@ export async function handleMakeTeamsCommand(
   const mode: MakeTeamsMode = isMakeTeamsMode(modeInput) ? modeInput : MakeTeamsMode.OPTIMAL
 
   const sortedPlayers = await getSortedActivePlayers(guildId)
+  const isAramLobby = await getIsAramLobby(guildId)
+
   // Spectators (team === 0) are ineligible for team assignment!
-  const eligiblePlayers = sortedPlayers.filter(p => p.team !== 0)
+  const eligiblePlayers = sortedPlayers
+    .filter(p => p.team !== 0)
+    .map(p => (isAramLobby ? { ...p, mmr: p.aramMmr ?? p.mmr } : p))
+
+  if (isAramLobby) {
+    eligiblePlayers.sort((a, b) => b.mmr - a.mmr)
+    eligiblePlayers.forEach((p, idx) => {
+      p.lobbyRank = idx + 1
+    })
+  }
+
   const designatedSpectators = sortedPlayers.filter(p => p.team === 0)
 
   if (eligiblePlayers.length < 1) {

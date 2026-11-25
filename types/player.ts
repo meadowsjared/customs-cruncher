@@ -225,6 +225,7 @@ export type ReplayPlayer = {
   mount: string
   silenced: boolean
   voiceSilenced?: boolean
+  partyId?: string | null
   length: number
   turn?: number
   win: boolean
@@ -349,13 +350,24 @@ export type PlayerAggregatedStats = {
   avg_time_spent_dead: number
   total_votes: number
   total_bsteps: number
+  total_bstep_deaths: number
+  total_bstep_td: number
   total_sprays: number
+  total_spray_deaths: number
+  total_spray_td: number
   total_taunts: number
+  total_taunt_deaths: number
+  total_taunt_td: number
   total_dances: number
+  total_dance_deaths: number
+  total_dance_td: number
   total_voice_lines: number
   recent_10_win_rate_pct: number
   recent_10_avg_dpm: number
   mmr?: number | null
+  aram_mmr?: number | null
+  aram_games?: number | null
+  aram_win_rate?: number | null
   base_mmr?: number | null
   adjustment?: number | null
   role?: string | null
@@ -367,6 +379,7 @@ export type PlayerStatsFilter = {
   playerName?: string
   hero?: string
   map?: string
+  mode?: 'standard' | 'aram'
   recentGames?: number
 }
 
@@ -534,6 +547,9 @@ export type Player = {
   draftOrder: number
   adjustment: number | null
   mmr: number
+  aramMmr?: number
+  aramGames?: number
+  aramWinRate?: number
   customGames?: number
   customWinRate?: number
   lastActive: Date
@@ -558,6 +574,9 @@ export type FlatPlayer = {
   draft_order: number | null
   last_active: string | Date
   mmr: number
+  aram_mmr?: number | null
+  aram_games?: number | null
+  aram_win_rate?: number | null
   custom_games?: number | null
   custom_win_rate?: number | null
 }
@@ -700,8 +719,17 @@ export const PLAYER_ELO_TABLES_SCHEMA_SQL = `
     elo_games INTEGER NOT NULL DEFAULT 0,
     custom_games INTEGER NOT NULL DEFAULT 0,
     custom_win_rate DOUBLE PRECISION NOT NULL DEFAULT 50.0,
+    aram_elo_mmr INTEGER NOT NULL DEFAULT 0,
+    aram_elo_games INTEGER NOT NULL DEFAULT 0,
+    aram_games INTEGER NOT NULL DEFAULT 0,
+    aram_win_rate DOUBLE PRECISION NOT NULL DEFAULT 50.0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  ALTER TABLE player_elo ADD COLUMN IF NOT EXISTS aram_elo_mmr INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE player_elo ADD COLUMN IF NOT EXISTS aram_elo_games INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE player_elo ADD COLUMN IF NOT EXISTS aram_games INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE player_elo ADD COLUMN IF NOT EXISTS aram_win_rate DOUBLE PRECISION NOT NULL DEFAULT 50.0;
 
   CREATE INDEX IF NOT EXISTS idx_player_elo_discord_id
     ON player_elo (discord_id)
@@ -742,13 +770,15 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
       ha.id AS hots_account_id,
       ha.discord_id,
       ha.hots_battle_tag,
-      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr, 0) AS account_mmr
+      GREATEST(ha.hp_qm_mmr, ha.hp_sl_mmr, ha.hp_ar_mmr, 0) AS account_mmr,
+      COALESCE(ha.hp_ar_mmr, 0) AS hp_ar_mmr
     FROM hots_accounts ha
   ),
   player_base AS (
     SELECT
       discord_id,
-      COALESCE(MAX(account_mmr), 0) AS base_mmr
+      COALESCE(MAX(account_mmr), 0) AS base_mmr,
+      COALESCE(MAX(hp_ar_mmr), 0) AS base_aram_mmr
     FROM account_summary
     WHERE discord_id IS NOT NULL
     GROUP BY discord_id
@@ -772,7 +802,20 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
         0
       ) + COALESCE(p.adjustment, 0),
       0
-    )::integer AS mmr
+    )::integer AS mmr,
+    COALESCE(pe.aram_games, 0) AS aram_games,
+    COALESCE(pe.aram_win_rate, 50.0) AS aram_win_rate,
+    GREATEST(
+      COALESCE(
+        CASE
+          WHEN COALESCE(pe.aram_elo_games, 0) > 0 THEN pe.aram_elo_mmr
+          WHEN COALESCE(pb.base_aram_mmr, 0) > 0 THEN pb.base_aram_mmr
+          ELSE pb.base_mmr
+        END,
+        0
+      ) + COALESCE(p.adjustment, 0),
+      0
+    )::integer AS aram_mmr
   FROM players p
   LEFT JOIN player_base pb ON pb.discord_id = p.discord_id
   LEFT JOIN player_elo pe ON pe.discord_id = p.discord_id
@@ -796,7 +839,20 @@ export const PLAYER_MMR_VIEW_SCHEMA_SQL = `
         0
       ),
       0
-    )::integer AS mmr
+    )::integer AS mmr,
+    COALESCE(pe.aram_games, 0) AS aram_games,
+    COALESCE(pe.aram_win_rate, 50.0) AS aram_win_rate,
+    GREATEST(
+      COALESCE(
+        CASE
+          WHEN COALESCE(pe.aram_elo_games, 0) > 0 THEN pe.aram_elo_mmr
+          WHEN COALESCE(ha.hp_ar_mmr, 0) > 0 THEN ha.hp_ar_mmr
+          ELSE ha.account_mmr
+        END,
+        0
+      ),
+      0
+    )::integer AS aram_mmr
   FROM account_summary ha
   LEFT JOIN player_elo pe ON pe.hots_account_id = ha.hots_account_id
   WHERE ha.discord_id IS NULL;

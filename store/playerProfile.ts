@@ -20,6 +20,10 @@ export interface PlayerProfileSummary {
   tag: string
   allTags: string[]
   mmr?: number | null
+  aramMmr?: number | null
+  aramBaseMmr?: number | null
+  aramGames?: number | null
+  aramWinRate?: number | null
   baseMmr?: number | null
   adjustment?: number | null
   role?: string | null
@@ -122,6 +126,7 @@ export interface PlayerProfileResult {
   pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
   mmrHistory?: PlayerMmrHistoryPoint[]
+  aramMmrHistory?: PlayerMmrHistoryPoint[]
 }
 
 interface HotsAccountLookupRow {
@@ -285,7 +290,9 @@ export async function getPlayerProfile(
     WITH scoped_matches AS (
       SELECT s.*
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
+        AND (s.mode = -1 OR r.guild_id IS NOT NULL)
       ORDER BY s.date DESC
       LIMIT ${scopeLimit}
     ),
@@ -335,7 +342,9 @@ export async function getPlayerProfile(
     WITH scoped_matches AS (
       SELECT s.*
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
+        AND (s.mode = -1 OR r.guild_id IS NOT NULL)
       ORDER BY s.date DESC
       LIMIT ${scopeLimit}
     ),
@@ -386,7 +395,9 @@ export async function getPlayerProfile(
     WITH scoped_matches AS (
       SELECT s.*
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
+        AND (s.mode = -1 OR r.guild_id IS NOT NULL)
       ORDER BY s.date DESC
       LIMIT ${scopeLimit}
     ),
@@ -469,6 +480,9 @@ export async function getPlayerProfile(
 
   type PlayerMmrLookupRow = {
     mmr: number | null
+    aram_mmr: number | null
+    aram_games: number | null
+    aram_win_rate: number | null
     base_mmr: number | null
     adjustment: number | null
     role: string | null
@@ -477,6 +491,7 @@ export async function getPlayerProfile(
   interface MmrHistoryRow {
     replay_id: number
     date: Date | string
+    base_mmr: number
     pre_mmr: number
     post_mmr: number
     mmr_delta: number
@@ -484,6 +499,7 @@ export async function getPlayerProfile(
     hero: string | null
     win: boolean | null
     map: string | null
+    mode: number | null
   }
 
   const mmrHistoryQuery = sql<MmrHistoryRow[]>`
@@ -491,13 +507,15 @@ export async function getPlayerProfile(
       SELECT
         rpe.replay_id,
         r.date,
+        rpe.base_mmr,
         rpe.pre_mmr,
         rpe.post_mmr,
         rpe.mmr_delta,
         rpe.is_rated,
         s.hero,
         s.win,
-        s.map,
+        COALESCE(s.map, r.map) AS map,
+        r.mode,
         ROW_NUMBER() OVER (PARTITION BY rpe.replay_id ORDER BY rpe.is_rated DESC) as rn
       FROM replay_player_elo rpe
       JOIN replays r ON r.id = rpe.replay_id
@@ -507,13 +525,15 @@ export async function getPlayerProfile(
     SELECT
       replay_id,
       date,
+      base_mmr,
       pre_mmr,
       post_mmr,
       mmr_delta,
       is_rated,
       hero,
       win,
-      map
+      map,
+      mode
     FROM player_matches
     WHERE rn = 1
     ORDER BY date ASC, replay_id ASC;
@@ -525,7 +545,7 @@ export async function getPlayerProfile(
   if (primaryAccount.discord_id) {
     const [mmrRows, historyRows] = await Promise.all([
       sql<PlayerMmrLookupRow[]>`
-        SELECT mmr, base_mmr, adjustment, role
+        SELECT mmr, aram_mmr, aram_games, aram_win_rate, base_mmr, adjustment, role
         FROM v_player_mmr
         WHERE discord_id = ${primaryAccount.discord_id}
         LIMIT 1
@@ -537,7 +557,7 @@ export async function getPlayerProfile(
   } else if (primaryAccount.id) {
     const [mmrRows, historyRows] = await Promise.all([
       sql<PlayerMmrLookupRow[]>`
-        SELECT mmr, base_mmr, adjustment, role
+        SELECT mmr, aram_mmr, aram_games, aram_win_rate, base_mmr, adjustment, role
         FROM v_player_mmr
         WHERE hots_account_id = ${primaryAccount.id} OR LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
         LIMIT 1
@@ -549,7 +569,7 @@ export async function getPlayerProfile(
   } else {
     const [mmrRows, historyRows] = await Promise.all([
       sql<PlayerMmrLookupRow[]>`
-        SELECT mmr, base_mmr, adjustment, role
+        SELECT mmr, aram_mmr, aram_games, aram_win_rate, base_mmr, adjustment, role
         FROM v_player_mmr
         WHERE LOWER(player) = LOWER(${primaryAccount.hots_battle_tag})
         LIMIT 1
@@ -560,8 +580,15 @@ export async function getPlayerProfile(
     mmrHistoryRows = historyRows
   }
 
+  const ARAM_MAPS = ['Silver City', 'Lost Cavern', 'Braxis Outpost', 'Industrial District']
+  const isAramHistoryRow = (r: MmrHistoryRow) =>
+    r.mode === 50031 || r.mode === 50101 || (r.map != null && ARAM_MAPS.includes(r.map))
+
   const mmrAdjustment = mmrInfo?.adjustment != null ? Number(mmrInfo.adjustment) : 0
-  const mmrHistory: PlayerMmrHistoryPoint[] = mmrHistoryRows.map(r => ({
+  const standardRows = mmrHistoryRows.filter(r => !isAramHistoryRow(r))
+  const aramRows = mmrHistoryRows.filter(isAramHistoryRow)
+
+  const mmrHistory: PlayerMmrHistoryPoint[] = standardRows.map(r => ({
     replayId: Number(r.replay_id),
     date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
     mmr: Number(r.post_mmr) + mmrAdjustment,
@@ -573,6 +600,20 @@ export async function getPlayerProfile(
     map: r.map || undefined,
   }))
 
+  const aramMmrHistory: PlayerMmrHistoryPoint[] = aramRows.map(r => ({
+    replayId: Number(r.replay_id),
+    date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+    mmr: Number(r.post_mmr),
+    preMmr: Number(r.pre_mmr),
+    delta: Number(r.mmr_delta),
+    isRated: Boolean(r.is_rated),
+    hero: r.hero || undefined,
+    win: r.win != null ? Boolean(r.win) : undefined,
+    map: r.map || undefined,
+  }))
+
+  const aramBaseMmr = aramRows.length > 0 && aramRows[0]?.base_mmr ? Number(aramRows[0].base_mmr) : null
+
   const [name, tag] = primaryAccount.hots_battle_tag.split('#')
 
   return {
@@ -583,6 +624,10 @@ export async function getPlayerProfile(
       tag: tag || '',
       allTags,
       mmr: mmrInfo?.mmr != null ? Number(mmrInfo.mmr) : null,
+      aramMmr: mmrInfo?.aram_mmr != null ? Number(mmrInfo.aram_mmr) : null,
+      aramBaseMmr,
+      aramGames: mmrInfo?.aram_games != null ? Number(mmrInfo.aram_games) : null,
+      aramWinRate: mmrInfo?.aram_win_rate != null ? Number(mmrInfo.aram_win_rate) : null,
       baseMmr: mmrInfo?.base_mmr != null ? Number(mmrInfo.base_mmr) : null,
       adjustment: mmrInfo?.adjustment != null ? Number(mmrInfo.adjustment) : null,
       role: mmrInfo?.role || null,
@@ -606,6 +651,7 @@ export async function getPlayerProfile(
     pagination,
     heroStats,
     mmrHistory,
+    aramMmrHistory,
   }
 }
 

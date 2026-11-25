@@ -25,12 +25,42 @@ export const ELO_MIN_KNOWN_PLAYERS = 0
 /** Fallback seed MMR if no rated accounts exist in the database yet. */
 export const ELO_FALLBACK_SEED_MMR = 2500
 
+/** Official HotS single-lane ARAM map names (used to separate Custom ARAMs from Normal Custom drafts). */
+export const ARAM_MAPS: ReadonlySet<string> = new Set([
+  'Lost Cavern',
+  'Silver City',
+  'Braxis Outpost',
+  'Industrial District',
+])
+
+/** HotS game mode constants (matching @meadowsjared/hots-parser). */
+export const HOTS_MODE_CUSTOM = -1
+export const HOTS_MODE_QUICK_MATCH = 50001
+export const HOTS_MODE_BRAWL = 50031
+export const HOTS_MODE_ARAM = 50101
+
+/**
+ * Returns true if the match is an ARAM (queued ARAM 50101, legacy Brawl 50031, or a Custom ARAM on an ARAM map).
+ */
+export function isAramMatch(mode?: number | null, map?: string | null): boolean {
+  if (mode === HOTS_MODE_ARAM || mode === HOTS_MODE_BRAWL) return true
+  return Boolean(map && ARAM_MAPS.has(map))
+}
+
+/**
+ * Returns true if the match is a standard/draft Custom match (mode === -1 and NOT an ARAM map).
+ */
+export function isNormalCustomMatch(mode?: number | null, map?: string | null): boolean {
+  return (mode ?? HOTS_MODE_CUSTOM) === HOTS_MODE_CUSTOM && !isAramMatch(mode, map)
+}
+
 export interface EloAccountInput {
   hotsAccountId: number
   discordId: string | null
   battleTagLower: string
   ownerDiscordId: string | null
   baseMmr: number
+  arMmr?: number
 }
 
 export interface EloSubstitutionInput {
@@ -49,6 +79,9 @@ export interface EloMatchPlayerInput {
 export interface EloMatchInput {
   replayId: number
   date: Date | string
+  mode?: number
+  map?: string
+  guildId?: string | null
   players: EloMatchPlayerInput[]
 }
 
@@ -76,6 +109,19 @@ export interface ComputedPlayerElo {
   customGames: number
   customWins: number
   customWinRate: number
+  aramEloMmr?: number
+  aramEloGames?: number
+  aramGames?: number
+  aramWins?: number
+  aramWinRate?: number
+}
+
+export interface DualPoolEloCalculationResult {
+  playerRatings: ComputedPlayerElo[]
+  matchRatings: ComputedReplayPlayerElo[]
+  customRatedMatchCount: number
+  aramRatedMatchCount: number
+  skippedMatchCount: number
 }
 
 export interface ComputedReplayPlayerElo {
@@ -374,5 +420,121 @@ export function calculateSeededTeamElo(input: EloCalculationInput): EloCalculati
     ratedMatchCount,
     skippedMatchCount,
     defaultSeedMmr,
+  }
+}
+
+/**
+ * Computes two completely isolated Elo rating pools from a shared replay set:
+ * 1. Normal Customs (`mode === -1` and non-ARAM map) -> `eloMmr`, `eloGames`, `customGames`, `customWinRate`
+ * 2. ARAMs (`mode === 50031` or ARAM map) -> `aramEloMmr`, `aramEloGames`, `aramGames`, `aramWinRate`
+ *
+ * Non-custom / non-ARAM matches (e.g. Quick Match 50001) are never Elo-rated.
+ */
+export function calculateDualPoolTeamElo(input: EloCalculationInput): DualPoolEloCalculationResult {
+  const customMatches = input.matches.filter(m => isNormalCustomMatch(m.mode, m.map))
+  const aramMatches = input.matches.filter(
+    m => isAramMatch(m.mode, m.map) && (m.mode === HOTS_MODE_CUSTOM || m.guildId != null)
+  )
+  const otherMatches = input.matches.filter(
+    m => !isNormalCustomMatch(m.mode, m.map) && !isAramMatch(m.mode, m.map) && m.guildId != null
+  )
+
+  const customResult = calculateSeededTeamElo({
+    ...input,
+    matches: customMatches,
+  })
+
+  // For ARAM pool, prefer each player's Heroes Profile ARAM MMR across any linked account before falling back to baseMmr
+  const playerHasAramMmr = new Set<string>()
+  for (const a of input.accounts) {
+    if (a.arMmr && a.arMmr > 0) {
+      playerHasAramMmr.add(a.discordId ? `discord:${a.discordId}` : `account:${a.hotsAccountId}`)
+    }
+  }
+  const aramAccounts: EloAccountInput[] = input.accounts.map(a => {
+    const key = a.discordId ? `discord:${a.discordId}` : `account:${a.hotsAccountId}`
+    return {
+      ...a,
+      baseMmr: playerHasAramMmr.has(key) ? (a.arMmr ?? 0) : a.baseMmr,
+    }
+  })
+  const aramResult = calculateSeededTeamElo({
+    ...input,
+    accounts: aramAccounts,
+    matches: aramMatches,
+  })
+
+  const mergedMap = new Map<string, ComputedPlayerElo>()
+  for (const r of customResult.playerRatings) {
+    mergedMap.set(r.playerKey, {
+      ...r,
+      aramEloMmr: r.baseMmr,
+      aramEloGames: 0,
+      aramGames: 0,
+      aramWins: 0,
+      aramWinRate: 50.0,
+    })
+  }
+
+  for (const a of aramResult.playerRatings) {
+    const existing = mergedMap.get(a.playerKey)
+    if (existing) {
+      existing.aramEloMmr = a.eloMmr
+      existing.aramEloGames = a.eloGames
+      existing.aramGames = a.customGames
+      existing.aramWins = a.customWins
+      existing.aramWinRate = a.customWinRate
+    } else {
+      mergedMap.set(a.playerKey, {
+        playerKey: a.playerKey,
+        discordId: a.discordId,
+        hotsAccountId: a.hotsAccountId,
+        baseMmr: a.baseMmr,
+        eloMmr: 0,
+        eloGames: 0,
+        customGames: 0,
+        customWins: 0,
+        customWinRate: 50.0,
+        aramEloMmr: a.eloMmr,
+        aramEloGames: a.eloGames,
+        aramGames: a.customGames,
+        aramWins: a.customWins,
+        aramWinRate: a.customWinRate,
+      })
+    }
+  }
+
+  // Emit unrated snapshots for any other matches (e.g. QM) so replay_player_elo has a clean row
+  const tagToRating = new Map<string, { baseMmr: number; preMmr: number }>()
+  for (const acc of input.accounts) {
+    const key = acc.discordId ? `discord:${acc.discordId}` : `account:${acc.hotsAccountId}`
+    const rating = mergedMap.get(key)
+    tagToRating.set(acc.battleTagLower.toLowerCase(), {
+      baseMmr: rating?.baseMmr ?? acc.baseMmr,
+      preMmr: rating && rating.eloMmr > 0 ? rating.eloMmr : acc.baseMmr,
+    })
+  }
+  const otherMatchRatings: ComputedReplayPlayerElo[] = []
+  for (const m of otherMatches) {
+    for (const p of m.players) {
+      const info = tagToRating.get(p.battleTagLower.toLowerCase())
+      otherMatchRatings.push({
+        replayId: m.replayId,
+        battleTagLower: p.battleTagLower.toLowerCase(),
+        baseMmr: info?.baseMmr ?? 0,
+        preMmr: info?.preMmr ?? 0,
+        postMmr: info?.preMmr ?? 0,
+        mmrDelta: 0,
+        isRated: false,
+      })
+    }
+  }
+
+  return {
+    playerRatings: Array.from(mergedMap.values()),
+    matchRatings: [...customResult.matchRatings, ...aramResult.matchRatings, ...otherMatchRatings],
+    customRatedMatchCount: customResult.ratedMatchCount,
+    aramRatedMatchCount: aramResult.ratedMatchCount,
+    skippedMatchCount: customResult.skippedMatchCount + aramResult.skippedMatchCount + otherMatches.length,
   }
 }

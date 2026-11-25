@@ -19,73 +19,32 @@ import {
   optimizeDb,
   reassignReplayPlayer,
   RecentReplaySummary,
+  recordReplayOwnerOverride,
   ReplayPlayerInfo,
   SaveReplayOptions,
   saveReplayToDb,
 } from '../store/hotsReplays'
 import { getAssignAccountChoices } from '../store/player'
+import { getAllImportRules, getImportRuleForGuild, upsertImportRule } from '../store/importRules'
 import { ReplayData } from '../types/replay'
+import { HOTS_MODE_ARAM, HOTS_MODE_BRAWL, HOTS_MODE_CUSTOM, HOTS_MODE_QUICK_MATCH } from '../utils/elo'
+import { sanitizeBattleTagInput, validateBattleTag } from '../utils/heroesOfTheStorm'
+import { formatModeLabel, resolveGlobalReplayImportTarget } from '../utils/importRules'
 import { requireGuildId, safeReply } from '../utils/interaction'
 import { processReplaysInPool } from '../utils/replayWorkerPool'
 import { updateLobbyMessage } from './lobby'
 import { formatDateToMMDDYYYY, userIsAdmin } from './shared'
 
-const REPLAY_SOURCE_DIR = '/mnt/HotsBandayd'
-const REPLAY_DEST_DIR = '/mnt/CustomsCruncher'
+import {
+  collectAccountReplayDirs,
+  collectReplayFiles,
+  extractAccountToonHandleFromPath,
+  findStormReplays,
+  REPLAY_DEST_DIR,
+  sortReplayFilesNewestFirst,
+} from '../utils/replayFiles'
 
-export function findStormReplays(dir: string): string[] {
-  let files: string[] = []
-  try {
-    if (!fs.existsSync(dir)) return []
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        files = files.concat(findStormReplays(fullPath))
-      } else if (entry.isFile() && entry.name.endsWith('.StormReplay')) {
-        files.push(fullPath)
-      }
-    }
-  } catch (error) {
-    console.error(`Error scanning ${dir} for replays:`, error)
-  }
-  return files
-}
-
-/**
- * Scans directories and returns all unique .StormReplay files (deduplicating by filename).
- * Directories earlier in the array take precedence.
- */
-export function collectReplayFiles(dirs: string[]): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const dir of dirs) {
-    const found = findStormReplays(dir)
-    for (const f of found) {
-      const base = path.basename(f)
-      if (!seen.has(base)) {
-        seen.add(base)
-        result.push(f)
-      }
-    }
-  }
-  return result
-}
-
-/**
- * Sorts replay file paths newest-first while calling `fs.statSync` only once per file (`O(N)` instead of `O(N log N)`).
- */
-function sortReplayFilesNewestFirst(files: string[]): Array<{ file: string; mtime: number }> {
-  const withStats = files.map(file => {
-    try {
-      return { file, mtime: fs.statSync(file).mtime.getTime() }
-    } catch {
-      return { file, mtime: 0 }
-    }
-  })
-  withStats.sort((a, b) => b.mtime - a.mtime)
-  return withStats
-}
+export { collectReplayFiles, findStormReplays, REPLAY_DEST_DIR, sortReplayFilesNewestFirst }
 
 interface ReplayFilterParams {
   startDate: Date | null
@@ -272,23 +231,33 @@ interface SavedCustomReplay {
 }
 
 /**
- * Shared helper that saves a parsed custom replay to DB and copies the file to `/mnt/CustomsCruncher`.
+ * Shared helper that saves a parsed replay to DB and copies the file to the guild's destination directory.
  */
-async function saveAndCopyCustomReplay(
+export async function saveAndCopyCustomReplay(
   file: string,
   replayData: ReplayData,
-  guildId: string,
+  guildId: string | null,
+  destDir: string | null = REPLAY_DEST_DIR,
   options?: SaveReplayOptions
 ): Promise<SavedCustomReplay> {
   const fileName = path.basename(file)
   const replayId = await saveReplayToDb(replayData, guildId, options)
-  const destPath = path.join(REPLAY_DEST_DIR, fileName)
-  try {
-    if (path.resolve(file) !== path.resolve(destPath) && !fs.existsSync(destPath)) {
-      fs.copyFileSync(file, destPath)
+  const accountToonHandle = extractAccountToonHandleFromPath(file)
+  if (accountToonHandle) {
+    await recordReplayOwnerOverride(replayId, replayData, accountToonHandle, 'bandayd#1631', guildId ?? 'global')
+  }
+  if (destDir) {
+    const destPath = path.join(destDir, fileName)
+    try {
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true })
+      }
+      if (path.resolve(file) !== path.resolve(destPath) && !fs.existsSync(destPath)) {
+        fs.copyFileSync(file, destPath)
+      }
+    } catch (error) {
+      console.error('Error copying replay:', fileName, error)
     }
-  } catch (error) {
-    console.error('Error copying replay:', fileName, error)
   }
   return { replayId, fileName }
 }
@@ -363,9 +332,13 @@ export async function syncRecentReplays(
   guildId: string,
   onProgress?: (processed: number, total: number, imported: number) => Promise<void>
 ): Promise<{ importedCount: number; embeds: EmbedBuilder[] }> {
+  const allRules = await getAllImportRules()
+  const scanDirs = Array.from(
+    new Set([REPLAY_DEST_DIR, ...allRules.map(r => r.replayDestDir), ...collectAccountReplayDirs()])
+  )
   let files: string[] = []
   try {
-    files = findStormReplays(REPLAY_SOURCE_DIR)
+    files = collectReplayFiles(scanDirs)
   } catch (error) {
     console.error('Error reading replay folder for sync:', error)
     return { importedCount: 0, embeds: [] }
@@ -394,19 +367,24 @@ export async function syncRecentReplays(
     firstImportedIndex === -1 ? sortedFiles.slice().reverse() : sortedFiles.slice(0, firstImportedIndex).reverse()
 
   const importedEntries: SavedCustomReplay[] = []
+  const embedEntries: SavedCustomReplay[] = []
   let importedCount = 0
   let lastProgressUpdate = Date.now()
 
   await processReplaysInPool(unimportedFiles, {
     onResult: async ({ file, data, processedCount, totalCount }) => {
-      if (data && data.mode === -1) {
+      if (data) {
+        const target = resolveGlobalReplayImportTarget(data, allRules, guildId)
         importedCount++
         importedSet.add(path.basename(file))
-        const saved = await saveAndCopyCustomReplay(file, data, guildId, {
+        const saved = await saveAndCopyCustomReplay(file, data, target.guildId, target.destDir, {
           refreshStats: false,
           linkSubstitutions: false,
         })
         importedEntries.push(saved)
+        if (target.guildId !== null || data.mode === -1) {
+          embedEntries.push(saved)
+        }
       }
       if (onProgress && Date.now() - lastProgressUpdate >= 10000) {
         lastProgressUpdate = Date.now()
@@ -416,15 +394,17 @@ export async function syncRecentReplays(
   })
 
   if (importedCount > 0) {
-    await linkActiveSubstitutionsForReplays(
-      guildId,
-      importedEntries.map(e => e.replayId)
-    )
+    if (embedEntries.length > 0) {
+      await linkActiveSubstitutionsForReplays(
+        guildId,
+        embedEntries.map(e => e.replayId)
+      )
+    }
     await optimizeDb()
   }
 
-  // Build overview embeds for the up to 10 most recent replays, AFTER mv_replay_player_stats is refreshed
-  const recentEntries = importedEntries.slice(-10)
+  // Build overview embeds for the up to 10 most recent server/custom replays, AFTER mv_replay_player_stats is refreshed
+  const recentEntries = embedEntries.slice(-10)
   const embeds: EmbedBuilder[] = []
   for (const entry of recentEntries) {
     embeds.push(await buildReplayOverviewEmbed(entry.replayId, entry.fileName))
@@ -511,10 +491,14 @@ export async function handleImportReplaysCommand(
     return
   }
 
-  const files = collectReplayFiles([REPLAY_DEST_DIR, REPLAY_SOURCE_DIR])
+  const allRules = await getAllImportRules()
+  const scanDirs = Array.from(
+    new Set([REPLAY_DEST_DIR, ...allRules.map(r => r.replayDestDir), ...collectAccountReplayDirs()])
+  )
+  const files = collectReplayFiles(scanDirs)
   if (files.length === 0) {
     await safeReply(interaction, {
-      content: `No .StormReplay files found in replay directories:\n\`${REPLAY_DEST_DIR}\`\n\`${REPLAY_SOURCE_DIR}\``,
+      content: `No .StormReplay files found in replay directories:\n${scanDirs.map(d => `\`${d}\``).join('\n')}`,
       flags: MessageFlags.Ephemeral,
     })
     return
@@ -571,18 +555,17 @@ export async function handleImportReplaysCommand(
   await processReplaysInPool(unimportedFiles, {
     shouldStop: () => filterParams.maxFilesLimit !== null && count >= filterParams.maxFilesLimit,
     onResult: async ({ file, data, processedCount, totalCount }) => {
-      if (
-        data &&
-        data.mode === -1 &&
-        isReplayInFilterRange(file, data.date, filterParams.startDate, filterParams.endDate)
-      ) {
+      if (data && isReplayInFilterRange(file, data.date, filterParams.startDate, filterParams.endDate)) {
+        const target = resolveGlobalReplayImportTarget(data, allRules)
         count++
         importedSet.add(path.basename(file))
-        const saved = await saveAndCopyCustomReplay(file, data, guildId, {
+        const saved = await saveAndCopyCustomReplay(file, data, target.guildId, target.destDir, {
           refreshStats: false,
           linkSubstitutions: false,
         })
-        importedEntries.push(saved)
+        if (target.guildId !== null || data.mode === -1) {
+          importedEntries.push(saved)
+        }
       }
 
       const now = Date.now()
@@ -826,5 +809,138 @@ export async function handleLookupReplaySelect(interaction: StringSelectMenuInte
   await interaction.editReply({
     content: `📋 **Match Details for Replay #${replay.id}:**`,
     embeds: [embed],
+  })
+}
+
+export async function handleReplaysRulesCommand(interaction: ChatInputCommandInteraction<CacheType>): Promise<void> {
+  if (!(await userIsAdmin(interaction))) {
+    await safeReply(interaction, {
+      content: 'You do not have permission to manage replay import rules.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  const guildId = await requireGuildId(interaction)
+  if (!guildId) return
+
+  const subcommand = interaction.options.getSubcommand(false)
+  const rule = await getImportRuleForGuild(guildId)
+
+  if (subcommand === 'add-player') {
+    const rawTag = interaction.options.getString(CommandIds.BATTLE_TAG, true)
+    const battleTag = sanitizeBattleTagInput(rawTag)
+    const validation = validateBattleTag(battleTag)
+    if (!validation.isValid) {
+      await safeReply(interaction, {
+        content: `Invalid BattleTag \`${battleTag}\`:\n${validation.errors.join('\n')}`,
+        flags: MessageFlags.Ephemeral,
+      })
+      return
+    }
+    const lower = battleTag.toLowerCase()
+    if (!rule.rosterBattleTags.some(t => t.toLowerCase() === lower)) {
+      rule.rosterBattleTags.push(battleTag)
+      await upsertImportRule(rule)
+    }
+    await safeReply(interaction, {
+      content: `✅ Added \`${battleTag}\` to this server's replay import roster (${rule.rosterBattleTags.length} players).`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  if (subcommand === 'remove-player') {
+    const rawTag = interaction.options.getString(CommandIds.BATTLE_TAG, true)
+    const battleTag = sanitizeBattleTagInput(rawTag)
+    const lower = battleTag.toLowerCase()
+    const nextRoster = rule.rosterBattleTags.filter(t => t.toLowerCase() !== lower)
+    if (nextRoster.length === rule.rosterBattleTags.length) {
+      await safeReply(interaction, {
+        content: `\`${battleTag}\` was not in this server's replay import roster.`,
+        flags: MessageFlags.Ephemeral,
+      })
+      return
+    }
+    rule.rosterBattleTags = nextRoster
+    await upsertImportRule(rule)
+    await safeReply(interaction, {
+      content: `🗑️ Removed \`${battleTag}\` from this server's replay import roster (${rule.rosterBattleTags.length} players remaining).`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  if (subcommand === 'set-min-party') {
+    const size = interaction.options.getInteger('size', true)
+    rule.minPartySize = size
+    rule.requirePartyForMatchmade = size > 1
+    await upsertImportRule(rule)
+    await safeReply(interaction, {
+      content: `✅ Updated minimum party size for QM/ARAM imports to **${size}**${size > 1 ? ' (must be in the same party)' : ' (solo allowed)'}.`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  if (subcommand === 'set-modes') {
+    const preset = interaction.options.getString('modes', true)
+    if (preset === 'custom') {
+      rule.allowedModes = [HOTS_MODE_CUSTOM]
+    } else if (preset === 'custom_aram') {
+      rule.allowedModes = [HOTS_MODE_CUSTOM, HOTS_MODE_ARAM, HOTS_MODE_BRAWL]
+    } else if (preset === 'custom_qm_aram') {
+      rule.allowedModes = [HOTS_MODE_CUSTOM, HOTS_MODE_QUICK_MATCH, HOTS_MODE_ARAM, HOTS_MODE_BRAWL]
+    }
+    await upsertImportRule(rule)
+    await safeReply(interaction, {
+      content: `✅ Updated allowed modes: ${rule.allowedModes.map(formatModeLabel).join(', ')}`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  if (subcommand === 'set-dest') {
+    const folder = interaction.options.getString('folder', true).trim()
+    if (!folder) {
+      await safeReply(interaction, {
+        content: 'Destination folder path cannot be empty.',
+        flags: MessageFlags.Ephemeral,
+      })
+      return
+    }
+    rule.replayDestDir = folder
+    await upsertImportRule(rule)
+    await safeReply(interaction, {
+      content: `✅ Updated destination folder for this server to \`${folder}\`.`,
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(0x0099ff)
+    .setTitle(`📥 Replay Import Rules — ${rule.ruleName}`)
+    .addFields(
+      { name: 'Destination Folder', value: `\`${rule.replayDestDir}\``, inline: true },
+      { name: 'Allowed Modes', value: rule.allowedModes.map(formatModeLabel).join(', '), inline: true },
+      {
+        name: 'QM/ARAM Party Requirement',
+        value: rule.requirePartyForMatchmade ? `Party of ${rule.minPartySize}+ (with 1+ roster player)` : 'Disabled',
+        inline: true,
+      },
+      {
+        name: `Roster (${rule.rosterBattleTags.length})`,
+        value:
+          rule.rosterBattleTags.length > 0
+            ? rule.rosterBattleTags.map(t => `\`${t}\``).join(', ')
+            : '*All players allowed (no roster filter)*',
+      }
+    )
+    .setFooter({ text: 'Use /replays rules add-player, remove-player, set-min-party, or set-modes to adjust' })
+
+  await safeReply(interaction, {
+    embeds: [embed],
+    flags: MessageFlags.Ephemeral,
   })
 }

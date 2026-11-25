@@ -52,12 +52,10 @@ export interface SaveReplayOptions {
  */
 export async function saveReplayToDb(
   parsedReplay: ParsedReplay,
-  guildId: string,
+  guildId: string | null,
   options?: SaveReplayOptions
 ): Promise<number> {
-  if (guildId) {
-    parsedReplay.guildId = guildId
-  }
+  parsedReplay.guildId = guildId ?? null
   const inserted = await insertReplays([parsedReplay], options)
   const replayRow = inserted[0]
   if (!replayRow) {
@@ -65,7 +63,7 @@ export async function saveReplayToDb(
   }
   const replayId = replayRow.id
 
-  if (options?.linkSubstitutions !== false) {
+  if (options?.linkSubstitutions !== false && guildId) {
     const players = Object.values(parsedReplay.replayObj.players || {})
     for (const player of players) {
       const battleTag = `${player.name}#${player.tag}`
@@ -286,6 +284,7 @@ export async function getPlayerMatchStats(
         COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id,
         COALESCE(sub.original_discord_id, owner_ha.discord_id) AS owner_discord_id
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       LEFT JOIN LATERAL (
         SELECT original_discord_id, substitute_discord_id
         FROM account_substitutions a
@@ -300,6 +299,7 @@ export async function getPlayerMatchStats(
           AND ha.owner_discord_id IS NULL
         LIMIT 1
       ) owner_ha ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
     )
     SELECT
       COUNT(*)::int AS total_games,
@@ -384,6 +384,7 @@ export async function getPlayerMatchStats(
         COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id,
         COALESCE(sub.original_discord_id, owner_ha.discord_id) AS owner_discord_id
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       LEFT JOIN LATERAL (
         SELECT original_discord_id, substitute_discord_id
         FROM account_substitutions a
@@ -398,6 +399,7 @@ export async function getPlayerMatchStats(
           AND ha.owner_discord_id IS NULL
         LIMIT 1
       ) owner_ha ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
     )
     SELECT *
     FROM player_matches
@@ -433,6 +435,7 @@ export async function getPlayerMatchStats(
         s.win,
         COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       LEFT JOIN LATERAL (
         SELECT substitute_discord_id
         FROM account_substitutions a
@@ -447,6 +450,7 @@ export async function getPlayerMatchStats(
           AND ha.owner_discord_id IS NULL
         LIMIT 1
       ) owner_ha ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
     )
     SELECT
       hero,
@@ -467,6 +471,7 @@ export async function getPlayerMatchStats(
         s.win,
         COALESCE(sub.substitute_discord_id, owner_ha.discord_id) AS effective_discord_id
       FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
       LEFT JOIN LATERAL (
         SELECT substitute_discord_id
         FROM account_substitutions a
@@ -481,6 +486,7 @@ export async function getPlayerMatchStats(
           AND ha.owner_discord_id IS NULL
         LIMIT 1
       ) owner_ha ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
     )
     SELECT
       hero,
@@ -541,6 +547,7 @@ function unlinkedReplayWhereClause(clean: string, searchPattern: string) {
   return sql`
     s.hots_battle_tag IS NOT NULL
     AND s.hots_battle_tag != ''
+    AND (s.mode = -1 OR r.guild_id IS NOT NULL)
     AND (${clean} = '' OR s.hots_battle_tag ILIKE ${searchPattern} OR s.player_name ILIKE ${searchPattern})
     AND NOT EXISTS (
       SELECT 1
@@ -587,6 +594,7 @@ export async function getUnlinkedReplayAccounts(
       STRING_AGG(DISTINCT s.hero, ',') AS heroes_played,
       COUNT(*) OVER ()::int AS total_count
     FROM mv_replay_player_stats s
+    JOIN replays r ON r.id = s.replay_id
     WHERE ${unlinkedReplayWhereClause(clean, searchPattern)}
     GROUP BY s.hots_battle_tag
     HAVING COUNT(DISTINCT s.replay_id) >= ${minGames}
@@ -626,6 +634,7 @@ export async function getUnlinkedReplayAccountsForAutocomplete(
       s.hots_battle_tag,
       COUNT(DISTINCT s.replay_id)::int AS game_count
     FROM mv_replay_player_stats s
+    JOIN replays r ON r.id = s.replay_id
     WHERE ${unlinkedReplayWhereClause(clean, searchPattern)}
     GROUP BY s.hots_battle_tag
     ORDER BY game_count DESC, MAX(s.replay_id) DESC
@@ -710,6 +719,7 @@ export async function getRecentReplays(limit = 20): Promise<RecentReplaySummary[
       team0_takedowns AS "team0Takedowns",
       team1_takedowns AS "team1Takedowns"
     FROM replays
+    WHERE mode = -1 OR guild_id IS NOT NULL
     ORDER BY id DESC
     LIMIT ${limit}
   `
@@ -888,4 +898,91 @@ export async function reassignReplayPlayer(
     originalDiscordId,
     substituteDiscordId,
   }
+}
+
+let cachedOwnerDiscordId: { tagLower: string; discordId: string } | null = null
+
+/**
+ * Records a per-replay substitution in `account_substitutions` (`is_active = FALSE`) when a replay
+ * is imported from a known local account directory (e.g. `/mnt/Accounts/<id>/<toonHandle>/Replays`),
+ * attributing that specific replay's `toonHandle` player to `ownerBattleTagLower` without affecting other games.
+ */
+export async function recordReplayOwnerOverride(
+  replayId: number,
+  parsedReplay: ParsedReplay,
+  toonHandle: string,
+  ownerBattleTagLower: string = 'bandayd#1631',
+  guildId: string = 'global'
+): Promise<boolean> {
+  const players = parsedReplay.replayObj?.players || {}
+  const targetPlayer = players[toonHandle]
+  if (!targetPlayer || !targetPlayer.name || targetPlayer.tag == null) {
+    return false
+  }
+
+  const battleTag = `${targetPlayer.name}#${targetPlayer.tag}`
+  if (battleTag.toLowerCase() === ownerBattleTagLower.toLowerCase()) {
+    return false
+  }
+
+  let ownerDiscordId: string | null =
+    cachedOwnerDiscordId && cachedOwnerDiscordId.tagLower === ownerBattleTagLower.toLowerCase()
+      ? cachedOwnerDiscordId.discordId
+      : null
+
+  if (!ownerDiscordId) {
+    const ownerRows = await sql<Array<{ discord_id: string | null }>>`
+      SELECT discord_id
+      FROM hots_accounts
+      WHERE LOWER(hots_battle_tag) = LOWER(${ownerBattleTagLower})
+        AND owner_discord_id IS NULL
+        AND discord_id IS NOT NULL
+      LIMIT 1
+    `
+    ownerDiscordId = ownerRows[0]?.discord_id ?? null
+    if (ownerDiscordId) {
+      cachedOwnerDiscordId = { tagLower: ownerBattleTagLower.toLowerCase(), discordId: ownerDiscordId }
+    }
+  }
+
+  if (!ownerDiscordId) {
+    return false
+  }
+
+  const origAccountRows = await sql<Array<{ discord_id: string | null }>>`
+    SELECT discord_id
+    FROM hots_accounts
+    WHERE LOWER(hots_battle_tag) = LOWER(${battleTag})
+      AND owner_discord_id IS NULL
+    LIMIT 1
+  `
+  const effectiveOwnerId = origAccountRows[0]?.discord_id ?? ownerDiscordId
+
+  await getOrCreateSubstituteAccount(ownerDiscordId, battleTag, effectiveOwnerId)
+
+  const existingSub = await sql<Array<{ id: number }>>`
+    SELECT id
+    FROM account_substitutions
+    WHERE replay_id = ${replayId}
+      AND LOWER(hots_battle_tag) = LOWER(${battleTag})
+    LIMIT 1
+  `
+  if (existingSub[0]) {
+    await sql`
+      UPDATE account_substitutions
+      SET substitute_discord_id = ${ownerDiscordId},
+          original_discord_id = ${effectiveOwnerId}
+      WHERE id = ${existingSub[0].id}
+    `
+  } else {
+    await sql`
+      INSERT INTO account_substitutions (
+        guild_id, hots_battle_tag, original_discord_id, substitute_discord_id, replay_id, is_active
+      ) VALUES (
+        ${guildId}, ${battleTag}, ${effectiveOwnerId}, ${ownerDiscordId}, ${replayId}, FALSE
+      )
+    `
+  }
+
+  return true
 }

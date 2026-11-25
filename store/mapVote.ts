@@ -113,6 +113,7 @@ export async function getRecentlyPlayedMapNames(hours = 15): Promise<string[]> {
       SELECT DISTINCT map
       FROM replays
       WHERE date >= ${cutoffDate}
+        AND (mode = -1 OR guild_id IS NOT NULL)
     `
     return rows.map(r => r.map)
   } catch (err) {
@@ -142,6 +143,7 @@ export async function getGameNumberTonight(guildId?: string, hours = 15): Promis
       SELECT COUNT(*)::int AS count
       FROM replays
       WHERE date >= ${cutoffDate}
+        AND (mode = -1 OR guild_id IS NOT NULL)
     `
     return (rows[0]?.count ?? 0) + 1
   } catch (err) {
@@ -159,6 +161,7 @@ export async function getHistoricalPlayCounts(): Promise<Record<string, number>>
     const rows = await sql<ReplayMapCountRow[]>`
       SELECT map, COUNT(*)::int AS count
       FROM replays
+      WHERE mode = -1 OR guild_id IS NOT NULL
       GROUP BY map
       ORDER BY count DESC
     `

@@ -415,27 +415,45 @@ export async function getOrCreateSubstituteAccount(
   `
   const origAccount = origRows[0]
 
-  const inserted = await sql<Array<{ id: number }>>`
-    INSERT INTO hots_accounts (
-      discord_id, hots_battle_tag, is_primary, owner_discord_id,
-      hp_region, hp_blizz_id, hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games
-    ) VALUES (
-      ${substituteDiscordId},
-      ${fullBattleTag},
-      FALSE,
-      ${ownerId},
-      ${origAccount?.hp_region ?? null},
-      ${origAccount?.hp_blizz_id !== undefined && origAccount?.hp_blizz_id !== null ? String(origAccount.hp_blizz_id) : null},
-      ${origAccount?.hp_qm_mmr ?? 0},
-      ${origAccount?.hp_sl_mmr ?? 0},
-      ${origAccount?.hp_ar_mmr ?? 0},
-      ${origAccount?.hp_qm_games ?? 0},
-      ${origAccount?.hp_sl_games ?? 0},
-      ${origAccount?.hp_ar_games ?? 0}
-    )
-    RETURNING id
-  `
-  return inserted[0].id
+  try {
+    const inserted = await sql<Array<{ id: number }>>`
+      INSERT INTO hots_accounts (
+        discord_id, hots_battle_tag, is_primary, owner_discord_id,
+        hp_region, hp_blizz_id, hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, hp_qm_games, hp_sl_games, hp_ar_games
+      ) VALUES (
+        ${substituteDiscordId},
+        ${fullBattleTag},
+        FALSE,
+        ${ownerId},
+        ${origAccount?.hp_region ?? null},
+        ${origAccount?.hp_blizz_id !== undefined && origAccount?.hp_blizz_id !== null ? String(origAccount.hp_blizz_id) : null},
+        ${origAccount?.hp_qm_mmr ?? 0},
+        ${origAccount?.hp_sl_mmr ?? 0},
+        ${origAccount?.hp_ar_mmr ?? 0},
+        ${origAccount?.hp_qm_games ?? 0},
+        ${origAccount?.hp_sl_games ?? 0},
+        ${origAccount?.hp_ar_games ?? 0}
+      )
+      RETURNING id
+    `
+    return inserted[0].id
+  } catch (err: unknown) {
+    const pgCode =
+      typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : ''
+    if (pgCode === '23505') {
+      const retryRows = await sql<Array<{ id: number }>>`
+        SELECT id
+        FROM hots_accounts
+        WHERE discord_id = ${substituteDiscordId}
+          AND LOWER(hots_battle_tag) = LOWER(${fullBattleTag})
+        LIMIT 1
+      `
+      if (retryRows[0]) {
+        return retryRows[0].id
+      }
+    }
+    throw err
+  }
 }
 
 const resolvedAccountCache = new Map<string, { id: number; discordId: string | null }>()

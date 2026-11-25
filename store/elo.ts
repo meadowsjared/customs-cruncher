@@ -2,7 +2,7 @@ import {
   PLAYER_ELO_TABLES_SCHEMA_SQL,
 } from '../types/player'
 import {
-  calculateSeededTeamElo,
+  calculateDualPoolTeamElo,
   EloAccountInput,
   EloMatchInput,
   EloSubstitutionInput,
@@ -15,6 +15,7 @@ interface AccountQueryRow {
   hots_battle_tag: string
   owner_discord_id: string | null
   account_mmr: number
+  hp_ar_mmr: number
 }
 
 interface SubstitutionQueryRow {
@@ -26,8 +27,11 @@ interface SubstitutionQueryRow {
 interface ReplayStatQueryRow {
   replay_id: number
   date: Date | string
+  mode: number
+  map: string
+  guild_id: string | null
   toon_handle: string
-  hots_battle_tag: string
+  hots_battle_tag: string | null
   team: number
   win: boolean
 }
@@ -59,7 +63,8 @@ async function runRecalculateAllPlayerElo(): Promise<void> {
         discord_id,
         hots_battle_tag,
         owner_discord_id,
-        GREATEST(hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, 0)::int AS account_mmr
+        GREATEST(hp_qm_mmr, hp_sl_mmr, hp_ar_mmr, 0)::int AS account_mmr,
+        COALESCE(hp_ar_mmr, 0)::int AS hp_ar_mmr
       FROM hots_accounts
     `,
     sql<SubstitutionQueryRow[]>`
@@ -72,14 +77,21 @@ async function runRecalculateAllPlayerElo(): Promise<void> {
     `,
     sql<ReplayStatQueryRow[]>`
       SELECT
-        replay_id,
-        date,
-        toon_handle,
-        hots_battle_tag,
-        team,
-        win
-      FROM mv_replay_player_stats
-      ORDER BY date ASC, replay_id ASC
+        s.replay_id,
+        s.date,
+        s.mode,
+        s.map,
+        r.guild_id,
+        s.toon_handle,
+        s.hots_battle_tag,
+        s.team,
+        s.win
+      FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
+        AND s.hots_battle_tag IS NOT NULL
+        AND s.hots_battle_tag != ''
+      ORDER BY s.date ASC, s.replay_id ASC
     `,
   ])
 
@@ -89,6 +101,7 @@ async function runRecalculateAllPlayerElo(): Promise<void> {
     battleTagLower: r.hots_battle_tag.toLowerCase(),
     ownerDiscordId: r.owner_discord_id,
     baseMmr: Number(r.account_mmr) || 0,
+    arMmr: Number(r.hp_ar_mmr) || 0,
   }))
 
   const substitutions: EloSubstitutionInput[] = substitutionRows.map(r => ({
@@ -108,10 +121,14 @@ async function runRecalculateAllPlayerElo(): Promise<void> {
       currentMatch = {
         replayId,
         date: row.date,
+        mode: Number(row.mode),
+        map: row.map,
+        guildId: row.guild_id ?? null,
         players: [],
       }
       matches.push(currentMatch)
     }
+    if (!row.hots_battle_tag) continue
     currentMatch.players.push({
       battleTagLower: row.hots_battle_tag.toLowerCase(),
       toonHandle: row.toon_handle,
@@ -120,7 +137,7 @@ async function runRecalculateAllPlayerElo(): Promise<void> {
     })
   }
 
-  const result = calculateSeededTeamElo({
+  const result = calculateDualPoolTeamElo({
     accounts,
     substitutions,
     matches,
@@ -135,6 +152,10 @@ async function runRecalculateAllPlayerElo(): Promise<void> {
     elo_games: r.eloGames,
     custom_games: r.customGames,
     custom_win_rate: r.customWinRate,
+    aram_elo_mmr: r.aramEloMmr ?? r.baseMmr,
+    aram_elo_games: r.aramEloGames ?? 0,
+    aram_games: r.aramGames ?? 0,
+    aram_win_rate: r.aramWinRate ?? 50.0,
   }))
 
   // Deduplicate replay_player_elo rows defensively in case a replay ever has duplicate tags
@@ -225,15 +246,23 @@ export async function ensurePlayerEloPopulated(): Promise<void> {
     return
   }
 
-  const [eloCountRows, replayCountRows] = await Promise.all([
+  const [eloCountRows, replayCountRows, aramEloRows, aramReplayRows] = await Promise.all([
     sql<Array<{ count: number }>>`SELECT COUNT(*)::int AS count FROM replay_player_elo`,
     sql<Array<{ count: number }>>`SELECT COUNT(*)::int AS count FROM mv_replay_player_stats`,
+    sql<Array<{ count: number }>>`SELECT COUNT(*)::int AS count FROM player_elo WHERE aram_elo_games > 0`,
+    sql<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count
+      FROM mv_replay_player_stats
+      WHERE mode IN (50031, 50101) OR map IN ('Lost Cavern', 'Silver City', 'Braxis Outpost', 'Industrial District')
+    `,
   ])
 
   const eloCount = eloCountRows[0]?.count ?? 0
   const replayCount = replayCountRows[0]?.count ?? 0
+  const aramEloCount = aramEloRows[0]?.count ?? 0
+  const aramReplayCount = aramReplayRows[0]?.count ?? 0
 
-  if (replayCount > 0 && eloCount === 0) {
+  if ((replayCount > 0 && eloCount === 0) || (aramReplayCount > 0 && aramEloCount === 0)) {
     await recalculateAllPlayerElo()
   }
 }
