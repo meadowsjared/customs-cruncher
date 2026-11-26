@@ -50,6 +50,12 @@ export interface HeroProfileMatch {
   xp_contribution: number
   length: number
   talents: PlayerMatchTalents | null
+  is_sub?: boolean
+  sub_row_id?: number | null
+  sub_battle_tag?: string | null
+  account_owner_name?: string | null
+  account_owner_tag?: string | null
+  account_owner_row_id?: number | null
 }
 
 export interface HeroProfileResult {
@@ -77,6 +83,12 @@ interface RawHeroMatchRow {
   hots_battle_tag: string
   player_row_id: number | null
   talents: PlayerMatchTalents | null
+  is_sub: boolean
+  sub_row_id: number | null
+  sub_battle_tag: string | null
+  account_owner_name: string | null
+  account_owner_tag: string | null
+  account_owner_row_id: number | null
 }
 
 export async function getHeroProfile(heroQuery: string): Promise<HeroProfileResult | null> {
@@ -92,10 +104,60 @@ export async function getHeroProfile(heroQuery: string): Promise<HeroProfileResu
            s.healing, s.self_healing, s.damage_taken, s.xp_contribution,
            s.length, s.hots_battle_tag,
            ha.id as player_row_id,
-           r.players->s.toon_handle->'talents' as talents
+           r.players->s.toon_handle->'talents' as talents,
+           (sub.substitute_discord_id IS NOT NULL) as is_sub,
+           sub_ha.id as sub_row_id,
+           sub_ha.hots_battle_tag as sub_battle_tag,
+           CASE
+             WHEN sub.substitute_discord_id IS NOT NULL
+               AND sub.original_discord_id IS NOT NULL
+               AND sub.original_discord_id <> sub.substitute_discord_id
+             THEN split_part(owner_ha.hots_battle_tag, '#', 1)
+             ELSE NULL
+           END as account_owner_name,
+           CASE
+             WHEN sub.substitute_discord_id IS NOT NULL
+               AND sub.original_discord_id IS NOT NULL
+               AND sub.original_discord_id <> sub.substitute_discord_id
+             THEN owner_ha.hots_battle_tag
+             ELSE NULL
+           END as account_owner_tag,
+           CASE
+             WHEN sub.substitute_discord_id IS NOT NULL
+               AND sub.original_discord_id IS NOT NULL
+               AND sub.original_discord_id <> sub.substitute_discord_id
+             THEN owner_ha.id
+             ELSE NULL
+           END as account_owner_row_id
     FROM mv_replay_player_stats s
     JOIN replays r ON s.replay_id = r.id
     LEFT JOIN hots_accounts ha ON LOWER(ha.hots_battle_tag) = LOWER(s.hots_battle_tag)
+    LEFT JOIN LATERAL (
+      SELECT a.substitute_discord_id, a.original_discord_id
+      FROM account_substitutions a
+      WHERE a.replay_id = s.replay_id
+        AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+      ORDER BY a.id DESC
+      LIMIT 1
+    ) sub ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT ha_sub.id, ha_sub.hots_battle_tag
+      FROM hots_accounts ha_sub
+      WHERE ha_sub.discord_id = sub.substitute_discord_id
+        AND ha_sub.owner_discord_id IS NULL
+      ORDER BY ha_sub.is_primary DESC, ha_sub.id ASC
+      LIMIT 1
+    ) sub_ha ON sub.substitute_discord_id IS NOT NULL
+    LEFT JOIN LATERAL (
+      SELECT ha_own.id, ha_own.hots_battle_tag
+      FROM hots_accounts ha_own
+      WHERE ha_own.discord_id = sub.original_discord_id
+        AND ha_own.owner_discord_id IS NULL
+      ORDER BY ha_own.is_primary DESC, ha_own.id ASC
+      LIMIT 1
+    ) owner_ha ON sub.substitute_discord_id IS NOT NULL
+      AND sub.original_discord_id IS NOT NULL
+      AND sub.original_discord_id <> sub.substitute_discord_id
     WHERE REGEXP_REPLACE(LOWER(s.hero), '[^a-z0-9]', '', 'g') = ${normalized}
       AND (s.mode = -1 OR r.guild_id IS NOT NULL)
     ORDER BY s.date DESC
@@ -183,6 +245,12 @@ export async function getHeroProfile(heroQuery: string): Promise<HeroProfileResu
       xp_contribution: Number(m.xp_contribution) || 0,
       length: Number(m.length) || 0,
       talents: m.talents,
+      is_sub: Boolean(m.is_sub),
+      sub_row_id: m.sub_row_id != null ? Number(m.sub_row_id) : null,
+      sub_battle_tag: m.sub_battle_tag ?? null,
+      account_owner_name: m.account_owner_name ?? null,
+      account_owner_tag: m.account_owner_tag ?? null,
+      account_owner_row_id: m.account_owner_row_id != null ? Number(m.account_owner_row_id) : null,
     })
   }
 

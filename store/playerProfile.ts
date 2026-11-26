@@ -60,6 +60,10 @@ export interface PlayerProfileMatch {
   map: string
   hero: string
   battle_tag?: string
+  account_owner_name?: string | null
+  account_owner_tag?: string | null
+  account_owner_row_id?: number | null
+  guild_id?: string | null
   win: boolean
   kda: number
   solo_kills: number
@@ -106,6 +110,7 @@ export interface PlayerProfileOptions {
   outcome?: 'all' | 'win' | 'loss'
   heroSearch?: string
   scopeLimit?: number
+  accounts?: string[]
 }
 
 export interface PlayerMmrHistoryPoint {
@@ -120,11 +125,17 @@ export interface PlayerMmrHistoryPoint {
   map?: string
 }
 
+export interface PlayerAccountOption {
+  tag: string
+  games: number
+}
+
 export interface PlayerProfileResult {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
   pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
+  availableAccounts?: PlayerAccountOption[]
   mmrHistory?: PlayerMmrHistoryPoint[]
   aramMmrHistory?: PlayerMmrHistoryPoint[]
 }
@@ -141,6 +152,10 @@ interface ReplayStatsMatchRow {
   map: string
   hero: string
   hots_battle_tag: string
+  account_owner_name: string | null
+  account_owner_tag: string | null
+  account_owner_row_id: number | null
+  guild_id: string | null
   win: boolean
   kda: number
   solo_kills: number
@@ -205,6 +220,7 @@ export async function getPlayerProfile(
         SELECT id, discord_id, hots_battle_tag
         FROM hots_accounts
         WHERE LOWER(hots_battle_tag) = LOWER(${statsRow[0].hots_battle_tag})
+          AND owner_discord_id IS NULL
         LIMIT 1
       `
       primaryAccount = rows[0]
@@ -220,6 +236,7 @@ export async function getPlayerProfile(
         SELECT id, discord_id, hots_battle_tag
         FROM hots_accounts
         WHERE LOWER(hots_battle_tag) = LOWER(${normalized})
+          AND owner_discord_id IS NULL
         LIMIT 1
       `
       primaryAccount = rows[0]
@@ -228,6 +245,7 @@ export async function getPlayerProfile(
         SELECT id, discord_id, hots_battle_tag
         FROM hots_accounts
         WHERE LOWER(hots_battle_tag) LIKE LOWER(${normalized + '#%'})
+          AND owner_discord_id IS NULL
         ORDER BY is_primary DESC, id ASC
         LIMIT 1
       `
@@ -252,18 +270,36 @@ export async function getPlayerProfile(
 
   if (!primaryAccount) return null
 
-  // Collect linked accounts for the player without exposing their discord_id
+  // Collect owned accounts for the player without exposing their discord_id
   let allTags = [primaryAccount.hots_battle_tag]
   if (primaryAccount.discord_id) {
     const linked = await sql<{ hots_battle_tag: string }[]>`
       SELECT hots_battle_tag
       FROM hots_accounts
       WHERE discord_id = ${primaryAccount.discord_id}
+        AND owner_discord_id IS NULL
     `
-    allTags = Array.from(new Set(linked.map(r => r.hots_battle_tag)))
+    if (linked.length > 0) {
+      allTags = Array.from(new Set(linked.map(r => r.hots_battle_tag)))
+    }
   }
 
-  const tagList = allTags.map(t => t.toLowerCase())
+  const ownedTagList = allTags.map(t => t.toLowerCase())
+  const requestedAccounts = Array.from(
+    new Set((options?.accounts ?? []).map(a => a.trim().toLowerCase()).filter(Boolean))
+  )
+  const discordId = primaryAccount.discord_id
+
+  const buildOwnershipCondition = (includeAccountFilter: boolean) => sql`
+    (
+      ${discordId ? sql`sub.substitute_discord_id = ${discordId} OR ` : sql``}
+      (
+        LOWER(s.hots_battle_tag) IN ${sql(ownedTagList)}
+        AND sub.substitute_discord_id IS NULL
+      )
+    )
+    ${includeAccountFilter && requestedAccounts.length > 0 ? sql`AND LOWER(s.hots_battle_tag) IN ${sql(requestedAccounts)}` : sql``}
+  `
 
   const page = Math.max(1, options?.page ?? 1)
   const limit = Math.max(1, Math.min(100, options?.limit ?? 15))
@@ -291,8 +327,16 @@ export async function getPlayerProfile(
       SELECT s.*
       FROM mv_replay_player_stats s
       JOIN replays r ON r.id = s.replay_id
-      WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
-        AND (s.mode = -1 OR r.guild_id IS NOT NULL)
+      LEFT JOIN LATERAL (
+        SELECT a.substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        ORDER BY a.id DESC
+        LIMIT 1
+      ) sub ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
+        AND ${buildOwnershipCondition(true)}
       ORDER BY s.date DESC
       LIMIT ${scopeLimit}
     ),
@@ -343,8 +387,16 @@ export async function getPlayerProfile(
       SELECT s.*
       FROM mv_replay_player_stats s
       JOIN replays r ON r.id = s.replay_id
-      WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
-        AND (s.mode = -1 OR r.guild_id IS NOT NULL)
+      LEFT JOIN LATERAL (
+        SELECT a.substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        ORDER BY a.id DESC
+        LIMIT 1
+      ) sub ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
+        AND ${buildOwnershipCondition(true)}
       ORDER BY s.date DESC
       LIMIT ${scopeLimit}
     ),
@@ -390,14 +442,50 @@ export async function getPlayerProfile(
     .sort((a, b) => b.winRatePct - a.winRatePct || b.games - a.games)
     .slice(0, 5)
 
-  // 3. Paginated match list (talents fetched only for requested page rows)
-  const matches = await sql<ReplayStatsMatchRow[]>`
+  const availableAccounts = await sql<PlayerAccountOption[]>`
     WITH scoped_matches AS (
       SELECT s.*
       FROM mv_replay_player_stats s
       JOIN replays r ON r.id = s.replay_id
-      WHERE LOWER(s.hots_battle_tag) IN ${sql(tagList)}
-        AND (s.mode = -1 OR r.guild_id IS NOT NULL)
+      LEFT JOIN LATERAL (
+        SELECT a.substitute_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        ORDER BY a.id DESC
+        LIMIT 1
+      ) sub ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
+        AND ${buildOwnershipCondition(false)}
+      ORDER BY s.date DESC
+      LIMIT ${scopeLimit}
+    )
+    SELECT
+      hots_battle_tag AS tag,
+      COUNT(*)::int AS games
+    FROM scoped_matches
+    WHERE 1=1
+      ${normHero ? sql`AND REGEXP_REPLACE(LOWER(hero), '[^a-z0-9]', '', 'g') = ${normHero}` : sql``}
+    GROUP BY hots_battle_tag
+    ORDER BY COUNT(*) DESC, hots_battle_tag ASC
+  `
+
+  // 3. Paginated match list (talents fetched only for requested page rows)
+  const matches = await sql<ReplayStatsMatchRow[]>`
+    WITH scoped_matches AS (
+      SELECT s.*, sub.substitute_discord_id, sub.original_discord_id
+      FROM mv_replay_player_stats s
+      JOIN replays r ON r.id = s.replay_id
+      LEFT JOIN LATERAL (
+        SELECT a.substitute_discord_id, a.original_discord_id
+        FROM account_substitutions a
+        WHERE a.replay_id = s.replay_id
+          AND LOWER(a.hots_battle_tag) = LOWER(s.hots_battle_tag)
+        ORDER BY a.id DESC
+        LIMIT 1
+      ) sub ON TRUE
+      WHERE (s.mode = -1 OR r.guild_id IS NOT NULL)
+        AND ${buildOwnershipCondition(true)}
       ORDER BY s.date DESC
       LIMIT ${scopeLimit}
     ),
@@ -412,6 +500,28 @@ export async function getPlayerProfile(
     SELECT
       f.replay_id, f.date, f.map, f.hero, f.win,
       f.hots_battle_tag,
+      CASE
+        WHEN f.substitute_discord_id IS NOT NULL
+          AND f.original_discord_id IS NOT NULL
+          AND f.original_discord_id <> f.substitute_discord_id
+        THEN split_part(owner_ha.hots_battle_tag, '#', 1)
+        ELSE NULL
+      END AS account_owner_name,
+      CASE
+        WHEN f.substitute_discord_id IS NOT NULL
+          AND f.original_discord_id IS NOT NULL
+          AND f.original_discord_id <> f.substitute_discord_id
+        THEN owner_ha.hots_battle_tag
+        ELSE NULL
+      END AS account_owner_tag,
+      CASE
+        WHEN f.substitute_discord_id IS NOT NULL
+          AND f.original_discord_id IS NOT NULL
+          AND f.original_discord_id <> f.substitute_discord_id
+        THEN owner_ha.id
+        ELSE NULL
+      END AS account_owner_row_id,
+      r.guild_id,
       f.kda, f.solo_kills, f.assists, f.deaths, f.hero_damage, f.siege_damage,
       f.healing, f.self_healing, f.damage_taken, f.xp_contribution,
       f.length,
@@ -420,6 +530,14 @@ export async function getPlayerProfile(
       rpe.is_rated
     FROM filtered_matches f
     JOIN replays r ON f.replay_id = r.id
+    LEFT JOIN LATERAL (
+      SELECT ha.id, ha.hots_battle_tag
+      FROM hots_accounts ha
+      WHERE ha.discord_id = f.original_discord_id
+        AND ha.owner_discord_id IS NULL
+      ORDER BY ha.is_primary DESC, ha.id ASC
+      LIMIT 1
+    ) owner_ha ON f.substitute_discord_id IS NOT NULL AND f.original_discord_id <> f.substitute_discord_id
     LEFT JOIN replay_player_elo rpe ON rpe.replay_id = f.replay_id AND rpe.battle_tag_lower = LOWER(f.hots_battle_tag)
     ORDER BY f.date DESC
     LIMIT ${limit} OFFSET ${offset}
@@ -460,6 +578,10 @@ export async function getPlayerProfile(
       map: m.map,
       hero: m.hero,
       battle_tag: m.hots_battle_tag,
+      account_owner_name: m.account_owner_name ?? null,
+      account_owner_tag: m.account_owner_tag ?? null,
+      account_owner_row_id: m.account_owner_row_id != null ? Number(m.account_owner_row_id) : null,
+      guild_id: m.guild_id ?? null,
       win: Boolean(m.win),
       kda: Number(m.kda) || 0,
       solo_kills: Number(m.solo_kills) || 0,
@@ -520,7 +642,13 @@ export async function getPlayerProfile(
       FROM replay_player_elo rpe
       JOIN replays r ON r.id = rpe.replay_id
       LEFT JOIN mv_replay_player_stats s ON s.replay_id = rpe.replay_id AND LOWER(s.hots_battle_tag) = rpe.battle_tag_lower
-      WHERE rpe.battle_tag_lower = ANY(${tagList})
+      WHERE rpe.battle_tag_lower = ANY(${ownedTagList})
+        ${discordId ? sql`OR EXISTS (
+          SELECT 1 FROM account_substitutions a
+          WHERE a.replay_id = rpe.replay_id
+            AND LOWER(a.hots_battle_tag) = rpe.battle_tag_lower
+            AND a.substitute_discord_id = ${discordId}
+        )` : sql``}
     )
     SELECT
       replay_id,
@@ -650,6 +778,7 @@ export async function getPlayerProfile(
     matches: formattedMatches,
     pagination,
     heroStats,
+    availableAccounts,
     mmrHistory,
     aramMmrHistory,
   }

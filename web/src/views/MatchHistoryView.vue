@@ -568,6 +568,13 @@ function parsePlayerEntry(raw: string, fallbackHero?: string): TeamMemberInfo {
   }
 }
 
+function getSubForPlayer(match: ReplaySummary, entry: string): string | null {
+  if (!match.subs) return null
+  const parenIdx = entry.indexOf('(')
+  const rawTag = (parenIdx !== -1 ? entry.slice(0, parenIdx) : entry).trim().toLowerCase()
+  return match.subs[rawTag] ?? null
+}
+
 function getTeamMembers(match: ReplaySummary, teamIndex: 0 | 1): TeamMemberInfo[] {
   const playersList = teamIndex === 0 ? match.team0_players : match.team1_players
   if (Array.isArray(playersList) && playersList.length > 0) {
@@ -838,7 +845,10 @@ const tooltipStyle = computed(() => {
                 :key="idx"
                 class="player-entry"
               >
-                {{ player }}<span v-if="idx < match.team0_players.length - 1" class="player-sep">,</span>
+                {{ player }}
+                <span v-if="getSubForPlayer(match, player)"
+                      class="sub-inline-pill"
+                      :title="`Played by ${getSubForPlayer(match, player)}`">played by {{ getSubForPlayer(match, player) }}</span><span v-if="idx < match.team0_players.length - 1" class="player-sep">,</span>
               </span>
             </div>
           </div>
@@ -878,7 +888,10 @@ const tooltipStyle = computed(() => {
                 :key="idx"
                 class="player-entry"
               >
-                {{ player }}<span v-if="idx < match.team1_players.length - 1" class="player-sep">,</span>
+                {{ player }}
+                <span v-if="getSubForPlayer(match, player)"
+                      class="sub-inline-pill"
+                      :title="`Played by ${getSubForPlayer(match, player)}`">played by {{ getSubForPlayer(match, player) }}</span><span v-if="idx < match.team1_players.length - 1" class="player-sep">,</span>
               </span>
             </div>
           </div>
@@ -1360,6 +1373,19 @@ const tooltipStyle = computed(() => {
   cursor: pointer;
   accent-color: #3b82f6;
   pointer-events: none;
+}
+
+.sub-inline-pill {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0.05rem 0.38rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(168, 85, 247, 0.2);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  vertical-align: middle;
 }
 
 .server-badge {

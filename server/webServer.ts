@@ -387,47 +387,75 @@ export function createServer(): http.Server {
           guild_id: string | null
           mode: number
           total_count: number
+          subs: Record<string, string> | null
         }>>`
+          WITH paged_replays AS (
+            SELECT
+              id,
+              date,
+              map,
+              length,
+              winner,
+              team0_takedowns,
+              team1_takedowns,
+              team0_players,
+              team1_players,
+              heroes,
+              player_ids,
+              guild_id,
+              mode,
+              COUNT(*) OVER()::int AS total_count
+            FROM replays
+            WHERE
+              (${mapFilter}::text IS NULL OR map ILIKE ${'%' + (mapFilter || '') + '%'})
+              AND (
+                (${modeFilter}::text IS NULL AND (mode = -1 OR guild_id IS NOT NULL))
+                OR (${modeFilter} = '' AND (mode = -1 OR guild_id IS NOT NULL))
+                OR (${modeFilter} = 'aram' AND (mode IN (50031, 50101) OR map = ANY(${ARAM_MAPS})) AND (mode = -1 OR guild_id IS NOT NULL))
+                OR (${modeFilter} = 'quick_match' AND mode = 50001)
+                OR (${modeFilter} = 'standard' AND mode = -1 AND NOT (map = ANY(${ARAM_MAPS})))
+              )
+              AND (
+                ${guildFilter}::text IS NULL
+                OR ${guildFilter} = ''
+                OR (${guildFilter} = 'unassigned' AND guild_id IS NULL)
+                OR (guild_id = ${guildFilter})
+              )
+              AND (
+                ${search}::text IS NULL
+                OR team0_players ILIKE ${'%' + (search || '') + '%'}
+                OR team1_players ILIKE ${'%' + (search || '') + '%'}
+                OR map ILIKE ${'%' + (search || '') + '%'}
+                OR ${search} = ANY(heroes)
+              )
+            ORDER BY date DESC
+            LIMIT ${limit} OFFSET ${offset}
+          )
           SELECT
-            id,
-            date,
-            map,
-            length,
-            winner,
-            team0_takedowns,
-            team1_takedowns,
-            team0_players,
-            team1_players,
-            heroes,
-            player_ids,
-            guild_id,
-            mode,
-            COUNT(*) OVER()::int AS total_count
-          FROM replays
-          WHERE
-            (${mapFilter}::text IS NULL OR map ILIKE ${'%' + (mapFilter || '') + '%'})
-            AND (
-              (${modeFilter}::text IS NULL AND (mode = -1 OR guild_id IS NOT NULL))
-              OR (${modeFilter} = '' AND (mode = -1 OR guild_id IS NOT NULL))
-              OR (${modeFilter} = 'aram' AND (mode IN (50031, 50101) OR map = ANY(${ARAM_MAPS})) AND (mode = -1 OR guild_id IS NOT NULL))
-              OR (${modeFilter} = 'quick_match' AND mode = 50001)
-              OR (${modeFilter} = 'standard' AND mode = -1 AND NOT (map = ANY(${ARAM_MAPS})))
-            )
-            AND (
-              ${guildFilter}::text IS NULL
-              OR ${guildFilter} = ''
-              OR (${guildFilter} = 'unassigned' AND guild_id IS NULL)
-              OR (guild_id = ${guildFilter})
-            )
-            AND (
-              ${search}::text IS NULL
-              OR team0_players ILIKE ${'%' + (search || '') + '%'}
-              OR team1_players ILIKE ${'%' + (search || '') + '%'}
-              OR map ILIKE ${'%' + (search || '') + '%'}
-              OR ${search} = ANY(heroes)
-            )
-          ORDER BY date DESC
-          LIMIT ${limit} OFFSET ${offset}
+            pr.*,
+            subs_agg.subs
+          FROM paged_replays pr
+          LEFT JOIN LATERAL (
+            SELECT jsonb_object_agg(sub.orig_tag_lower, sub.sub_battle_tag) AS subs
+            FROM (
+              SELECT DISTINCT ON (LOWER(a.hots_battle_tag))
+                LOWER(a.hots_battle_tag) AS orig_tag_lower,
+                ha.hots_battle_tag AS sub_battle_tag
+              FROM account_substitutions a
+              JOIN LATERAL (
+                SELECT hots_battle_tag
+                FROM hots_accounts
+                WHERE discord_id = a.substitute_discord_id
+                  AND owner_discord_id IS NULL
+                ORDER BY is_primary DESC, id ASC
+                LIMIT 1
+              ) ha ON TRUE
+              WHERE a.replay_id = pr.id
+                AND ha.hots_battle_tag IS NOT NULL
+              ORDER BY LOWER(a.hots_battle_tag), a.id DESC
+            ) sub
+          ) subs_agg ON TRUE
+          ORDER BY pr.date DESC
         `
 
         const total = rows.length > 0 ? rows[0].total_count : 0
@@ -447,6 +475,7 @@ export function createServer(): http.Server {
             heroes: r.heroes,
             guild_id: r.guild_id ?? null,
             mode: r.mode,
+            subs: r.subs ?? undefined,
           })),
           pagination: {
             page,
@@ -608,15 +637,68 @@ export function createServer(): http.Server {
                   mmrDelta: r.mmr_delta,
                 })
               }
+              const subRows = await sql<Array<{
+                battle_tag_lower: string
+                sub_row_id: number | null
+                sub_battle_tag: string | null
+                sub_discord_id: string
+                owner_row_id: number | null
+                owner_battle_tag: string | null
+                owner_name: string | null
+              }>>`
+                SELECT DISTINCT ON (LOWER(a.hots_battle_tag))
+                  LOWER(a.hots_battle_tag) AS battle_tag_lower,
+                  ha.id AS sub_row_id,
+                  ha.hots_battle_tag AS sub_battle_tag,
+                  a.substitute_discord_id AS sub_discord_id,
+                  owner_ha.id AS owner_row_id,
+                  owner_ha.hots_battle_tag AS owner_battle_tag,
+                  CASE
+                    WHEN a.original_discord_id IS NOT NULL
+                      AND a.original_discord_id <> a.substitute_discord_id
+                    THEN split_part(owner_ha.hots_battle_tag, '#', 1)
+                    ELSE NULL
+                  END AS owner_name
+                FROM account_substitutions a
+                LEFT JOIN LATERAL (
+                  SELECT id, hots_battle_tag
+                  FROM hots_accounts
+                  WHERE discord_id = a.substitute_discord_id
+                    AND owner_discord_id IS NULL
+                  ORDER BY is_primary DESC, id ASC
+                  LIMIT 1
+                ) ha ON TRUE
+                LEFT JOIN LATERAL (
+                  SELECT id, hots_battle_tag
+                  FROM hots_accounts
+                  WHERE discord_id = a.original_discord_id
+                    AND owner_discord_id IS NULL
+                  ORDER BY is_primary DESC, id ASC
+                  LIMIT 1
+                ) owner_ha ON a.original_discord_id IS NOT NULL AND a.original_discord_id <> a.substitute_discord_id
+                WHERE a.replay_id = ${replayId}
+                ORDER BY LOWER(a.hots_battle_tag), a.id DESC
+              `
+              const subMap = new Map(subRows.map(s => [s.battle_tag_lower, s]))
+
               for (const [, p] of playerEntries) {
                 if (p && typeof p === 'object' && 'name' in p && 'tag' in p) {
                   const fullTag = `${String(p.name)}#${String(p.tag)}`.toLowerCase()
                   const acc = accountMap.get(fullTag)
-                  p.rowId = acc?.id ?? null
+                  const sub = subMap.get(fullTag)
+                  p.rowId = sub?.sub_row_id ?? acc?.id ?? null
+                  p.originalRowId = acc?.id ?? null
                   p.mmr = acc?.mmr ?? null
                   p.baseMmr = acc?.baseMmr ?? null
                   if (acc?.mmrDelta != null) {
                     p.mmrDelta = acc.mmrDelta
+                  }
+                  if (sub) {
+                    p.isSub = true
+                    p.subBattleTag = sub.sub_battle_tag ?? null
+                    p.account_owner_name = sub.owner_name ?? null
+                    p.account_owner_row_id = sub.owner_row_id ?? null
+                    p.account_owner_tag = sub.owner_battle_tag ?? null
                   }
                 }
               }
@@ -750,6 +832,11 @@ export function createServer(): http.Server {
         const outcomeParam = urlObj.searchParams.get('outcome') || undefined
         const heroSearchParam = urlObj.searchParams.get('heroSearch') || undefined
         const scopeLimitParam = parseInt(urlObj.searchParams.get('scopeLimit') || '0', 10) || 0
+        const rawAccounts = urlObj.searchParams.getAll('account')
+        const accountList = rawAccounts
+          .flatMap(val => val.split(','))
+          .map(v => v.trim())
+          .filter(Boolean)
 
         const profile = await getPlayerProfile(identifier, heroParam, {
           page,
@@ -757,6 +844,7 @@ export function createServer(): http.Server {
           outcome: outcomeParam === 'win' || outcomeParam === 'loss' ? outcomeParam : undefined,
           heroSearch: heroSearchParam?.trim() || undefined,
           scopeLimit: scopeLimitParam > 0 ? scopeLimitParam : undefined,
+          accounts: accountList.length > 0 ? accountList : undefined,
         })
 
         if (!profile) {

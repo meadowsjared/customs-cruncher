@@ -3,14 +3,16 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MmrTrendGraph from '../components/MmrTrendGraph.vue'
 import RoleBadge from '../components/RoleBadge.vue'
+import SubDetailsPopover from '../components/SubDetailsPopover.vue'
 import {
   PlayerProfileData,
   PlayerProfileMatch,
   PlayerProfileSummary,
-  PlayerProfileTopHero,
   PlayerHeroSpecificStats,
   PlayerSearchItem,
+  ReplayPlayer,
   ReplayPlayerTalents,
+  ServerInfo,
 } from '../types'
 import {
   resolveHeroName,
@@ -54,6 +56,8 @@ const jumpPageInput = ref('')
 
 // Filters for matches list and summary
 const heroFilter = ref('')
+const selectedAccounts = ref<string[]>([])
+const showAccountDropdown = ref(false)
 const outcomeFilter = ref<'all' | 'win' | 'loss'>('all')
 const limitFilter = ref<number>(0)
 const customLimit = ref<number | null>(null)
@@ -232,7 +236,9 @@ async function copyMatchBuildCode(match: PlayerProfileMatch) {
 
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
-    if (expandedTier.value.visible) {
+    if (showAccountDropdown.value) {
+      showAccountDropdown.value = false
+    } else if (expandedTier.value.visible) {
       closeExpandedTier()
     } else if (activeTooltip.value.visible) {
       hideTalentTooltip()
@@ -281,6 +287,11 @@ function isDomElement(target: EventTarget | null): target is Element {
 }
 
 function handlePointerDown(e: Event) {
+  if (showAccountDropdown.value) {
+    if (!isDomElement(e.target) || !e.target.closest('.account-multiselect')) {
+      showAccountDropdown.value = false
+    }
+  }
   if (expandedTier.value.visible) {
     if (isDomElement(e.target) && e.target.closest('.expanded-talent-modal')) {
       return
@@ -371,6 +382,7 @@ function hideBrokenImage(event: Event) {
 let lastFetchedId = ''
 let lastFetchedHeroName = ''
 let lastFetchedHeroFilter = ''
+let lastFetchedAccount = ''
 let lastFetchedOutcome = 'all'
 let lastFetchedLimit = 0
 let lastFetchedCustomLimit: number | null = null
@@ -396,6 +408,9 @@ async function fetchPlayerProfile(identifier: string, isPageOnly = false) {
     }
     if (heroFilter.value.trim()) {
       params.set('heroSearch', heroFilter.value.trim())
+    }
+    if (selectedAccounts.value.length > 0) {
+      params.set('account', selectedAccounts.value.join(','))
     }
     if (effectiveLimit.value > 0) {
       params.set('scopeLimit', String(effectiveLimit.value))
@@ -426,6 +441,7 @@ async function fetchPlayerProfile(identifier: string, isPageOnly = false) {
     lastFetchedId = identifier
     lastFetchedHeroName = activeHeroParam.value
     lastFetchedHeroFilter = heroFilter.value.trim()
+    lastFetchedAccount = selectedAccounts.value.join(',')
     lastFetchedOutcome = outcomeFilter.value
     lastFetchedLimit = limitFilter.value
     lastFetchedCustomLimit = customLimit.value
@@ -506,12 +522,13 @@ const activeHeroParam = computed<string>(() => {
 })
 
 function updateUrl(
-  params: { page?: number; hero?: string; outcome?: 'all' | 'win' | 'loss'; limit?: number; customLimit?: number | null },
+  params: { page?: number; hero?: string; accounts?: string[]; outcome?: 'all' | 'win' | 'loss'; limit?: number; customLimit?: number | null },
   replace: boolean = false
 ) {
   const query: Record<string, string> = {}
   const targetPage = params.page !== undefined ? params.page : page.value
   const targetHero = params.hero !== undefined ? params.hero : heroFilter.value
+  const targetAccounts = params.accounts !== undefined ? params.accounts : selectedAccounts.value
   const targetOutcome = params.outcome !== undefined ? params.outcome : outcomeFilter.value
   const targetLimit = params.limit !== undefined ? params.limit : limitFilter.value
   const targetCustomLimit = params.customLimit !== undefined ? params.customLimit : customLimit.value
@@ -521,6 +538,9 @@ function updateUrl(
   }
   if (targetHero.trim()) {
     query.hero = targetHero.trim()
+  }
+  if (targetAccounts.length > 0) {
+    query.account = targetAccounts.join(',')
   }
   if (targetOutcome && targetOutcome !== 'all') {
     query.outcome = targetOutcome
@@ -536,6 +556,7 @@ function updateUrl(
   const isSame =
     (currentQ.page || '1') === (query.page || '1') &&
     (currentQ.hero || '') === (query.hero || '') &&
+    (currentQ.account || '') === (query.account || '') &&
     (currentQ.outcome || 'all') === (query.outcome || 'all') &&
     (currentQ.limit || '0') === (query.limit || '0') &&
     (currentQ.customLimit || '') === (query.customLimit || '')
@@ -557,6 +578,24 @@ function updateUrl(
 
 function onScopeChange() {
   updateUrl({ page: 1, limit: limitFilter.value }, false)
+}
+
+function toggleAccountFilter(tag: string) {
+  const next = selectedAccounts.value.includes(tag)
+    ? selectedAccounts.value.filter(t => t !== tag)
+    : [...selectedAccounts.value, tag]
+  selectedAccounts.value = next
+  updateUrl({ page: 1, accounts: next }, false)
+}
+
+function clearAccountFilter() {
+  if (selectedAccounts.value.length === 0) {
+    showAccountDropdown.value = false
+    return
+  }
+  selectedAccounts.value = []
+  showAccountDropdown.value = false
+  updateUrl({ page: 1, accounts: [] }, false)
 }
 
 let customLimitTimer: ReturnType<typeof setTimeout> | null = null
@@ -716,6 +755,128 @@ const displayHeroStats = computed<PlayerHeroSpecificStats | null>(() => {
   return profileData.value?.heroStats ?? null
 })
 
+const accountOptions = computed(() => {
+  return profileData.value?.availableAccounts ?? []
+})
+
+const accountDropdownLabel = computed(() => {
+  if (selectedAccounts.value.length === 0) return 'All Accounts'
+  if (selectedAccounts.value.length === 1) return selectedAccounts.value[0]
+  return `${selectedAccounts.value.length} Accounts`
+})
+
+// Admin & Server Assignment State
+const isAdmin = ref(false)
+const servers = ref<ServerInfo[]>([])
+const selectedReplayIds = ref<number[]>([])
+const bulkTargetServer = ref(
+  typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('crunch_last_target_server') || '' : ''
+)
+const assigning = ref(false)
+const assignSuccessMessage = ref('')
+
+watch(bulkTargetServer, val => {
+  if (typeof sessionStorage !== 'undefined' && val) {
+    sessionStorage.setItem('crunch_last_target_server', val)
+  }
+})
+
+async function checkAdminStatus() {
+  const token = localStorage.getItem('crunch_admin_token')
+  if (!token) {
+    isAdmin.value = false
+    return
+  }
+  try {
+    const res = await fetch('/api/admin/verify', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) {
+      isAdmin.value = true
+    } else {
+      isAdmin.value = false
+    }
+  } catch {
+    isAdmin.value = false
+  }
+}
+
+async function fetchServers() {
+  try {
+    const res = await fetch('/api/servers')
+    if (res.ok) {
+      const data: { servers: ServerInfo[] } = await res.json()
+      servers.value = data.servers
+    }
+  } catch (err) {
+    console.error('Failed to load servers:', err)
+  }
+}
+
+function getServerName(guildId: string | null | undefined): string {
+  if (!guildId) return 'Unassigned'
+  const match = servers.value.find(s => s.id === guildId)
+  return match ? match.name : guildId
+}
+
+const allOnPageSelected = computed(() => {
+  return matches.value.length > 0 && matches.value.every(m => selectedReplayIds.value.includes(m.replay_id))
+})
+
+function toggleSelectAll() {
+  if (allOnPageSelected.value) {
+    const pageIds = new Set(matches.value.map(m => m.replay_id))
+    selectedReplayIds.value = selectedReplayIds.value.filter(id => !pageIds.has(id))
+  } else {
+    const combined = new Set([...selectedReplayIds.value, ...matches.value.map(m => m.replay_id)])
+    selectedReplayIds.value = Array.from(combined)
+  }
+}
+
+function toggleSelectReplay(id: number) {
+  if (selectedReplayIds.value.includes(id)) {
+    selectedReplayIds.value = selectedReplayIds.value.filter(x => x !== id)
+  } else {
+    selectedReplayIds.value.push(id)
+  }
+}
+
+async function executeBulkAssign() {
+  if (selectedReplayIds.value.length === 0 || !bulkTargetServer.value) return
+  assigning.value = true
+  try {
+    const token = localStorage.getItem('crunch_admin_token')
+    const targetGuild = bulkTargetServer.value === 'unassigned' ? null : bulkTargetServer.value
+    const res = await fetch('/api/admin/replays/assign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        replayIds: selectedReplayIds.value,
+        guildId: targetGuild,
+      }),
+    })
+    if (res.ok) {
+      const targetName = targetGuild ? getServerName(targetGuild) : 'Unassigned'
+      assignSuccessMessage.value = `Assigned ${selectedReplayIds.value.length} match(es) to ${targetName}!`
+      selectedReplayIds.value = []
+      setTimeout(() => {
+        assignSuccessMessage.value = ''
+      }, 4000)
+      const id = typeof route.params.identifier === 'string' ? route.params.identifier : ''
+      if (id) {
+        await fetchPlayerProfile(id, true)
+      }
+    }
+  } catch (err) {
+    console.error('Assign failed:', err)
+  } finally {
+    assigning.value = false
+  }
+}
+
 function navigateToHeroAllPlayers(heroName: string) {
   router.push(`/hero/${encodeURIComponent(heroName)}`)
 }
@@ -739,6 +900,16 @@ watch(
     const targetPage = !isNaN(qPage) && qPage >= 1 ? qPage : 1
 
     const targetHeroFilter = typeof newQuery.hero === 'string' ? newQuery.hero : ''
+    const rawAccountQuery = typeof newQuery.account === 'string'
+      ? newQuery.account
+      : Array.isArray(newQuery.account)
+        ? newQuery.account.join(',')
+        : ''
+    const targetAccounts = rawAccountQuery
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+    const targetAccountsKey = targetAccounts.join(',')
     const rawOutcome = typeof newQuery.outcome === 'string' ? newQuery.outcome.toLowerCase() : 'all'
     const targetOutcome: 'all' | 'win' | 'loss' = (rawOutcome === 'win' || rawOutcome === 'loss') ? rawOutcome : 'all'
     const qLimit = parseInt(String(newQuery.limit || '0'), 10)
@@ -751,6 +922,7 @@ watch(
       lastFetchedId === newId &&
       lastFetchedHeroName === (typeof newHero === 'string' ? newHero : '') &&
       lastFetchedHeroFilter === targetHeroFilter.trim() &&
+      lastFetchedAccount === targetAccountsKey &&
       lastFetchedOutcome === targetOutcome &&
       lastFetchedLimit === targetLimit &&
       (targetLimit !== -1 || lastFetchedCustomLimit === targetCustomLimit) &&
@@ -758,6 +930,7 @@ watch(
 
     page.value = targetPage
     heroFilter.value = targetHeroFilter
+    selectedAccounts.value = targetAccounts
     outcomeFilter.value = targetOutcome
     limitFilter.value = targetLimit
     if (targetLimit === -1) {
@@ -770,11 +943,84 @@ watch(
 )
 
 onMounted(() => {
+  checkAdminStatus()
+  fetchServers()
   window.addEventListener('pointerdown', handlePointerDown)
   window.addEventListener('keydown', handleKeydown)
 })
 
+const activeSubPlayer = ref<ReplayPlayer | null>(null)
+const activeSubAnchor = ref<HTMLElement | null>(null)
+let subCloseTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildSubPlayerForMatch(m: PlayerProfileMatch): ReplayPlayer {
+  const player = profileData.value?.player
+  const [namePart, tagPart] = (m.battle_tag || '').split('#')
+  return {
+    ToonHandle: `${m.replay_id}-${m.battle_tag || m.hero}`,
+    name: namePart || m.battle_tag || '',
+    tag: tagPart || '',
+    hero: resolveHeroName(m.hero),
+    team: 0,
+    win: m.win,
+    isSub: true,
+    rowId: player?.rowId ?? null,
+    subBattleTag: player?.battleTag || player?.name,
+    account_owner_name: m.account_owner_name ?? null,
+    account_owner_tag: m.account_owner_tag ?? null,
+    account_owner_row_id: m.account_owner_row_id ?? null,
+  }
+}
+
+function cancelSubClose() {
+  if (subCloseTimer) {
+    clearTimeout(subCloseTimer)
+    subCloseTimer = null
+  }
+}
+
+function scheduleSubClose() {
+  cancelSubClose()
+  subCloseTimer = setTimeout(() => {
+    activeSubPlayer.value = null
+    activeSubAnchor.value = null
+  }, 160)
+}
+
+function closeSubPopover() {
+  cancelSubClose()
+  activeSubPlayer.value = null
+  activeSubAnchor.value = null
+}
+
+function onSubPointerEnter(m: PlayerProfileMatch, event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return
+  cancelSubClose()
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  activeSubPlayer.value = buildSubPlayerForMatch(m)
+  activeSubAnchor.value = target
+}
+
+function onSubPointerLeave(event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return
+  scheduleSubClose()
+}
+
+function toggleSubPopover(m: PlayerProfileMatch, event: MouseEvent) {
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  cancelSubClose()
+  if (activeSubAnchor.value === target && activeSubPlayer.value) {
+    closeSubPopover()
+  } else {
+    activeSubPlayer.value = buildSubPlayerForMatch(m)
+    activeSubAnchor.value = target
+  }
+}
+
 onUnmounted(() => {
+  cancelSubClose()
   window.removeEventListener('pointerdown', handlePointerDown)
   window.removeEventListener('keydown', handleKeydown)
 })
@@ -881,7 +1127,8 @@ onUnmounted(() => {
                    @mouseleave="onMmrMouseLeave"
                    @click="toggleMmrTrend">
                 <span class="stat-pill-label">
-                  Player MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
+                  Player MMR <span class="mmr-trend-sparkle"
+                        title="Hover or tap for MMR Trend">📈</span>
                 </span>
                 <span class="stat-pill-val val-mmr">{{ formatNumber(profileData.player.mmr) }}</span>
                 <span class="stat-pill-sub">
@@ -894,19 +1141,17 @@ onUnmounted(() => {
                 </span>
 
                 <!-- MMR Trend Hover Popover Graph -->
-                <MmrTrendGraph
-                  v-if="showMmrTrend"
-                  :history="profileData.mmrHistory"
-                  :current-mmr="profileData.player.mmr"
-                  :base-mmr="profileData.player.baseMmr"
-                  :adjustment="profileData.player.adjustment"
-                  :player-name="profileData.player.name"
-                  :highlight-hero="displayHeroStats?.hero"
-                  :anchor-el="heroMmrPillRef"
-                  @mouseenter="cancelMmrTrendTimer"
-                  @mouseleave="onMmrMouseLeave"
-                  @close="closeMmrTrend"
-                />
+                <MmrTrendGraph v-if="showMmrTrend"
+                               :history="profileData.mmrHistory"
+                               :current-mmr="profileData.player.mmr"
+                               :base-mmr="profileData.player.baseMmr"
+                               :adjustment="profileData.player.adjustment"
+                               :player-name="profileData.player.name"
+                               :highlight-hero="displayHeroStats?.hero"
+                               :anchor-el="heroMmrPillRef"
+                               @mouseenter="cancelMmrTrendTimer"
+                               @mouseleave="onMmrMouseLeave"
+                               @close="closeMmrTrend" />
               </div>
 
               <div v-if="profileData.player.aramMmr != null && profileData.player.aramMmr > 0"
@@ -916,27 +1161,27 @@ onUnmounted(() => {
                    @mouseleave="onAramMmrMouseLeave"
                    @click="toggleAramMmrTrend">
                 <span class="stat-pill-label">
-                  ARAM MMR <span class="mmr-trend-sparkle" title="Hover or tap for ARAM MMR Trend">📈</span>
+                  ARAM MMR <span class="mmr-trend-sparkle"
+                        title="Hover or tap for ARAM MMR Trend">📈</span>
                 </span>
                 <span class="stat-pill-val val-aram-mmr">{{ formatNumber(profileData.player.aramMmr) }}</span>
                 <span class="stat-pill-sub">
-                  <span v-if="profileData.player.aramGames">{{ profileData.player.aramGames }}G · {{ profileData.player.aramWinRate ?? 50 }}% WR</span>
+                  <span v-if="profileData.player.aramGames">{{ profileData.player.aramGames }}G · {{
+                    profileData.player.aramWinRate ?? 50 }}% WR</span>
                   <span v-else>Seeded</span>
                 </span>
 
                 <!-- ARAM MMR Trend Hover Popover Graph -->
-                <MmrTrendGraph
-                  v-if="showAramMmrTrend"
-                  :history="profileData.aramMmrHistory"
-                  :current-mmr="profileData.player.aramMmr"
-                  :base-mmr="profileData.player.aramBaseMmr"
-                  :player-name="profileData.player.name"
-                  :highlight-hero="displayHeroStats?.hero"
-                  :anchor-el="heroAramMmrPillRef"
-                  @mouseenter="cancelAramMmrTrendTimer"
-                  @mouseleave="onAramMmrMouseLeave"
-                  @close="closeAramMmrTrend"
-                />
+                <MmrTrendGraph v-if="showAramMmrTrend"
+                               :history="profileData.aramMmrHistory"
+                               :current-mmr="profileData.player.aramMmr"
+                               :base-mmr="profileData.player.aramBaseMmr"
+                               :player-name="profileData.player.name"
+                               :highlight-hero="displayHeroStats?.hero"
+                               :anchor-el="heroAramMmrPillRef"
+                               @mouseenter="cancelAramMmrTrendTimer"
+                               @mouseleave="onAramMmrMouseLeave"
+                               @close="closeAramMmrTrend" />
               </div>
             </div>
 
@@ -1017,6 +1262,42 @@ onUnmounted(() => {
                      @input="onCustomLimitInput" />
             </div>
 
+            <div v-if="accountOptions.length > 1 || selectedAccounts.length > 0"
+                 class="filter-group account-multiselect">
+              <label>Account:</label>
+              <div class="multiselect-wrapper">
+                <button type="button"
+                        class="filter-limit-select multiselect-trigger"
+                        @click.stop="showAccountDropdown = !showAccountDropdown">
+                  <span>{{ accountDropdownLabel }}</span>
+                  <span class="multiselect-caret">▾</span>
+                </button>
+                <div v-if="showAccountDropdown"
+                     class="multiselect-menu"
+                     @click.stop>
+                  <button type="button"
+                          class="multiselect-option multiselect-all"
+                          :class="{ active: selectedAccounts.length === 0 }"
+                          @click="clearAccountFilter">
+                    <span>All Accounts</span>
+                    <span v-if="selectedAccounts.length === 0"
+                          class="check-mark">✓</span>
+                  </button>
+                  <div class="multiselect-divider"></div>
+                  <label v-for="acc in accountOptions"
+                         :key="acc.tag"
+                         class="multiselect-option">
+                    <input type="checkbox"
+                           :checked="selectedAccounts.includes(acc.tag)"
+                           class="multiselect-checkbox"
+                           @change="toggleAccountFilter(acc.tag)" />
+                    <span class="multiselect-tag">{{ acc.tag }}</span>
+                    <span class="multiselect-count">({{ acc.games }})</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
             <div class="filter-group">
               <label>Result:</label>
               <div class="outcome-toggle-btns">
@@ -1056,11 +1337,9 @@ onUnmounted(() => {
                   <span v-if="displaySummary.tag"
                         class="player-bnet-tag">#{{ displaySummary.tag }}</span>
                 </span>
-                <RoleBadge
-                  v-if="displaySummary.role"
-                  :role="displaySummary.role"
-                  class="profile-role-badge"
-                />
+                <RoleBadge v-if="displaySummary.role"
+                           :role="displaySummary.role"
+                           class="profile-role-badge" />
               </h1>
               <div v-if="displaySummary.allTags.length > 1"
                    class="linked-accounts-wrap">
@@ -1086,7 +1365,8 @@ onUnmounted(() => {
                    @mouseleave="onMmrMouseLeave"
                    @click="toggleMmrTrend">
                 <span class="stat-pill-label">
-                  Current MMR <span class="mmr-trend-sparkle" title="Hover or tap for MMR Trend">📈</span>
+                  Current MMR <span class="mmr-trend-sparkle"
+                        title="Hover or tap for MMR Trend">📈</span>
                 </span>
                 <span class="stat-pill-val val-mmr">{{ formatNumber(displaySummary.mmr) }}</span>
                 <span class="stat-pill-sub">
@@ -1099,18 +1379,16 @@ onUnmounted(() => {
                 </span>
 
                 <!-- MMR Trend Hover Popover Graph -->
-                <MmrTrendGraph
-                  v-if="showMmrTrend"
-                  :history="profileData.mmrHistory"
-                  :current-mmr="displaySummary.mmr"
-                  :base-mmr="displaySummary.baseMmr"
-                  :adjustment="displaySummary.adjustment"
-                  :player-name="displaySummary.name"
-                  :anchor-el="generalMmrPillRef"
-                  @mouseenter="cancelMmrTrendTimer"
-                  @mouseleave="onMmrMouseLeave"
-                  @close="closeMmrTrend"
-                />
+                <MmrTrendGraph v-if="showMmrTrend"
+                               :history="profileData.mmrHistory"
+                               :current-mmr="displaySummary.mmr"
+                               :base-mmr="displaySummary.baseMmr"
+                               :adjustment="displaySummary.adjustment"
+                               :player-name="displaySummary.name"
+                               :anchor-el="generalMmrPillRef"
+                               @mouseenter="cancelMmrTrendTimer"
+                               @mouseleave="onMmrMouseLeave"
+                               @close="closeMmrTrend" />
               </div>
 
               <div v-if="displaySummary.aramMmr != null && displaySummary.aramMmr > 0"
@@ -1120,26 +1398,26 @@ onUnmounted(() => {
                    @mouseleave="onAramMmrMouseLeave"
                    @click="toggleAramMmrTrend">
                 <span class="stat-pill-label">
-                  ARAM MMR <span class="mmr-trend-sparkle" title="Hover or tap for ARAM MMR Trend">📈</span>
+                  ARAM MMR <span class="mmr-trend-sparkle"
+                        title="Hover or tap for ARAM MMR Trend">📈</span>
                 </span>
                 <span class="stat-pill-val val-aram-mmr">{{ formatNumber(displaySummary.aramMmr) }}</span>
                 <span class="stat-pill-sub">
-                  <span v-if="displaySummary.aramGames">{{ displaySummary.aramGames }}G · {{ displaySummary.aramWinRate ?? 50 }}% WR</span>
+                  <span v-if="displaySummary.aramGames">{{ displaySummary.aramGames }}G · {{ displaySummary.aramWinRate
+                    ?? 50 }}% WR</span>
                   <span v-else>Seeded</span>
                 </span>
 
                 <!-- ARAM MMR Trend Hover Popover Graph -->
-                <MmrTrendGraph
-                  v-if="showAramMmrTrend"
-                  :history="profileData.aramMmrHistory"
-                  :current-mmr="displaySummary.aramMmr"
-                  :base-mmr="displaySummary.aramBaseMmr"
-                  :player-name="displaySummary.name"
-                  :anchor-el="generalAramMmrPillRef"
-                  @mouseenter="cancelAramMmrTrendTimer"
-                  @mouseleave="onAramMmrMouseLeave"
-                  @close="closeAramMmrTrend"
-                />
+                <MmrTrendGraph v-if="showAramMmrTrend"
+                               :history="profileData.aramMmrHistory"
+                               :current-mmr="displaySummary.aramMmr"
+                               :base-mmr="displaySummary.aramBaseMmr"
+                               :player-name="displaySummary.name"
+                               :anchor-el="generalAramMmrPillRef"
+                               @mouseenter="cancelAramMmrTrendTimer"
+                               @mouseleave="onAramMmrMouseLeave"
+                               @close="closeAramMmrTrend" />
               </div>
             </div>
 
@@ -1272,7 +1550,44 @@ onUnmounted(() => {
                      @input="onCustomLimitInput" />
             </div>
 
-            <div v-if="!activeHeroParam" class="filter-group">
+            <div v-if="accountOptions.length > 1 || selectedAccounts.length > 0"
+                 class="filter-group account-multiselect">
+              <label>Account:</label>
+              <div class="multiselect-wrapper">
+                <button type="button"
+                        class="filter-limit-select multiselect-trigger"
+                        @click.stop="showAccountDropdown = !showAccountDropdown">
+                  <span>{{ accountDropdownLabel }}</span>
+                  <span class="multiselect-caret">▾</span>
+                </button>
+                <div v-if="showAccountDropdown"
+                     class="multiselect-menu"
+                     @click.stop>
+                  <button type="button"
+                          class="multiselect-option multiselect-all"
+                          :class="{ active: selectedAccounts.length === 0 }"
+                          @click="clearAccountFilter">
+                    <span>All Accounts</span>
+                    <span v-if="selectedAccounts.length === 0"
+                          class="check-mark">✓</span>
+                  </button>
+                  <div class="multiselect-divider"></div>
+                  <label v-for="acc in accountOptions"
+                         :key="acc.tag"
+                         class="multiselect-option">
+                    <input type="checkbox"
+                           :checked="selectedAccounts.includes(acc.tag)"
+                           class="multiselect-checkbox"
+                           @change="toggleAccountFilter(acc.tag)" />
+                    <span class="multiselect-tag">{{ acc.tag }}</span>
+                    <span class="multiselect-count">({{ acc.games }})</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!activeHeroParam"
+                 class="filter-group">
               <label>Filter Hero:</label>
               <input v-model="heroFilter"
                      type="text"
@@ -1315,9 +1630,37 @@ onUnmounted(() => {
             </h2>
             <span class="count-badge">
               <span class="range-highlight">{{ matchesRangeText }} of {{ total }} matches</span>
-              <span v-if="totalPages > 1" class="page-subtle">(Page {{ page }}/{{ Math.max(totalPages, 1) }})</span>
+              <span v-if="totalPages > 1"
+                    class="page-subtle">(Page {{ page }}/{{ Math.max(totalPages, 1) }})</span>
             </span>
           </div>
+        </div>
+
+        <!-- Admin Assign Success Toast -->
+        <div v-if="assignSuccessMessage"
+             class="assign-toast">
+          <span>✅ {{ assignSuccessMessage }}</span>
+        </div>
+
+        <!-- Admin Select All Bar -->
+        <div v-if="isAdmin && !matchesLoading && matches.length > 0"
+             class="admin-toolbar">
+          <label class="select-all-label">
+            <input type="checkbox"
+                   :checked="allOnPageSelected"
+                   class="match-checkbox"
+                   @change="toggleSelectAll" />
+            <span>Select all on page ({{ matches.length }} matches)</span>
+          </label>
+          <span v-if="selectedReplayIds.length > 0"
+                class="selected-count-badge">
+            {{ selectedReplayIds.length }} match(es) selected
+          </span>
+          <button v-if="selectedReplayIds.length > 0"
+                  class="clear-btn"
+                  @click="selectedReplayIds = []">
+            Clear selection
+          </button>
         </div>
 
         <!-- Matches Table -->
@@ -1333,12 +1676,30 @@ onUnmounted(() => {
         </div>
 
         <div v-else
-             class="matches-cards-list">
+             class="matches-cards-list"
+             :class="{ 'admin-grid': isAdmin }">
           <div v-for="m in matches"
                :key="m.replay_id"
                class="player-match-row"
-               :class="m.win ? 'row-victory' : 'row-defeat'"
+               :class="[m.win ? 'row-victory' : 'row-defeat', { 'admin-row': isAdmin }]"
                @click="navigateToMatch(m.replay_id)">
+            <!-- Admin Checkbox Column -->
+            <div v-if="isAdmin"
+                 class="admin-checkbox-col"
+                 :class="{ 'is-selected': selectedReplayIds.includes(m.replay_id) }"
+                 role="checkbox"
+                 :aria-checked="selectedReplayIds.includes(m.replay_id)"
+                 tabindex="0"
+                 title="Click to toggle selection"
+                 @click.stop="toggleSelectReplay(m.replay_id)"
+                 @keydown.space.prevent="toggleSelectReplay(m.replay_id)"
+                 @keydown.enter.prevent="toggleSelectReplay(m.replay_id)">
+              <input type="checkbox"
+                     :checked="selectedReplayIds.includes(m.replay_id)"
+                     class="match-checkbox"
+                     tabindex="-1"
+                     aria-hidden="true" />
+            </div>
             <!-- Result Color Bar & Badge -->
             <div class="match-result-col">
               <span class="outcome-pill"
@@ -1362,29 +1723,48 @@ onUnmounted(() => {
                         class="match-mmr-badge"
                         :class="m.mmr_delta > 0 ? 'mmr-up' : (m.mmr_delta < 0 ? 'mmr-down' : 'mmr-zero')"
                         :title="m.is_rated ? `Rating change: ${m.mmr_delta > 0 ? '+' : ''}${m.mmr_delta} MMR` : 'Unrated Match'">
-                    {{ m.mmr_delta > 0 ? `+${m.mmr_delta}` : (m.mmr_delta < 0 ? m.mmr_delta : '±0') }}
-                  </span>
+                    {{ m.mmr_delta > 0 ? `+${m.mmr_delta}` : (m.mmr_delta < 0
+                      ?
+                      m.mmr_delta
+                      : '±0'
+                    )
+                      }}
+                      </span>
                 </div>
+                <span class="server-badge"
+                      :class="{ 'unassigned-badge': !m.guild_id }">
+                  {{ getServerName(m.guild_id) }}
+                </span>
               </div>
             </div>
 
             <!-- Hero Column -->
-            <div class="match-hero-col">
+            <div class="match-hero-col"
+                 :class="{ 'is-sub-block': Boolean(m.account_owner_name) }"
+                 @pointerenter="m.account_owner_name && onSubPointerEnter(m, $event)"
+                 @pointerleave="m.account_owner_name && onSubPointerLeave($event)"
+                 @click="m.account_owner_name && ($event.stopPropagation(), toggleSubPopover(m, $event))">
               <img :src="getHeroImageUrl(m.hero)"
                    :alt="m.hero"
-                   class="hero-thumb clickable-match-hero"
-                   :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
-                   @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)"
+                   class="hero-thumb"
+                   :class="{ 'clickable-match-hero': !m.account_owner_name }"
+                   :title="m.account_owner_name ? undefined : (activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`)"
+                   @click="!m.account_owner_name && ($event.stopPropagation(), activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero))"
                    @error="hideBrokenImage" />
               <div class="hero-name-col">
-                <span class="hero-name clickable-match-hero"
-                      :title="activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`"
-                      @click.stop="activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero)">
-                  {{ resolveHeroName(m.hero) }}
-                </span>
+                <div class="hero-title-row">
+                  <span class="hero-name"
+                        :class="{ 'clickable-match-hero': !m.account_owner_name, 'is-sub-hero': Boolean(m.account_owner_name) }"
+                        :title="m.account_owner_name ? undefined : (activeHeroParam ? `Click to view all matches for ${resolveHeroName(m.hero)} across ALL players` : `View ${profileData.player.name}'s matches on ${resolveHeroName(m.hero)}`)"
+                        @click="!m.account_owner_name && ($event.stopPropagation(), activeHeroParam ? navigateToHeroAllPlayers(m.hero) : navigateToPlayerSpecificHero(m.hero))">
+                    {{ resolveHeroName(m.hero) }}
+                  </span>
+                  <span v-if="m.account_owner_name"
+                        class="badge-sub">SUB</span>
+                </div>
                 <span v-if="m.battle_tag"
                       class="hero-match-btag"
-                      :title="`Played as ${m.battle_tag}`">
+                      :title="m.account_owner_name ? undefined : `Played as ${m.battle_tag}`">
                   {{ m.battle_tag }}
                 </span>
               </div>
@@ -1465,59 +1845,52 @@ onUnmounted(() => {
       </div>
 
       <!-- Pagination Bar -->
-      <div v-if="totalPages > 1 || page > 1" class="pagination-container card">
+      <div v-if="totalPages > 1 || page > 1"
+           class="pagination-container card">
         <div class="pagination-main-row">
           <div class="pagination-meta">
             Showing matches <strong>{{ matchesRangeText }}</strong> of <strong>{{ total }}</strong>
           </div>
 
           <div class="pagination-controls">
-            <button
-              :disabled="page <= 1"
-              class="btn btn-page-nav"
-              title="First Page"
-              @click="goToPage(1)"
-            >
+            <button :disabled="page <= 1"
+                    class="btn btn-page-nav"
+                    title="First Page"
+                    @click="goToPage(1)">
               « First
             </button>
-            <button
-              :disabled="page <= 1"
-              class="btn btn-page-nav"
-              title="Previous Page"
-              @click="goToPage(page - 1)"
-            >
+            <button :disabled="page <= 1"
+                    class="btn btn-page-nav"
+                    title="Previous Page"
+                    @click="goToPage(page - 1)">
               ‹ Prev
             </button>
 
             <div class="page-numbers-group">
-              <template v-for="item in paginationItems" :key="item.key">
-                <span v-if="item.type === 'ellipsis'" class="page-ellipsis">…</span>
-                <button
-                  v-else
-                  class="btn-page-num"
-                  :class="{ active: item.active }"
-                  :title="`Page ${item.label}`"
-                  @click="goToPage(item.page!)"
-                >
+              <template v-for="item in paginationItems"
+                        :key="item.key">
+                <span v-if="item.type === 'ellipsis'"
+                      class="page-ellipsis">…</span>
+                <button v-else
+                        class="btn-page-num"
+                        :class="{ active: item.active }"
+                        :title="`Page ${item.label}`"
+                        @click="goToPage(item.page!)">
                   {{ item.label }}
                 </button>
               </template>
             </div>
 
-            <button
-              :disabled="totalPages <= 1 || page >= totalPages"
-              class="btn btn-page-nav"
-              title="Next Page"
-              @click="goToPage(page + 1)"
-            >
+            <button :disabled="totalPages <= 1 || page >= totalPages"
+                    class="btn btn-page-nav"
+                    title="Next Page"
+                    @click="goToPage(page + 1)">
               Next ›
             </button>
-            <button
-              :disabled="totalPages <= 1 || page >= totalPages"
-              class="btn btn-page-nav"
-              title="Last Page"
-              @click="goToPage(Math.max(totalPages, 1))"
-            >
+            <button :disabled="totalPages <= 1 || page >= totalPages"
+                    class="btn btn-page-nav"
+                    title="Last Page"
+                    @click="goToPage(Math.max(totalPages, 1))">
               Last »
             </button>
           </div>
@@ -1525,18 +1898,19 @@ onUnmounted(() => {
 
         <div class="pagination-secondary-row">
           <!-- Quick Jump Form -->
-          <form class="jump-form" @submit.prevent="handleJumpPage">
-            <label for="player-jump-input" class="jump-label">Go to page:</label>
-            <input
-              id="player-jump-input"
-              v-model="jumpPageInput"
-              type="number"
-              min="1"
-              :max="totalPages"
-              placeholder="#"
-              class="jump-input"
-            />
-            <button type="submit" class="btn btn-jump">Go</button>
+          <form class="jump-form"
+                @submit.prevent="handleJumpPage">
+            <label for="player-jump-input"
+                   class="jump-label">Go to page:</label>
+            <input id="player-jump-input"
+                   v-model="jumpPageInput"
+                   type="number"
+                   min="1"
+                   :max="totalPages"
+                   placeholder="#"
+                   class="jump-input" />
+            <button type="submit"
+                    class="btn btn-jump">Go</button>
           </form>
         </div>
       </div>
@@ -1793,6 +2167,40 @@ onUnmounted(() => {
         </div>
       </div>
     </Teleport>
+    <!-- Floating Admin Bulk Action Bar -->
+    <div v-if="isAdmin && selectedReplayIds.length > 0"
+         class="floating-admin-bar">
+      <div class="admin-bar-inner">
+        <span class="admin-bar-summary">
+          <strong>{{ selectedReplayIds.length }}</strong> match(es) selected
+        </span>
+        <div class="admin-bar-actions">
+          <select v-model="bulkTargetServer"
+                  class="filter-limit-select admin-server-select">
+            <option value=""
+                    disabled>Choose target server...</option>
+            <option v-for="s in servers"
+                    :key="s.id"
+                    :value="s.id">{{ s.name }}</option>
+            <option value="unassigned">Remove Server (Unassign)</option>
+          </select>
+          <button class="assign-btn"
+                  :disabled="!bulkTargetServer || assigning"
+                  @click="executeBulkAssign">
+            <span v-if="assigning"
+                  class="spinner-small"></span>
+            <span v-else>Assign Matches</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <SubDetailsPopover v-if="activeSubPlayer"
+                       :player="activeSubPlayer"
+                       :anchor-el="activeSubAnchor"
+                       @mouseenter="cancelSubClose"
+                       @mouseleave="scheduleSubClose"
+                       @close="closeSubPopover" />
   </div>
 </template>
 
@@ -1805,8 +2213,8 @@ onUnmounted(() => {
   padding-left: 1rem;
   padding-right: 1rem;
   transition: padding 0.4s cubic-bezier(0.34, 1.3, 0.64, 1),
-              margin 0.4s cubic-bezier(0.34, 1.3, 0.64, 1),
-              max-width 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+    margin 0.4s cubic-bezier(0.34, 1.3, 0.64, 1),
+    max-width 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 .player-profile-view {
@@ -2372,6 +2780,98 @@ onUnmounted(() => {
   cursor: text;
 }
 
+.multiselect-wrapper {
+  position: relative;
+}
+
+.multiselect-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 140px;
+  justify-content: space-between;
+}
+
+.multiselect-caret {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.multiselect-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 240px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  padding: 0.35rem;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+  transition: background 0.12s ease;
+}
+
+.multiselect-option:hover {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.multiselect-all {
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.multiselect-all.active {
+  color: #38bdf8;
+}
+
+.check-mark {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.multiselect-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  margin: 0.2rem 0;
+}
+
+.multiselect-checkbox {
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.multiselect-tag {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiselect-count {
+  color: #94a3b8;
+  font-size: 0.74rem;
+}
+
 .filter-custom-limit-input::placeholder {
   color: #94a3b8;
   opacity: 0.85;
@@ -2671,10 +3171,210 @@ onUnmounted(() => {
     justify-content: center;
   }
 
+  .matches-cards-list.admin-grid {
+    grid-template-columns: 38px minmax(95px, 110px) max-content max-content max-content max-content repeat(4, minmax(45px, 60px)) min-content;
+  }
+
   .player-match-row {
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
   }
+
+  .player-match-row.admin-row {
+    grid-template-areas: "check result map hero talents kad stat-hero stat-siege stat-heal stat-taken action";
+  }
+}
+
+.admin-checkbox-col {
+  grid-area: check;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  margin: -0.85rem 0 -0.85rem -1.15rem;
+  padding: 0 0.5rem;
+  cursor: pointer;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  transition: background-color 0.15s ease;
+}
+
+.admin-checkbox-col:hover {
+  background-color: rgba(59, 130, 246, 0.14);
+}
+
+.admin-checkbox-col.is-selected {
+  background-color: rgba(59, 130, 246, 0.22);
+}
+
+.match-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+  pointer-events: none;
+}
+
+.assign-toast {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid var(--border-subtle, #334155);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.select-all-label .match-checkbox {
+  pointer-events: auto;
+}
+
+.selected-count-badge {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 9999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.clear-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.clear-btn:hover {
+  color: #fff;
+}
+
+.server-badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-full);
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  max-width: fit-content;
+  text-wrap: balance;
+  text-align: center;
+}
+
+.unassigned-badge {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.65);
+  animation: pulseRed 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulseRed {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.16);
+    color: #f87171;
+  }
+
+  50% {
+    box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.35);
+    border-color: rgba(248, 113, 113, 0.95);
+    background: rgba(239, 68, 68, 0.28);
+    color: #fca5a5;
+  }
+}
+
+.floating-admin-bar {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: #111827;
+  border: 1px solid #3b82f6;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 20px rgba(59, 130, 246, 0.25);
+  padding: 0.85rem 1.5rem;
+}
+
+.admin-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-bar-summary {
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.admin-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.assign-btn {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.assign-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
 .player-match-row:hover {
@@ -2807,6 +3507,21 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.match-hero-col.is-sub-block {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  margin: -0.25rem -0.4rem;
+  transition: background 0.16s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.match-hero-col.is-sub-block:hover {
+  background: rgba(168, 85, 247, 0.1);
+}
+
 .hero-thumb {
   width: 32px;
   height: 32px;
@@ -2823,6 +3538,13 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .hero-name {
   color: #fff;
   font-size: 0.85rem;
@@ -2830,6 +3552,45 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.hero-name.is-sub-hero {
+  display: inline-block;
+  color: #e9d5ff;
+  text-decoration: underline dotted rgba(192, 132, 252, 0.65);
+  text-underline-offset: 3px;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), text-shadow 0.2s ease, color 0.18s ease;
+  animation: subHeroGlow 3s ease-in-out infinite;
+}
+
+.match-hero-col.is-sub-block:hover .hero-name.is-sub-hero {
+  transform: translateY(-1px);
+  color: #f3e8ff;
+  text-shadow: 0 0 12px rgba(192, 132, 252, 0.85);
+}
+
+@keyframes subHeroGlow {
+
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(192, 132, 252, 0);
+  }
+
+  50% {
+    text-shadow: 0 0 8px rgba(192, 132, 252, 0.45);
+  }
+}
+
+.badge-sub {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(168, 85, 247, 0.22);
+  color: #e9d5ff;
+  border: 1px solid rgba(192, 132, 252, 0.45);
+  flex-shrink: 0;
 }
 
 .hero-match-btag {
@@ -3070,6 +3831,7 @@ onUnmounted(() => {
 
 /* Responsive */
 @media (max-width: 1348px) {
+
   .container,
   .player-profile-view.container {
     max-width: 100%;
@@ -3210,6 +3972,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
+
   .profile-matches-section,
   .profile-header-card {
     padding: 1rem 0.75rem;

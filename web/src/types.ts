@@ -11,6 +11,7 @@ export interface ReplaySummary {
   heroes: string[]
   guild_id?: string | null
   mode?: number
+  subs?: Record<string, string>
 }
 
 export interface ServerInfo {
@@ -106,8 +107,14 @@ export interface ReplayPlayer {
   team: number
   win: boolean
   rowId?: number | null
+  originalRowId?: number | null
   mmr?: number | null
   aramMmr?: number | null
+  isSub?: boolean
+  subBattleTag?: string | null
+  account_owner_name?: string | null
+  account_owner_row_id?: number | null
+  account_owner_tag?: string | null
   aramBaseMmr?: number | null
   aramGames?: number | null
   aramWinRate?: number | null
@@ -182,6 +189,7 @@ export interface ReplayDetail {
   map: string
   length: number
   winner: number
+  guild_id?: string | null
   team0_takedowns: number
   team1_takedowns: number
   team0_players?: string
@@ -308,6 +316,10 @@ export interface PlayerProfileMatch {
   map: string
   hero: string
   battle_tag?: string
+  account_owner_name?: string | null
+  account_owner_tag?: string | null
+  account_owner_row_id?: number | null
+  guild_id?: string | null
   win: boolean
   kda: number
   solo_kills: number
@@ -360,11 +372,17 @@ export interface PlayerMmrHistoryPoint {
   map?: string
 }
 
+export interface PlayerAccountOption {
+  tag: string
+  games: number
+}
+
 export interface PlayerProfileData {
   player: PlayerProfileSummary
   matches: PlayerProfileMatch[]
   pagination: PlayerPaginationInfo
   heroStats?: PlayerHeroSpecificStats | null
+  availableAccounts?: PlayerAccountOption[]
   mmrHistory?: PlayerMmrHistoryPoint[]
   aramMmrHistory?: PlayerMmrHistoryPoint[]
 }
@@ -420,6 +438,12 @@ export interface HeroProfileMatch {
   talents: ReplayPlayerTalents | null
   mmr_delta?: number | null
   is_rated?: boolean | null
+  is_sub?: boolean
+  sub_row_id?: number | null
+  sub_battle_tag?: string | null
+  account_owner_name?: string | null
+  account_owner_tag?: string | null
+  account_owner_row_id?: number | null
 }
 
 export interface HeroProfileData {

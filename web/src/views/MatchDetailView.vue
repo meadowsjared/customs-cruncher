@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem, PlayerCombatBadge } from '../types'
+import type { ReplayDetail, ReplayPlayer, ReplayBanItem, PlayerSearchItem, PlayerCombatBadge, ServerInfo } from '../types'
+import SubDetailsPopover from '../components/SubDetailsPopover.vue'
 import {
   formatDuration,
   formatDateRelative,
@@ -26,7 +27,26 @@ const route = useRoute()
 const router = useRouter()
 
 const match = ref<ReplayDetail | null>(null)
+const servers = ref<ServerInfo[]>([])
 const loading = ref(true)
+
+async function fetchServers() {
+  try {
+    const res = await fetch('/api/servers')
+    if (res.ok) {
+      const data: { servers: ServerInfo[] } = await res.json()
+      servers.value = data.servers
+    }
+  } catch (err) {
+    console.error('Failed to load servers:', err)
+  }
+}
+
+function getServerName(guildId: string | null | undefined): string {
+  if (!guildId) return 'Unassigned'
+  const found = servers.value.find(s => s.id === guildId)
+  return found ? found.name : guildId
+}
 const error = ref<string | null>(null)
 
 type ActiveTab = 'overview' | 'talents' | 'combat' | 'defense' | 'siege' | 'bm'
@@ -776,10 +796,12 @@ function isPlayerHighlighted(player: ReplayPlayer): boolean {
     const normName = player.name.toLowerCase()
     const normTag = `${player.name}-${player.tag || ''}`.toLowerCase()
     const altTag = `${player.name}_${player.tag || ''}`.toLowerCase()
+    const subLower = player.subBattleTag?.toLowerCase() || ''
     if (
       targetAccount.value === normName ||
       targetAccount.value === normTag ||
       targetAccount.value === altTag ||
+      (subLower && targetAccount.value === subLower) ||
       targetAccount.value.startsWith(normName)
     ) {
       return true
@@ -865,6 +887,65 @@ function computeTeamAvgMmr(players: ReplayPlayer[]): string {
   return `${formatNumber(Math.round(sum / withMmr.length))} MMR`
 }
 
+function getSubTooltip(player: ReplayPlayer): string {
+  const who = player.subBattleTag || 'substitute'
+  return player.account_owner_name
+    ? `Played by ${who} (loaned by ${player.account_owner_name})`
+    : `Played by ${who}`
+}
+
+const activeSubPlayer = ref<ReplayPlayer | null>(null)
+const activeSubAnchor = ref<HTMLElement | null>(null)
+let subCloseTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelSubClose() {
+  if (subCloseTimer) {
+    clearTimeout(subCloseTimer)
+    subCloseTimer = null
+  }
+}
+
+function onSubPointerEnter(player: ReplayPlayer, event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return
+  openSubPopover(player, event)
+}
+
+function onSubPointerLeave(player: ReplayPlayer, event: PointerEvent) {
+  if (event.pointerType !== 'mouse' || !player.isSub) return
+  scheduleSubClose()
+}
+
+function openSubPopover(player: ReplayPlayer, event: Event) {
+  cancelSubClose()
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) {
+    activeSubAnchor.value = target
+  }
+  activeSubPlayer.value = player
+}
+
+function scheduleSubClose() {
+  cancelSubClose()
+  subCloseTimer = setTimeout(() => {
+    activeSubPlayer.value = null
+    activeSubAnchor.value = null
+  }, 220)
+}
+
+function toggleSubPopover(player: ReplayPlayer, event: Event) {
+  if (activeSubPlayer.value?.ToonHandle === player.ToonHandle) {
+    closeSubPopover()
+  } else {
+    openSubPopover(player, event)
+  }
+}
+
+function closeSubPopover() {
+  cancelSubClose()
+  activeSubPlayer.value = null
+  activeSubAnchor.value = null
+}
+
 function getPlayerMetaTooltip(player: ReplayPlayer): string {
   const pick = getPlayerPickOrder(player.hero, player.team)
   const parts: string[] = []
@@ -924,6 +1005,7 @@ async function navigateToPlayerHero(player: ReplayPlayer, hero: string) {
 
 onMounted(() => {
   fetchMatchDetail()
+  fetchServers()
   window.addEventListener('pointerdown', handlePointerDown)
   window.addEventListener('keydown', handleKeydown)
 })
@@ -981,6 +1063,9 @@ onUnmounted(() => {
             <div class="banner-title-row">
               <span class="match-id-pill">MATCH #{{ match.id }}</span>
               <span v-if="isAramMap(match.map)" class="aram-badge">ARAM</span>
+              <span class="server-badge" :class="{ 'unassigned-badge': !match.guild_id }">
+                {{ getServerName(match.guild_id) }}
+              </span>
             </div>
             <h1 class="banner-map-title">{{ match.map }}</h1>
             <div class="banner-meta-row">
@@ -1287,28 +1372,42 @@ onUnmounted(() => {
                           :key="p.ToonHandle">
                   <tr :class="{ 'highlighted-row': isPlayerHighlighted(p), 'has-badges-row': getPlayerCombatBadges(p).length > 0 }">
                     <td class="player-cell col-player">
-                      <div class="player-info-wrap">
+                      <div class="player-info-wrap"
+                           :class="{ 'is-sub-block': p.isSub }"
+                           @pointerenter="p.isSub && onSubPointerEnter(p, $event)"
+                           @pointerleave="p.isSub && onSubPointerLeave(p, $event)"
+                           @click="p.isSub && toggleSubPopover(p, $event)">
                         <img :src="getHeroImageUrl(p.hero)"
                              :alt="p.hero"
-                             class="hero-avatar clickable-hero-link"
-                             :title="`View ${p.name}'s ${p.hero} matches`"
-                             @click="navigateToPlayerHero(p, p.hero)" />
+                             class="hero-avatar"
+                             :class="{ 'clickable-hero-link': !p.isSub }"
+                             :title="p.isSub ? undefined : `View ${p.name}'s ${p.hero} matches`"
+                             @click="!p.isSub && navigateToPlayerHero(p, p.hero)" />
                         <div class="name-hero-col">
                           <div class="name-tag-row">
-                            <span class="player-name clickable-player-link"
-                                  :title="`View player history for ${p.name}`"
-                                  @click="navigateToPlayer(p)">
+                            <span class="player-name"
+                                  :class="{ 'clickable-player-link': !p.isSub, 'is-sub-player': p.isSub }"
+                                  :title="p.isSub ? undefined : `View player history for ${p.name}`"
+                                  @click="!p.isSub && navigateToPlayer(p)">
                               {{ p.name }}
                             </span>
                             <span v-if="p.tag"
                                   class="player-tag">#{{ p.tag }}</span>
+                            <span v-if="p.isSub"
+                                  class="badge badge-sub"
+                                  :title="getSubTooltip(p)">SUB</span>
                             <span v-if="isPlayerHighlighted(p)"
                                   class="badge badge-highlight">★ You</span>
                           </div>
+                          <div v-if="p.isSub && p.subBattleTag"
+                               class="played-by-inline">
+                            played by {{ p.subBattleTag }}
+                          </div>
                           <div class="hero-pick-row">
-                            <span class="hero-name clickable-hero-link"
-                                  :title="`View ${p.name}'s ${p.hero} matches`"
-                                  @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
+                            <span class="hero-name"
+                                  :class="{ 'clickable-hero-link': !p.isSub }"
+                                  :title="p.isSub ? undefined : `View ${p.name}'s ${p.hero} matches`"
+                                  @click="!p.isSub && navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
                             <span v-if="getPlayerPickOrder(p.hero, p.team) || p.mmr"
                                   class="player-meta-badge"
                                   :title="getPlayerMetaTooltip(p)">
@@ -1505,28 +1604,42 @@ onUnmounted(() => {
                           :key="p.ToonHandle">
                   <tr :class="{ 'highlighted-row': isPlayerHighlighted(p), 'has-badges-row': getPlayerCombatBadges(p).length > 0 }">
                     <td class="player-cell col-player">
-                      <div class="player-info-wrap">
+                      <div class="player-info-wrap"
+                           :class="{ 'is-sub-block': p.isSub }"
+                           @pointerenter="p.isSub && onSubPointerEnter(p, $event)"
+                           @pointerleave="p.isSub && onSubPointerLeave(p, $event)"
+                           @click="p.isSub && toggleSubPopover(p, $event)">
                         <img :src="getHeroImageUrl(p.hero)"
                              :alt="p.hero"
-                             class="hero-avatar clickable-hero-link"
-                             :title="`View ${p.name}'s ${p.hero} matches`"
-                             @click="navigateToPlayerHero(p, p.hero)" />
+                             class="hero-avatar"
+                             :class="{ 'clickable-hero-link': !p.isSub }"
+                             :title="p.isSub ? undefined : `View ${p.name}'s ${p.hero} matches`"
+                             @click="!p.isSub && navigateToPlayerHero(p, p.hero)" />
                         <div class="name-hero-col">
                           <div class="name-tag-row">
-                            <span class="player-name clickable-player-link"
-                                  :title="`View player history for ${p.name}`"
-                                  @click="navigateToPlayer(p)">
+                            <span class="player-name"
+                                  :class="{ 'clickable-player-link': !p.isSub, 'is-sub-player': p.isSub }"
+                                  :title="p.isSub ? undefined : `View player history for ${p.name}`"
+                                  @click="!p.isSub && navigateToPlayer(p)">
                               {{ p.name }}
                             </span>
                             <span v-if="p.tag"
                                   class="player-tag">#{{ p.tag }}</span>
+                            <span v-if="p.isSub"
+                                  class="badge badge-sub"
+                                  :title="getSubTooltip(p)">SUB</span>
                             <span v-if="isPlayerHighlighted(p)"
                                   class="badge badge-highlight">★ You</span>
                           </div>
+                          <div v-if="p.isSub && p.subBattleTag"
+                               class="played-by-inline">
+                            played by {{ p.subBattleTag }}
+                          </div>
                           <div class="hero-pick-row">
-                            <span class="hero-name clickable-hero-link"
-                                  :title="`View ${p.name}'s ${p.hero} matches`"
-                                  @click="navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
+                            <span class="hero-name"
+                                  :class="{ 'clickable-hero-link': !p.isSub }"
+                                  :title="p.isSub ? undefined : `View ${p.name}'s ${p.hero} matches`"
+                                  @click="!p.isSub && navigateToPlayerHero(p, p.hero)">{{ p.hero }}</span>
                             <span v-if="getPlayerPickOrder(p.hero, p.team) || p.mmr"
                                   class="player-meta-badge"
                                   :title="getPlayerMetaTooltip(p)">
@@ -1677,21 +1790,30 @@ onUnmounted(() => {
                class="card talent-player-card"
                :class="[p.team === 0 ? 'talent-card-blue' : 'talent-card-red', { 'highlighted-row': isPlayerHighlighted(p) }]">
             <div class="talent-card-header">
-              <div class="player-info-wrap">
+              <div class="player-info-wrap"
+                   :class="{ 'is-sub-block': p.isSub }"
+                   @pointerenter="p.isSub && onSubPointerEnter(p, $event)"
+                   @pointerleave="p.isSub && onSubPointerLeave(p, $event)"
+                   @click="p.isSub && toggleSubPopover(p, $event)">
                 <img :src="getHeroImageUrl(p.hero)"
                      :alt="p.hero"
-                     class="hero-avatar clickable-hero-link"
-                     :title="`View ${p.name}'s ${p.hero} matches`"
-                     @click="navigateToPlayerHero(p, p.hero)" />
+                     class="hero-avatar"
+                     :class="{ 'clickable-hero-link': !p.isSub }"
+                     :title="p.isSub ? undefined : `View ${p.name}'s ${p.hero} matches`"
+                     @click="!p.isSub && navigateToPlayerHero(p, p.hero)" />
                 <div class="name-hero-col">
                   <div class="name-tag-row">
-                    <span class="player-name clickable-player-link"
-                          :title="`View player history for ${p.name}`"
-                          @click="navigateToPlayer(p)">
+                    <span class="player-name"
+                          :class="{ 'clickable-player-link': !p.isSub, 'is-sub-player': p.isSub }"
+                          :title="p.isSub ? undefined : `View player history for ${p.name}`"
+                          @click="!p.isSub && navigateToPlayer(p)">
                       {{ p.name }}
                     </span>
                     <span v-if="p.tag"
                           class="player-tag">#{{ p.tag }}</span>
+                    <span v-if="p.isSub"
+                          class="badge badge-sub"
+                          :title="getSubTooltip(p)">SUB</span>
                     <span class="team-pill"
                           :class="p.team === 0 ? 'pill-blue' : 'pill-red'">
                       {{ p.team === 0 ? 'Blue' : 'Red' }}
@@ -1702,9 +1824,14 @@ onUnmounted(() => {
                       {{ formatNumber(p.mmr) }} MMR
                     </span>
                   </div>
-                  <span class="hero-name clickable-hero-link"
-                        :title="`View ${p.name}'s ${p.hero} matches`"
-                        @click="navigateToPlayerHero(p, p.hero)">
+                  <div v-if="p.isSub && p.subBattleTag"
+                       class="played-by-inline">
+                    played by {{ p.subBattleTag }}
+                  </div>
+                  <span class="hero-name"
+                        :class="{ 'clickable-hero-link': !p.isSub }"
+                        :title="p.isSub ? undefined : `View ${p.name}'s ${p.hero} matches`"
+                        @click="!p.isSub && navigateToPlayerHero(p, p.hero)">
                     {{ p.hero }}
                   </span>
                 </div>
@@ -2263,6 +2390,15 @@ onUnmounted(() => {
         </div>
       </div>
     </Teleport>
+
+    <SubDetailsPopover
+      v-if="activeSubPlayer"
+      :player="activeSubPlayer"
+      :anchor-el="activeSubAnchor"
+      @mouseenter="cancelSubClose"
+      @mouseleave="scheduleSubClose"
+      @close="closeSubPopover"
+    />
   </div>
 </template>
 
@@ -2556,6 +2692,107 @@ td:last-child {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.server-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  text-wrap: balance;
+  text-align: center;
+}
+
+.unassigned-badge {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.65);
+  animation: pulseRed 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulseRed {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.16);
+    color: #f87171;
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.35);
+    border-color: rgba(248, 113, 113, 0.95);
+    background: rgba(239, 68, 68, 0.28);
+    color: #fca5a5;
+  }
+}
+
+.badge-sub {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(168, 85, 247, 0.2);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  cursor: help;
+}
+
+.played-by-inline {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #d8b4fe;
+  opacity: 0.92;
+  line-height: 1.15;
+}
+
+.player-info-wrap.is-sub-block {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  margin: -0.25rem -0.4rem;
+  transition: background 0.16s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.player-info-wrap.is-sub-block:hover {
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.player-name.is-sub-player {
+  display: inline-block;
+  color: #e9d5ff;
+  text-decoration: underline dotted rgba(192, 132, 252, 0.65);
+  text-underline-offset: 3px;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), text-shadow 0.2s ease, color 0.18s ease;
+  animation: subNameGlow 3s ease-in-out infinite;
+}
+
+.player-name.is-sub-player:hover {
+  transform: translateY(-1.5px);
+  color: #f3e8ff;
+  text-shadow: 0 0 12px rgba(192, 132, 252, 0.85);
+}
+
+@keyframes subNameGlow {
+  0%, 100% {
+    text-shadow: 0 0 4px rgba(168, 85, 247, 0.25);
+  }
+  50% {
+    text-shadow: 0 0 10px rgba(192, 132, 252, 0.6);
+  }
 }
 
 .aram-badge {

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import SubDetailsPopover from '../components/SubDetailsPopover.vue'
 import {
   HeroProfileData,
   HeroProfileMatch,
   HeroProfileTopPlayer,
   PlayerSearchItem,
+  ReplayPlayer,
   ReplayPlayerTalents,
 } from '../types'
 import {
@@ -250,6 +252,78 @@ onMounted(() => {
   if (typeof currentHero === 'string' && !heroData.value) {
     fetchHeroProfile(currentHero)
   }
+})
+
+const activeSubPlayer = ref<ReplayPlayer | null>(null)
+const activeSubAnchor = ref<HTMLElement | null>(null)
+let subCloseTimer: ReturnType<typeof setTimeout> | null = null
+
+function buildSubPlayerForHeroMatch(m: HeroProfileMatch): ReplayPlayer {
+  return {
+    ToonHandle: `${m.replay_id}-${m.player_battle_tag}`,
+    name: m.player_name,
+    tag: m.player_tag,
+    hero: resolveHeroName(m.hero),
+    team: 0,
+    win: m.win,
+    isSub: true,
+    rowId: m.sub_row_id ?? null,
+    subBattleTag: m.sub_battle_tag ?? null,
+    account_owner_name: m.account_owner_name ?? null,
+    account_owner_tag: m.account_owner_tag ?? null,
+    account_owner_row_id: m.account_owner_row_id ?? null,
+  }
+}
+
+function cancelSubClose() {
+  if (subCloseTimer) {
+    clearTimeout(subCloseTimer)
+    subCloseTimer = null
+  }
+}
+
+function scheduleSubClose() {
+  cancelSubClose()
+  subCloseTimer = setTimeout(() => {
+    activeSubPlayer.value = null
+    activeSubAnchor.value = null
+  }, 160)
+}
+
+function closeSubPopover() {
+  cancelSubClose()
+  activeSubPlayer.value = null
+  activeSubAnchor.value = null
+}
+
+function onSubPointerEnter(m: HeroProfileMatch, event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return
+  cancelSubClose()
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  activeSubPlayer.value = buildSubPlayerForHeroMatch(m)
+  activeSubAnchor.value = target
+}
+
+function onSubPointerLeave(event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return
+  scheduleSubClose()
+}
+
+function toggleSubPopover(m: HeroProfileMatch, event: MouseEvent) {
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  cancelSubClose()
+  if (activeSubAnchor.value === target && activeSubPlayer.value) {
+    closeSubPopover()
+  } else {
+    activeSubPlayer.value = buildSubPlayerForHeroMatch(m)
+    activeSubAnchor.value = target
+  }
+}
+
+onUnmounted(() => {
+  cancelSubClose()
 })
 </script>
 
@@ -522,18 +596,29 @@ onMounted(() => {
             </div>
 
             <!-- Player Column -->
-            <div class="match-player-col" @click.stop="navigateToPlayerHero(m)">
+            <div class="match-player-col"
+                 :class="{ 'is-sub-block': Boolean(m.is_sub) }"
+                 @pointerenter="m.is_sub && onSubPointerEnter(m, $event)"
+                 @pointerleave="m.is_sub && onSubPointerLeave($event)"
+                 @click.stop="m.is_sub ? toggleSubPopover(m, $event) : navigateToPlayerHero(m)">
               <div class="player-avatar-small">
                 {{ m.player_name.charAt(0).toUpperCase() }}
               </div>
               <div class="player-meta-info">
-                <span
-                  class="player-name clickable-player-link"
-                  :title="`View ${m.player_name}'s matches on ${resolveHeroName(m.hero)}`"
-                >
-                  {{ m.player_name }}
+                <div class="player-name-row">
+                  <span
+                    class="player-name"
+                    :class="{ 'clickable-player-link': !m.is_sub, 'is-sub-player': Boolean(m.is_sub) }"
+                    :title="m.is_sub ? undefined : `View ${m.player_name}'s matches on ${resolveHeroName(m.hero)}`"
+                  >
+                    {{ m.player_name }}
+                  </span>
+                  <span v-if="m.is_sub" class="badge-sub">SUB</span>
+                </div>
+                <span v-if="m.is_sub && m.sub_battle_tag" class="played-by-inline">
+                  played by {{ m.sub_battle_tag }}
                 </span>
-                <span v-if="m.player_tag" class="player-subtag">#{{ m.player_tag }}</span>
+                <span v-else-if="m.player_tag" class="player-subtag">#{{ m.player_tag }}</span>
               </div>
             </div>
 
@@ -609,6 +694,15 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <SubDetailsPopover
+      v-if="activeSubPlayer"
+      :player="activeSubPlayer"
+      :anchor-el="activeSubAnchor"
+      @mouseenter="cancelSubClose"
+      @mouseleave="scheduleSubClose"
+      @close="closeSubPopover"
+    />
   </div>
 </template>
 
@@ -1169,6 +1263,73 @@ onMounted(() => {
 
 .match-player-col:hover {
   background: rgba(56, 189, 248, 0.12);
+}
+
+.match-player-col.is-sub-block {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.match-player-col.is-sub-block:hover {
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.player-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.player-name.is-sub-player {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #e9d5ff;
+  text-decoration: underline dotted rgba(192, 132, 252, 0.65);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), text-shadow 0.2s ease, color 0.18s ease;
+  animation: subPlayerGlow 3s ease-in-out infinite;
+}
+
+.match-player-col.is-sub-block:hover .player-name.is-sub-player {
+  transform: translateY(-1px);
+  color: #f3e8ff;
+  text-shadow: 0 0 12px rgba(192, 132, 252, 0.85);
+}
+
+@keyframes subPlayerGlow {
+  0%, 100% {
+    text-shadow: 0 0 0 rgba(192, 132, 252, 0);
+  }
+  50% {
+    text-shadow: 0 0 8px rgba(192, 132, 252, 0.45);
+  }
+}
+
+.badge-sub {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(168, 85, 247, 0.22);
+  color: #e9d5ff;
+  border: 1px solid rgba(192, 132, 252, 0.45);
+  flex-shrink: 0;
+}
+
+.played-by-inline {
+  font-size: 0.7rem;
+  color: #c4b5fd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .player-avatar-small {
