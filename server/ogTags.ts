@@ -3,7 +3,7 @@ import { getPlayerProfile } from '../store/playerProfile'
 import { getPlayerAggregatedStats } from '../store/playerStats'
 import { getHeroProfile } from '../store/heroProfile'
 import type { PlayerAggregatedStats } from '../types/player'
-import { formatDeadTime, getPlayerRoastTitle, getTotalBm } from '../utils/playerRoast'
+import { formatDeadTime, getPlayerRoast, getTotalBm } from '../utils/playerRoast'
 
 export interface OgMetadata {
   title: string
@@ -217,16 +217,16 @@ export async function resolveOgMetadata(pathname: string, origin: string): Promi
         )
       }
 
-      const shameImage = `${origin}/hall-of-shame.png`
+      const defaultShameImage = `${origin}/roast-gray-screen.png`
       if (matchedStat) {
-        const roastTitle = getPlayerRoastTitle(matchedStat)
+        const roast = getPlayerRoast(matchedStat)
         const displayName = profile ? profile.player.name : matchedStat.player_name
         return {
-          title: `${displayName}'s Hall of Shame — ${roastTitle}`,
+          title: `${displayName}'s Hall of Shame — ${roast.title}`,
           description: formatRoastDescription(matchedStat),
           url,
-          image: shameImage,
-          themeColor: '#ef4444',
+          image: `${origin}/${roast.image}`,
+          themeColor: roast.themeColor,
         }
       }
 
@@ -235,7 +235,7 @@ export async function resolveOgMetadata(pathname: string, origin: string): Promi
           title: `${profile.player.name}'s Hall of Shame 💀`,
           description: `📉 ${profile.player.losses.toLocaleString()}L (${profile.player.winRatePct}% WR) • Total Matches: ${profile.player.totalMatches}`,
           url,
-          image: shameImage,
+          image: defaultShameImage,
           themeColor: '#ef4444',
         }
       }
@@ -244,7 +244,7 @@ export async function resolveOgMetadata(pathname: string, origin: string): Promi
         title: 'Hall of Shame — Customs Cruncher Leaderboard',
         description: 'In-house 5v5 MMR rankings, win rates, deaths, gray-screen time, and BM stats.',
         url,
-        image: shameImage,
+        image: defaultShameImage,
         themeColor: '#ef4444',
       }
     }
@@ -318,9 +318,11 @@ export function injectOgTags(html: string, og: OgMetadata): string {
     `    <meta property="og:description" content="${escapedDesc}" />`,
     `    <meta property="og:url" content="${escapedUrl}" />`,
     `    <meta property="og:image" content="${escapedImage}" />`,
+    `    <meta property="og:image:type" content="image/png" />`,
     `    <meta name="twitter:card" content="summary" />`,
     `    <meta name="twitter:title" content="${escapedTitle}" />`,
     `    <meta name="twitter:description" content="${escapedDesc}" />`,
+    `    <meta name="twitter:image" content="${escapedImage}" />`,
   ].join('\n')
 
   let updated = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapedTitle}</title>`)

@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { LeaderboardPlayer, PlayerMmrHistoryPoint, PlayerProfileData } from '../types'
 import { formatNumber } from '../utils/hots'
-import { formatDeadTime as formatDeadTimeDuration, getPlayerRoastTitle, getTotalBm } from '../../../utils/playerRoast'
+import { formatDeadTime as formatDeadTimeDuration, getPlayerRoast, getTotalBm } from '../../../utils/playerRoast'
 import RoleBadge from '../components/RoleBadge.vue'
 import MmrTrendGraph from '../components/MmrTrendGraph.vue'
 
@@ -1009,7 +1009,12 @@ onUnmounted(() => {
               />
             </div>
             <div class="roast-title-badge">
-              <span>{{ getPlayerRoastTitle(activeFilterPlayer) }}</span>
+              <span class="roast-title-pill">
+                <img :src="`/${getPlayerRoast(activeFilterPlayer).image}`"
+                     :alt="getPlayerRoast(activeFilterPlayer).title"
+                     class="roast-badge-icon" />
+                {{ getPlayerRoast(activeFilterPlayer).title }}
+              </span>
             </div>
           </div>
         </div>
@@ -2924,16 +2929,27 @@ onUnmounted(() => {
   margin-top: 0.35rem;
 }
 
-.roast-title-badge span {
-  display: inline-block;
+.roast-title-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.4);
   color: #fca5a5;
   font-weight: 700;
   font-size: 0.9rem;
-  padding: 0.25rem 0.75rem;
+  padding: 0.2rem 0.75rem 0.2rem 0.35rem;
   border-radius: 9999px;
   letter-spacing: 0.02em;
+}
+
+.roast-badge-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
 }
 
 .roast-header-actions {

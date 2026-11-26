@@ -29,18 +29,101 @@ export function formatDeadTime(avgDeadSecs: number, gamesPlayed: number): string
   return `${hours} hours`
 }
 
-export function getPlayerRoastTitle(p: RoastStatsInput): string {
-  const avgDeaths = Number(p.avg_deaths || 0)
-  const wr = Number(p.win_rate_pct || 0)
-  const totalBm = getTotalBm(p)
-  const spongeRatio = Number(p.avg_damage_taken || 0) / Math.max(1, Number(p.avg_hero_damage || 1))
+export interface RoastTier {
+  title: string
+  image: string
+  themeColor: string
+}
 
-  if (avgDeaths >= 4.0) return 'Professional Gray Screen Enthusiast 💀'
-  if (spongeRatio >= 2.0) return 'Certified Damage Sponge 🧽'
-  if (wr < 38) return 'Chief Charity Elo Contributor 📉'
-  if (wr < 48) return 'Struggling Coinflip Veteran 🪙'
-  if (totalBm >= 300) return 'BM Connoisseur, Map-Blind Tactician 💃'
-  if (avgDeaths >= 3.0) return 'Cemetery Season Ticket Holder ⚰️'
-  if (Number(p.total_bsteps || 0) === 0 && totalBm > 0) return 'All Spray, Zero B-Step 🎨'
-  return 'Tactical Feeder in Disguise 🎯'
+interface RoastMetrics {
+  avgDeaths: number
+  wr: number
+  totalBm: number
+  spongeRatio: number
+  totalBsteps: number
+}
+
+interface RoastRule extends RoastTier {
+  matches?: (m: RoastMetrics) => boolean
+}
+
+const ROAST_TIERS: RoastRule[] = [
+  {
+    title: 'Professional Gray Screen Enthusiast 💀',
+    image: 'roast-gray-screen.png',
+    themeColor: '#ef4444',
+    matches: m => m.avgDeaths >= 4.0,
+  },
+  {
+    title: 'Certified Damage Sponge 🧽',
+    image: 'roast-damage-sponge.png',
+    themeColor: '#f97316',
+    matches: m => m.spongeRatio >= 2.0,
+  },
+  {
+    title: 'Chief Charity Elo Contributor 📉',
+    image: 'roast-charity-elo.png',
+    themeColor: '#dc2626',
+    matches: m => m.wr < 38,
+  },
+  {
+    title: 'Struggling Coinflip Veteran 🪙',
+    image: 'roast-coinflip-veteran.png',
+    themeColor: '#eab308',
+    matches: m => m.wr < 48,
+  },
+  {
+    title: 'BM Connoisseur, Map-Blind Tactician 💃',
+    image: 'roast-bm-connoisseur.png',
+    themeColor: '#d946ef',
+    matches: m => m.totalBm >= 300,
+  },
+  {
+    title: 'Cemetery Season Ticket Holder ⚰️',
+    image: 'roast-cemetery-ticket.png',
+    themeColor: '#8b5cf6',
+    matches: m => m.avgDeaths >= 3.0,
+  },
+  {
+    title: 'All Spray, Zero B-Step 🎨',
+    image: 'roast-all-spray.png',
+    themeColor: '#06b6d4',
+    matches: m => m.totalBsteps === 0 && m.totalBm > 0,
+  },
+  {
+    title: 'Tactical Feeder in Disguise 🎯',
+    image: 'roast-tactical-feeder.png',
+    themeColor: '#10b981',
+  },
+]
+
+const DEFAULT_ROAST_TIER = ROAST_TIERS[ROAST_TIERS.length - 1]
+
+function findRoastTierByTitle(title: string): RoastRule {
+  return ROAST_TIERS.find(tier => title.includes(tier.title.replace(/\s+\S+$/, ''))) ?? DEFAULT_ROAST_TIER
+}
+
+/** Resolve the full roast tier (title, badge image, and theme color) for a player's stats. */
+export function getPlayerRoast(p: RoastStatsInput): RoastTier {
+  const metrics: RoastMetrics = {
+    avgDeaths: Number(p.avg_deaths || 0),
+    wr: Number(p.win_rate_pct || 0),
+    totalBm: getTotalBm(p),
+    spongeRatio: Number(p.avg_damage_taken || 0) / Math.max(1, Number(p.avg_hero_damage || 1)),
+    totalBsteps: Number(p.total_bsteps || 0),
+  }
+
+  return ROAST_TIERS.find(tier => !tier.matches || tier.matches(metrics)) ?? DEFAULT_ROAST_TIER
+}
+
+export function getPlayerRoastTitle(p: RoastStatsInput): string {
+  return getPlayerRoast(p).title
+}
+
+export function getRoastImageFilename(title: string): string {
+  return findRoastTierByTitle(title).image
+}
+
+export function getRoastThemeColor(title: string): string {
+  return findRoastTierByTitle(title).themeColor
 }
